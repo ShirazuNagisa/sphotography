@@ -3,345 +3,652 @@ Theme Name: Sphotography
 Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
-Description: A fullscreen map-based photography theme. Explore photographs scattered on a dark, immersive map with frosted-glass UI panels.
-Version: 1.0.0
+Description: A fullscreen map-based photography theme with article sidebar and photo grid.
+Version: 2.0.0
 License: GPL v2 or later
 Text Domain: sphotography
 */
 
-/* ============================================
-   1. Google Fonts
-   ============================================ */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap');
 
 /* ============================================
-   2. CSS Reset & Base
+   1. CSS Variables & Reset
    ============================================ */
-*, *::before, *::after {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+:root {
+    --sidebar-width: 300px;
+    --panel-radius: var(--sphotography-card-radius, 16px);
+    --panel-shadow: var(--sphotography-card-shadow, 0 1px 3px rgba(0,0,0,0.06));
+    --panel-bg: rgba(20, 20, 20, 0.78);
+    --panel-blur: blur(18px);
+    --panel-border: 1px solid rgba(255, 255, 255, 0.08);
+    --text-primary: #ffffff;
+    --text-secondary: #aaaaaa;
+    --text-muted: #666666;
+    --primary: var(--sphotography-primary-color, #e67e22);
+    --bg: var(--sphotography-bg, #0b0b0b);
+    --transition-speed: 0.35s;
 }
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
 html, body {
     height: 100%;
     overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--sphotography-bg, #0b0b0b);
-    color: #ffffff;
+    background: var(--bg);
+    color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    scroll-behavior: smooth;
 }
 
-/* Smooth scroll override when disabled */
-body.sphotography-scroll-disabled,
-body.sphotography-scroll-disabled html {
-    scroll-behavior: auto;
+img { display:block; max-width:100%; }
+
+/* ============================================
+   2. Glass Panel Base
+   ============================================ */
+.glass-panel {
+    background: var(--panel-bg);
+    backdrop-filter: var(--panel-blur);
+    -webkit-backdrop-filter: var(--panel-blur);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--panel-shadow);
+    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Night mode force */
-@media (prefers-color-scheme: dark) {
-    body.sphotography-night-force-light {
-        --sphotography-bg: #0b0b0b !important;
-    }
-}
-@media (prefers-color-scheme: light) {
-    body.sphotography-night-force-dark {
-        --sphotography-bg: #0b0b0b !important;
-    }
-}
-
-img {
-    display: block;
-    max-width: 100%;
+/* Opaque override */
+body.opaque-panels .glass-panel {
+    background: #1a1a1a;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 /* ============================================
-   3. Map Container
+   3. Map
    ============================================ */
 #map {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 300px;
+    right: 0;
+    bottom: 0;
     z-index: 1;
+    transition: left var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.sidebar-collapsed #map {
+    left: 0;
 }
 
 /* ============================================
-   4. Frosted Glass Panel Base
+   4. Sidebar
    ============================================ */
-.glass-panel {
-    background: rgba(20, 20, 20, 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--sphotography-card-radius, 16px);
-    box-shadow: var(--sphotography-card-shadow);
-    color: #ffffff;
-    transition: transform 0.3s ease, opacity 0.3s ease;
-}
-
-/* ============================================
-   5. Filter Panel
-   ============================================ */
-.filter-panel {
+.sidebar {
     position: fixed;
-    left: 20px;
-    top: 20px;
-    width: 260px;
-    max-height: calc(100vh - 40px);
-    overflow-y: auto;
-    z-index: 100;
-    padding: 20px;
-    background: rgba(20, 20, 20, 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-}
-
-.filter-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin-bottom: 16px;
-    color: #ffffff;
-    letter-spacing: 0.02em;
-}
-
-.tag-list {
+    left: 16px;
+    top: 16px;
+    bottom: 16px;
+    width: var(--sidebar-width);
+    z-index: 50;
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(0);
+    opacity: 1;
+    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.sidebar-collapsed .sidebar {
+    transform: translateX(calc(-1 * (var(--sidebar-width) + 20px)));
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Search */
+.sidebar-search {
+    position: relative;
+    padding: 14px 16px 8px;
+    flex-shrink: 0;
+}
+
+.sidebar-search input {
+    width: 100%;
+    padding: 10px 36px 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.06);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.sidebar-search input:focus {
+    border-color: var(--primary);
+}
+
+.sidebar-search input::placeholder {
+    color: var(--text-muted);
+}
+
+.sidebar-search-icon {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* Post list (scrollable) */
+.sidebar-posts {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
     gap: 8px;
 }
 
-.tag-btn {
-    display: inline-block;
-    padding: 6px 14px;
-    font-size: 0.8125rem;
-    font-family: inherit;
-    color: #aaaaaa;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 20px;
-    cursor: pointer;
-    transition: all 0.25s ease;
-    user-select: none;
-    white-space: nowrap;
-}
+.sidebar-posts::-webkit-scrollbar { width: 3px; }
+.sidebar-posts::-webkit-scrollbar-track { background: transparent; }
+.sidebar-posts::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
 
-.tag-btn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.2);
-}
-
-.tag-btn.active {
-    color: #ffffff;
-    background: var(--sphotography-primary-color, #e67e22);
-    border-color: var(--sphotography-primary-color, #e67e22);
-}
-
-.tag-count {
-    margin-left: 4px;
-    font-size: 0.75rem;
-    opacity: 0.6;
-}
-
-/* Filter Toggle Button (mobile) */
-#filter-toggle {
-    display: none;
-    position: fixed;
-    left: 20px;
-    bottom: 20px;
-    z-index: 100;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: rgba(20, 20, 20, 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: #ffffff;
-    font-size: 1.5rem;
-    cursor: pointer;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.25s ease;
-}
-
-#filter-toggle:hover {
-    background: rgba(40, 40, 40, 0.9);
-}
-
-/* ============================================
-   6. Detail Sheet
-   ============================================ */
-.detail-sheet {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: 380px;
-    height: 100vh;
-    z-index: 200;
-    padding: 0;
-    background: rgba(20, 20, 20, 0.75);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: none;
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0;
-    transform: translateX(100%);
-    opacity: 0;
-    transition: transform 0.3s ease, opacity 0.3s ease;
-    overflow-y: auto;
-}
-
-.detail-sheet.active {
-    transform: translateX(0);
-    opacity: 1;
-}
-
-.close-btn {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(0, 0, 0, 0.5);
-    color: #ffffff;
-    font-size: 1.5rem;
-    cursor: pointer;
+/* Post card inside sidebar */
+.post-card {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    transition: background 0.2s ease;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: calc(var(--panel-radius) * 0.7);
+    cursor: pointer;
+    transition: background 0.2s;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid transparent;
+    flex-shrink: 0;
 }
 
-.close-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
+.post-card:hover {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.06);
 }
 
-.detail-content {
-    padding: 24px;
-}
-
-.detail-img {
-    width: 100%;
-    height: 260px;
+.post-card-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
     object-fit: cover;
-    border-radius: 12px;
-    margin-bottom: 20px;
+    flex-shrink: 0;
     background: #1a1a1a;
 }
 
-.detail-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin-bottom: 12px;
-    color: #ffffff;
-    line-height: 1.3;
-}
-
-.detail-meta {
+.post-card-body {
+    flex: 1;
+    min-width: 0;
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    margin-bottom: 16px;
-    font-size: 0.8125rem;
-    color: #aaaaaa;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
 }
 
-.detail-meta-item {
+.post-card-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.post-card-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
-.detail-meta-item svg {
-    width: 14px;
-    height: 14px;
-    opacity: 0.6;
+/* Sidebar footer */
+.sidebar-footer {
+    padding: 8px 12px 12px;
+    flex-shrink: 0;
 }
 
-.detail-desc {
+.sidebar-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sidebar-toggle-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+}
+
+/* Sidebar expand button (shown when collapsed) */
+.sidebar-expand-btn {
+    position: fixed;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 45;
+    width: 40px;
+    height: 72px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: var(--panel-border);
+    background: var(--panel-bg);
+    backdrop-filter: var(--panel-blur);
+    color: var(--text-secondary);
+    transition: all 0.2s;
+    border-radius: 12px;
+}
+
+.sidebar-expand-btn:hover {
+    color: var(--text-primary);
+    background: rgba(40,40,40,0.85);
+}
+
+body.sidebar-collapsed .sidebar-expand-btn {
+    display: flex;
+}
+
+/* ============================================
+   5. Article Panel (overlay)
+   ============================================ */
+.article-panel {
+    position: fixed;
+    left: 340px;
+    top: 16px;
+    bottom: 16px;
+    width: min(600px, calc(100vw - 380px));
+    z-index: 60;
+    padding: 24px 28px;
+    overflow-y: auto;
+    transform: translateX(20px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.article-panel.active {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.article-panel-header {
+    margin-bottom: 20px;
+    padding-right: 32px;
+}
+
+.article-panel-header h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 8px;
+}
+
+.article-meta {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.article-content {
     font-size: 0.9375rem;
-    line-height: 1.7;
-    color: #cccccc;
-    margin-bottom: 16px;
+    line-height: 1.75;
+    color: #d0d0d0;
 }
 
-.detail-tags {
+.article-content p { margin-bottom: 1.2em; }
+.article-content h1, .article-content h2, .article-content h3, .article-content h4 {
+    font-family: 'Playfair Display', serif;
+    color: var(--text-primary);
+    margin: 1.5em 0 0.6em;
+}
+.article-content h2 { font-size: 1.4rem; }
+.article-content h3 { font-size: 1.2rem; }
+.article-content img {
+    border-radius: 12px;
+    margin: 1.5em 0;
+}
+.article-content blockquote {
+    border-left: 3px solid var(--primary);
+    padding-left: 16px;
+    margin: 1.2em 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.article-content a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+.article-content ul, .article-content ol {
+    padding-left: 20px;
+    margin-bottom: 1.2em;
+}
+.article-content li { margin-bottom: 0.4em; }
+.article-content figure { margin: 1.5em 0; }
+.article-content figcaption {
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+.article-content iframe {
+    max-width: 100%;
+    border-radius: 12px;
+}
+
+/* ============================================
+   6. Photo Grid Panel
+   ============================================ */
+.photo-grid-panel {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    z-index: 55;
+    width: min(520px, calc(100vw - 48px));
+    max-height: min(560px, calc(100vh - 48px));
+    padding: 20px 20px 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+.photo-grid-panel.active {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.photo-grid-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    padding-right: 32px;
+}
+
+.photo-grid-container {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 2px;
+}
+
+.photo-grid-container::-webkit-scrollbar { width: 3px; }
+.photo-grid-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.photo-grid-item {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    background: #1a1a1a;
+    position: relative;
+    transition: transform 0.2s;
+}
+
+.photo-grid-item:hover {
+    transform: scale(1.03);
+}
+
+.photo-grid-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.photo-grid-item .photo-item-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 20px 8px 6px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.photo-grid-item:hover .photo-item-overlay {
+    opacity: 1;
+}
+
+/* ============================================
+   7. Panel Close Button (unified)
+   ============================================ */
+.panel-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.4);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    transition: all 0.2s;
+}
+
+.panel-close-btn:hover {
+    background: rgba(0,0,0,0.65);
+    color: var(--text-primary);
+}
+
+.panel-close-btn.small {
+    width: 26px;
+    height: 26px;
+}
+
+/* ============================================
+   8. Filter Panel (updated)
+   ============================================ */
+.filter-panel {
+    position: fixed;
+    left: 16px;
+    bottom: 80px;
+    width: 240px;
+    max-height: 50vh;
+    z-index: 40;
+    padding: 16px 18px;
+    overflow-y: auto;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.filter-panel.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+}
+
+.filter-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.filter-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+body.sidebar-collapsed .filter-panel {
+    left: 70px;
+}
+
+.filter-toggle-btn {
+    position: fixed;
+    left: 16px;
+    bottom: 24px;
+    z-index: 40;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border: var(--panel-border);
+    transition: all 0.2s;
+}
+
+.filter-toggle-btn:hover {
+    color: var(--text-primary);
+    background: rgba(40,40,40,0.85);
+}
+
+.tag-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
 }
 
-.detail-tag {
-    padding: 4px 12px;
-    font-size: 0.75rem;
-    background: rgba(230, 126, 34, 0.15);
-    color: #e67e22;
-    border: 1px solid rgba(230, 126, 34, 0.3);
-    border-radius: 12px;
+.tag-btn {
+    padding: 5px 12px;
+    font-size: 0.78125rem;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
 }
 
-/* Drag Handle for mobile detail sheet */
-.drag-handle {
-    display: none;
-    width: 40px;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.25);
-    border-radius: 2px;
-    margin: 10px auto 4px;
+.tag-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.1);
+}
+
+.tag-btn.active {
+    color: #fff;
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.tag-count {
+    margin-left: 3px;
+    font-size: 0.7rem;
+    opacity: 0.6;
 }
 
 /* ============================================
-   7. About Trigger & Card
+   9. Detail Sheet (existing, for mobile use)
+   ============================================ */
+.detail-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-height: 70vh;
+    z-index: 60;
+    border-radius: var(--panel-radius) var(--panel-radius) 0 0;
+    border-top: var(--panel-border);
+    transform: translateY(100%);
+    opacity: 0;
+    overflow-y: auto;
+    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.detail-sheet.active {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.detail-content { padding: 16px 20px 24px; }
+.drag-handle {
+    width: 36px; height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    margin: 6px auto 12px;
+}
+.detail-img { width:100%; height:200px; object-fit:cover; border-radius:12px; margin-bottom:14px; background:#1a1a1a; }
+.detail-title { font-family:'Playfair Display',serif; font-size:1.25rem; font-weight:700; margin-bottom:10px; }
+.detail-meta { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:0.78125rem; color:var(--text-secondary); margin-bottom:12px; }
+.detail-meta-item { display:flex; align-items:center; gap:4px; }
+.detail-meta-item svg { width:13px; height:13px; opacity:0.5; }
+.detail-desc { font-size:0.875rem; line-height:1.7; color:#c0c0c0; margin-bottom:12px; }
+.detail-tags { display:flex; flex-wrap:wrap; gap:6px; }
+.detail-tag {
+    padding:3px 10px; font-size:0.7rem;
+    background:rgba(230,126,34,0.12); color:var(--primary);
+    border:1px solid rgba(230,126,34,0.2); border-radius:10px;
+}
+
+/* ============================================
+   10. About Trigger & Card
    ============================================ */
 .about-trigger {
     position: fixed;
-    right: 20px;
-    bottom: 20px;
-    z-index: 100;
+    right: 16px;
+    bottom: 24px;
+    z-index: 35;
     width: 40px;
     height: 40px;
-    border-radius: 50%;
-    background: rgba(20, 20, 20, 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-    font-size: 1rem;
-    font-weight: 700;
-    font-family: 'Playfair Display', serif;
-    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.25s ease;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border: var(--panel-border);
+    transition: all 0.2s;
 }
 
 .about-trigger:hover {
-    background: rgba(40, 40, 40, 0.9);
+    color: var(--text-primary);
+    background: rgba(40,40,40,0.85);
 }
 
 .about-card {
     position: fixed;
     right: 70px;
-    bottom: 20px;
-    z-index: 100;
+    bottom: 24px;
+    z-index: 35;
     max-width: 280px;
-    padding: 20px;
-    background: rgba(20, 20, 20, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    transition: opacity 0.3s ease, transform 0.3s ease;
+    padding: 18px 20px;
+    transition: opacity 0.3s, transform 0.3s;
     transform-origin: bottom right;
 }
 
@@ -351,216 +658,193 @@ img {
     transform: scale(0.95);
 }
 
+.about-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    object-fit: cover; margin-bottom: 10px;
+}
+
 .about-card h4 {
     font-family: 'Playfair Display', serif;
-    font-size: 1.1rem;
-    margin-bottom: 8px;
-    color: #ffffff;
+    font-size: 1rem;
+    margin-bottom: 6px;
 }
 
 .about-card p {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
     line-height: 1.6;
-    color: #aaaaaa;
+}
+
+.about-hitokoto {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.78125rem;
+    color: var(--text-muted);
+    font-style: italic;
 }
 
 /* ============================================
-   8. MapLibre Overrides
-   ============================================ */
-.maplibregl-ctrl-top-right {
-    top: 16px;
-    right: 16px;
-}
-
-.maplibregl-ctrl-group {
-    background: rgba(20, 20, 20, 0.75) !important;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: 12px !important;
-    overflow: hidden;
-}
-
-.maplibregl-ctrl-group button {
-    background: transparent !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
-}
-
-.maplibregl-ctrl-group button:hover {
-    background: rgba(255, 255, 255, 0.1) !important;
-}
-
-.maplibregl-ctrl-group button span {
-    filter: invert(1);
-}
-
-/* MapLibre Popup (if used as fallback) */
-.maplibregl-popup-content {
-    background: rgba(20, 20, 20, 0.9) !important;
-    backdrop-filter: blur(12px) !important;
-    color: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: 12px !important;
-    box-shadow: none !important;
-    padding: 12px 16px !important;
-    font-family: inherit !important;
-}
-
-.maplibregl-popup-tip {
-    border-top-color: rgba(20, 20, 20, 0.9) !important;
-}
-
-/* ============================================
-   9. Loading & Empty States
+   11. Loading Overlay
    ============================================ */
 .loading-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #0b0b0b;
-    transition: opacity 0.6s ease;
+    position: fixed; inset: 0; z-index: 999;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+    transition: opacity 0.6s;
 }
-
-.loading-overlay.fade-out {
-    opacity: 0;
-    pointer-events: none;
-}
-
+.loading-overlay.fade-out { opacity:0; pointer-events:none; }
 .loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(255, 255, 255, 0.08);
-    border-top-color: #e67e22;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    width:36px; height:36px;
+    border:3px solid rgba(255,255,255,0.06);
+    border-top-color:var(--primary);
+    border-radius:50%;
+    animation:spin 0.8s linear infinite;
 }
+@keyframes spin { to { transform:rotate(360deg); } }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.empty-state {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 50;
-    text-align: center;
-    color: #666666;
-    font-size: 1rem;
-    pointer-events: none;
+/* ============================================
+   12. Responsive: Tablet (768-1199px)
+   ============================================ */
+@media (max-width: 1199px) {
+    .sidebar {
+        width: 260px;
+        left: 12px;
+        top: 12px;
+        bottom: 12px;
+    }
+    #map { left: 260px; }
+    body.sidebar-collapsed #map { left: 0; }
+    .article-panel {
+        left: 290px;
+        width: min(480px, calc(100vw - 320px));
+    }
+    .filter-panel {
+        left: 12px;
+        bottom: 72px;
+        width: 200px;
+    }
+    body.sidebar-collapsed .filter-panel { left: 60px; }
 }
 
 /* ============================================
-   10. Responsive: Mobile (< 768px)
+   13. Responsive: Mobile (< 768px)
    ============================================ */
 @media (max-width: 767px) {
-    /* Filter Panel → Bottom Drawer */
-    .filter-panel {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        top: auto;
-        width: 100%;
-        max-height: 55vh;
-        border-radius: 16px 16px 0 0;
-        transform: translateY(100%);
-        opacity: 0;
-        transition: transform 0.35s ease, opacity 0.35s ease;
-        padding: 20px 20px 24px;
-        overflow-y: auto;
-        z-index: 150;
+    :root { --sidebar-width: 100vw; }
+
+    #map { left: 0; }
+
+    .sidebar {
+        left: 0; top: 0; bottom: 0;
+        border-radius: 0;
+        z-index: 70;
+        transform: translateX(-100%);
+    }
+    .sidebar.open {
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+    body.sidebar-collapsed .sidebar { transform: translateX(-100%); }
+
+    .sidebar-expand-btn {
+        left: 8px;
+        width: 36px;
+        height: 60px;
+        z-index: 65;
+        border-radius: 10px;
     }
 
+    /* Filter: bottom sheet on mobile */
+    .filter-panel {
+        left: 0; right: 0; bottom: 0; top: auto;
+        width: 100%; max-height: 55vh;
+        border-radius: var(--panel-radius) var(--panel-radius) 0 0;
+        z-index: 75;
+        transform: translateY(100%);
+        opacity: 0;
+    }
     .filter-panel.open {
         transform: translateY(0);
         opacity: 1;
     }
+    body.sidebar-collapsed .filter-panel { left: 0; }
 
-    #filter-toggle {
-        display: flex;
+    .filter-toggle-btn {
+        left: 12px;
+        bottom: 16px;
+        z-index: 30;
     }
 
-    /* Detail Sheet → Bottom Sheet */
-    .detail-sheet {
-        left: 0;
-        right: 0;
+    .article-panel {
+        left: 8px; right: 8px; top: 8px; bottom: 8px;
+        width: auto;
+        border-radius: var(--panel-radius);
+        z-index: 80;
+        padding: 20px;
+    }
+
+    .photo-grid-panel {
+        width: calc(100vw - 24px);
+        max-height: 50vh;
         top: auto;
-        bottom: 0;
-        width: 100%;
-        height: 65vh;
-        border-radius: 16px 16px 0 0;
-        border-left: none;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
         transform: translateY(100%);
-        opacity: 0;
+        border-radius: var(--panel-radius) var(--panel-radius) 0 0;
     }
-
-    .detail-sheet.active {
+    .photo-grid-panel.active {
         transform: translateY(0);
-        opacity: 1;
-    }
-
-    .drag-handle {
-        display: block;
-    }
-
-    .detail-img {
-        height: 180px;
-    }
-
-    .detail-content {
-        padding: 16px 20px 24px;
-    }
-
-    .detail-title {
-        font-size: 1.25rem;
-    }
-
-    /* About card */
-    .about-card {
-        right: 20px;
-        bottom: 72px;
-        left: 20px;
-        max-width: none;
     }
 
     .about-trigger {
-        right: 16px;
-        bottom: 16px;
+        right: 12px;
+        bottom: 68px;
     }
 
-    /* MapLibre controls adjust */
-    .maplibregl-ctrl-top-right {
-        top: 12px;
+    .about-card {
         right: 12px;
+        bottom: 120px;
+        left: 12px;
+        max-width: none;
+    }
+
+    .detail-sheet {
+        z-index: 80;
+    }
+
+    .panel-close-btn {
+        width: 36px;
+        height: 36px;
     }
 }
 
 /* ============================================
-   11. Scrollbar Styling
+   14. Animation Support
    ============================================ */
-.filter-panel::-webkit-scrollbar,
-.detail-sheet::-webkit-scrollbar {
-    width: 4px;
+.animate-on-scroll {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.animate-on-scroll.animated {
+    opacity: 1;
+    transform: translateY(0);
 }
 
-.filter-panel::-webkit-scrollbar-track,
-.detail-sheet::-webkit-scrollbar-track {
-    background: transparent;
+/* ============================================
+   15. MapLibre Overrides
+   ============================================ */
+.maplibregl-ctrl-top-right { top: 12px; right: 12px; }
+.maplibregl-ctrl-group {
+    background: rgba(20,20,20,0.75) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 10px !important;
+    overflow: hidden;
 }
-
-.filter-panel::-webkit-scrollbar-thumb,
-.detail-sheet::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 2px;
-}
-
-.filter-panel::-webkit-scrollbar-thumb:hover,
-.detail-sheet::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
-}
+.maplibregl-ctrl-group button { background:transparent !important; border-color:rgba(255,255,255,0.06) !important; }
+.maplibregl-ctrl-group button:hover { background:rgba(255,255,255,0.08) !important; }
+.maplibregl-ctrl-group button span { filter:invert(1); }
