@@ -71,7 +71,8 @@
         detailOpen: false,
         useClustering: typeof supercluster !== 'undefined',
         isMobile: window.innerWidth < 768,
-        currentPhotoPostId: null, // post id linked to current photo grid
+        currentPhotoPostId: null,
+        clickedMarker: false, // flag to prevent bg-click from closing panel
     };
 
     // ---------------------------------------------------------------
@@ -296,6 +297,7 @@
         // Click marker → open photo grid
         state.map.on('click', CONFIG.layerId, function(e) {
             if (!e.features||e.features.length===0) return;
+            state.clickedMarker = true; // prevent bg click handler
             var props = e.features[0].properties;
             openPhotoGrid(props);
             if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -305,6 +307,7 @@
         if (state.useClustering) {
             state.map.on('click', CONFIG.clusterLayerId, function(e) {
                 if (!e.features||e.features.length===0) return;
+                state.clickedMarker = true;
                 var cid=e.features[0].properties.cluster_id;
                 var src=state.map.getSource(CONFIG.clusterSourceId);
                 if(src&&typeof src.getClusterExpansionZoom==='function'){
@@ -316,6 +319,11 @@
 
         // Click map bg → close panels (keep sidebar)
         state.map.on('click', function() {
+            // If a marker was just clicked, skip closing panels
+            if (state.clickedMarker) {
+                state.clickedMarker = false;
+                return;
+            }
             closeDetailPanel();
             closePhotoGrid();
             closeArticlePanel();
