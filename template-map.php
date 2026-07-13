@@ -98,29 +98,6 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     </div>
 
     <!-- ============================================ -->
-    <!-- Filter Panel (existing)                       -->
-    <!-- ============================================ -->
-    <button id="filter-toggle" class="filter-toggle-btn glass-panel" aria-label="<?php esc_attr_e( 'Toggle filter panel', 'sphotography' ); ?>">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6"></line>
-            <line x1="8" y1="12" x2="20" y2="12"></line>
-            <line x1="12" y1="18" x2="20" y2="18"></line>
-        </svg>
-    </button>
-
-    <div id="filter-panel" class="filter-panel glass-panel" role="region" aria-label="<?php esc_attr_e( 'Photo filter panel', 'sphotography' ); ?>">
-        <div class="filter-panel-header">
-            <h2 class="filter-title"><?php esc_html_e( '探索地域', 'sphotography' ); ?></h2>
-            <button id="filter-close" class="panel-close-btn small" aria-label="<?php esc_attr_e( 'Close filter', 'sphotography' ); ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-        </div>
-        <div id="tag-list" class="tag-list">
-            <!-- Dynamically populated by JS -->
-        </div>
-    </div>
-
-    <!-- ============================================ -->
     <!-- Detail Sheet (existing, repurposed)           -->
     <!-- ============================================ -->
     <div id="detail-sheet" class="detail-sheet glass-panel" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Photo detail', 'sphotography' ); ?>">

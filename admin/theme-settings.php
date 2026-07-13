@@ -457,13 +457,35 @@ function sphotography_render_settings_page() {
                             <strong>v1.0.0</strong>
                             <span id="sphotography-version-status" style="margin-left:12px;font-size:0.8125rem;color:var(--text-muted);"></span>
                         </p>
-                        <button type="button" id="sphotography-check-update" class="button button-secondary">
-                            <span class="dashicons dashicons-update" style="font-size:16px;width:16px;height:16px;margin-right:4px;"></span>
-                            <?php _e( '检查 GitHub 更新', 'sphotography' ); ?>
-                        </button>
-                        <div id="sphotography-update-result" style="margin-top:10px;font-size:0.875rem;"></div>
-                        <p class="sphotography-desc" style="margin-top:8px;">
-                            <?php _e( '从 GitHub Releases 检查最新版本。', 'sphotography' ); ?>
+
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+                            <label for="sphotography-update-branch" style="font-weight:500;font-size:0.875rem;"><?php _e( '选择分支:', 'sphotography' ); ?></label>
+                            <select id="sphotography-update-branch" style="min-width:140px;">
+                                <option value="master">master</option>
+                                <option value="beta">beta</option>
+                                <option value="dev-sidebar-articles">dev-sidebar-articles</option>
+                            </select>
+                            <button type="button" id="sphotography-refresh-branches" class="button button-secondary" style="display:inline-flex;align-items:center;gap:4px;">
+                                <span class="dashicons dashicons-update" style="font-size:14px;width:14px;height:14px;"></span>
+                                <?php _e( '刷新分支列表', 'sphotography' ); ?>
+                            </button>
+                        </div>
+
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <button type="button" id="sphotography-check-update" class="button button-secondary" style="display:inline-flex;align-items:center;gap:4px;">
+                                <span class="dashicons dashicons-search" style="font-size:16px;width:16px;height:16px;"></span>
+                                <?php _e( '检查更新', 'sphotography' ); ?>
+                            </button>
+                            <button type="button" id="sphotography-do-update" class="button button-primary" style="display:inline-flex;align-items:center;gap:4px;background:#e67e22;border-color:#d35400;">
+                                <span class="dashicons dashicons-download" style="font-size:16px;width:16px;height:16px;"></span>
+                                <?php _e( '从该分支更新主题', 'sphotography' ); ?>
+                            </button>
+                        </div>
+
+                        <div id="sphotography-update-result" style="margin-top:12px;font-size:0.875rem;"></div>
+
+                        <p class="sphotography-desc" style="margin-top:10px;">
+                            <?php _e( '选择分支后点击「检查更新」查看版本，点击「从该分支更新主题」直接下载并覆盖主题文件（配置数据存储在数据库中，不受影响）。', 'sphotography' ); ?>
                             <a href="https://github.com/ShirazuNagisa/sphotography/releases" target="_blank"><?php _e( '在 GitHub 上查看所有版本', 'sphotography' ); ?></a>
                         </p>
                     </div>
@@ -728,49 +750,123 @@ function sphotography_admin_enqueue_settings( $hook ) {
                 }
             });
 
-            // GitHub update check
+            // Branch refresh
+            $("#sphotography-refresh-branches").on("click", function() {
+                var btn = $(this);
+                var select = $("#sphotography-update-branch");
+                btn.prop("disabled", true).text("刷新中...");
+                $.ajax({
+                    url: "https://api.github.com/repos/ShirazuNagisa/sphotography/branches?per_page=30",
+                    type: "GET", dataType: "json",
+                    success: function(data) {
+                        select.empty();
+                        if (data && Array.isArray(data)) {
+                            data.forEach(function(b) { select.append("<option value=\"" + b.name + "\">" + b.name + "</option>"); });
+                        }
+                        btn.prop("disabled", false).text("刷新分支列表");
+                    },
+                    error: function() {
+                        btn.prop("disabled", false).text("刷新分支列表");
+                        alert("无法获取分支列表，请检查网络");
+                    }
+                });
+            });
+
+            // Check update for selected branch (latest release on that branch)
             $("#sphotography-check-update").on("click", function() {
                 var btn = $(this);
+                var branch = $("#sphotography-update-branch").val() || "master";
                 var resultDiv = $("#sphotography-update-result");
                 var statusSpan = $("#sphotography-version-status");
 
                 btn.prop("disabled", true).text("检查中...");
-                resultDiv.html("<p style=\"color:#718096;\">正在连接 GitHub API...</p>");
+                resultDiv.html("<p style=\"color:#718096;\">正在检查 " + branch + " 分支的更新...</p>");
 
+                // Get all releases and find the latest one for this branch
                 $.ajax({
-                    url: "https://api.github.com/repos/ShirazuNagisa/sphotography/releases/latest",
-                    type: "GET",
-                    dataType: "json",
-                    success: function(data) {
-                        var latestVer = data.tag_name || "v0.0.0";
+                    url: "https://api.github.com/repos/ShirazuNagisa/sphotography/releases?per_page=10",
+                    type: "GET", dataType: "json",
+                    success: function(releases) {
+                        var release = null;
+                        if (releases && Array.isArray(releases)) {
+                            for (var i = 0; i < releases.length; i++) {
+                                var r = releases[i];
+                                if (r.target_commitish === branch) { release = r; break; }
+                            }
+                            // Fallback: if no branch-specific release, take the first
+                            if (!release && releases.length > 0) release = releases[0];
+                        }
+
                         var currentVer = "v1.0.0";
                         var html = "";
 
-                        if (latestVer === currentVer) {
-                            html = "<p style=\"color:#2ecc71;font-weight:600;\">✓ 已是最新版本 (" + latestVer + ")</p>";
-                            statusSpan.text("已是最新").css("color", "#2ecc71");
+                        if (!release) {
+                            html = "<p style=\"color:#e67e22;\">ℹ 分支 \"" + branch + "\" 暂无 Release，可在 <a href=\'https://github.com/ShirazuNagisa/sphotography/releases\' target=\'_blank\'>GitHub Releases</a> 查看</p>";
+                            statusSpan.text("无 Release").css("color", "#e67e22");
                         } else {
-                            html = "<p style=\"color:#e67e22;font-weight:600;\">★ 发现新版本: " + latestVer + "</p>"
-                                 + "<p style=\"margin-top:6px;\">当前版本: " + currentVer + "</p>"
-                                 + (data.html_url ? "<p style=\"margin-top:8px;\"><a href=\"" + data.html_url + "\" target=\"_blank\" class=\"button button-primary\">下载 " + latestVer + "</a></p>" : "");
-                            statusSpan.text("有新版本: " + latestVer).css("color", "#e67e22");
-                        }
-                        if (data.body) {
-                            var bodyPreview = data.body.length > 300 ? data.body.substring(0, 300) + "..." : data.body;
-                            html += "<div style=\"margin-top:10px;padding:10px 14px;background:#f8f9fa;border-radius:8px;font-size:0.8125rem;color:#555;max-height:200px;overflow-y:auto;\">"
-                                 + "<strong>更新说明:</strong><br>" + bodyPreview.replace(/\\n/g, "<br>")
-                                 + "</div>";
+                            var latestVer = release.tag_name || "v0.0.0";
+                            if (latestVer === currentVer) {
+                                html = "<p style=\"color:#2ecc71;font-weight:600;\">✓ 当前 v" + currentVer + " 已是最新版本</p>";
+                                statusSpan.text("已是最新").css("color", "#2ecc71");
+                            } else {
+                                html = "<p style=\"color:#e67e22;font-weight:600;\">★ 发现新版本: " + latestVer + " (分支: " + branch + ")</p>"
+                                     + "<p style=\"margin-top:6px;\">当前版本: " + currentVer + "</p>"
+                                     + (release.html_url ? "<p style=\"margin-top:8px;\"><a href=\"" + release.html_url + "\" target=\"_blank\" class=\"button button-secondary\">查看 Release</a></p>" : "");
+                                statusSpan.text("有新版本: " + latestVer).css("color", "#e67e22");
+                            }
+                            if (release.body) {
+                                var bodyPreview = release.body.length > 300 ? release.body.substring(0, 300) + "..." : release.body;
+                                html += "<div style=\"margin-top:10px;padding:10px 14px;background:#f8f9fa;border-radius:8px;font-size:0.8125rem;color:#555;max-height:200px;overflow-y:auto;\">"
+                                     + "<strong>更新说明:</strong><br>" + bodyPreview.replace(/\\n/g, "<br>") + "</div>";
+                            }
                         }
                         resultDiv.html(html);
-                        btn.prop("disabled", false).text("检查 GitHub 更新");
+                        btn.prop("disabled", false).text("检查更新");
                     },
                     error: function(xhr) {
                         var msg = "无法连接到 GitHub API";
-                        if (xhr.status === 403) msg = "GitHub API 速率限制 (403)，请稍后再试";
-                        else if (xhr.status === 404) msg = "未找到 Release，仓库可能还没有发布版本";
+                        if (xhr.status === 403) msg = "GitHub API 速率限制，请稍后再试";
                         resultDiv.html("<p style=\"color:#e74c3c;\">✗ " + msg + "</p>");
                         statusSpan.text("检查失败").css("color", "#e74c3c");
-                        btn.prop("disabled", false).text("检查 GitHub 更新");
+                        btn.prop("disabled", false).text("检查更新");
+                    }
+                });
+            });
+
+            // One-click update: download branch ZIP and overwrite theme
+            $("#sphotography-do-update").on("click", function() {
+                var btn = $(this);
+                var branch = $("#sphotography-update-branch").val() || "master";
+                var resultDiv = $("#sphotography-update-result");
+
+                if (!confirm("确定从 \"" + branch + "\" 分支下载并覆盖主题文件吗？\n\n配置数据存在数据库中，不受影响。\n更新后请重新激活主题。")) {
+                    return;
+                }
+
+                btn.prop("disabled", true).text("下载更新中...");
+                resultDiv.html("<p style=\"color:#718096;\">正在从 " + branch + " 分支下载更新...</p>");
+
+                // Trigger WordPress AJAX
+                $.ajax({
+                    url: ajaxurl || (SphotographyAdmin && SphotographyAdmin.ajaxUrl) || window.location.origin + "/wp-admin/admin-ajax.php",
+                    type: "POST",
+                    data: {
+                        action: "sphotography_do_update",
+                        branch: branch,
+                        nonce: "' . wp_create_nonce( 'sphotography_update_nonce' ) . '"
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            resultDiv.html("<p style=\"color:#2ecc71;font-weight:600;\">✓ 更新完成！请重新激活主题以确保生效。</p>"
+                                         + "<p><a href=\"" + window.location.href + "\" class=\"button button-primary\">刷新页面</a></p>");
+                        } else {
+                            resultDiv.html("<p style=\"color:#e74c3c;\">✗ 更新失败: " + (res.data || "未知错误") + "</p>");
+                        }
+                        btn.prop("disabled", false).text("从该分支更新主题");
+                    },
+                    error: function(jqXHR) {
+                        resultDiv.html("<p style=\"color:#e74c3c;\">✗ 请求失败，请查看服务器错误日志</p>");
+                        btn.prop("disabled", false).text("从该分支更新主题");
                     }
                 });
             });
