@@ -443,6 +443,34 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
+            <!-- Module 6: 版本与更新 -->
+            <!-- ============================================ -->
+            <div class="sphotography-module">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-update"></span>
+                    <h2><?php _e( '版本与更新', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field" id="sphotography-updater">
+                        <label class="sphotography-label"><?php _e( '当前版本', 'sphotography' ); ?></label>
+                        <p style="font-size:1rem;margin-bottom:10px;">
+                            <strong>v1.0.0</strong>
+                            <span id="sphotography-version-status" style="margin-left:12px;font-size:0.8125rem;color:var(--text-muted);"></span>
+                        </p>
+                        <button type="button" id="sphotography-check-update" class="button button-secondary">
+                            <span class="dashicons dashicons-update" style="font-size:16px;width:16px;height:16px;margin-right:4px;"></span>
+                            <?php _e( '检查 GitHub 更新', 'sphotography' ); ?>
+                        </button>
+                        <div id="sphotography-update-result" style="margin-top:10px;font-size:0.875rem;"></div>
+                        <p class="sphotography-desc" style="margin-top:8px;">
+                            <?php _e( '从 GitHub Releases 检查最新版本。', 'sphotography' ); ?>
+                            <a href="https://github.com/ShirazuNagisa/sphotography/releases" target="_blank"><?php _e( '在 GitHub 上查看所有版本', 'sphotography' ); ?></a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
             <!-- Submit Buttons -->
             <!-- ============================================ -->
             <div class="sphotography-actions">
@@ -698,6 +726,53 @@ function sphotography_admin_enqueue_settings( $hook ) {
                 if (confirm("' . esc_js( __( '确定要重置所有设置为默认值吗？此操作不可撤销。', 'sphotography' ) ) . '")) {
                     $("#sphotography-reset-form").submit();
                 }
+            });
+
+            // GitHub update check
+            $("#sphotography-check-update").on("click", function() {
+                var btn = $(this);
+                var resultDiv = $("#sphotography-update-result");
+                var statusSpan = $("#sphotography-version-status");
+
+                btn.prop("disabled", true).text("检查中...");
+                resultDiv.html("<p style=\"color:#718096;\">正在连接 GitHub API...</p>");
+
+                $.ajax({
+                    url: "https://api.github.com/repos/ShirazuNagisa/sphotography/releases/latest",
+                    type: "GET",
+                    dataType: "json",
+                    success: function(data) {
+                        var latestVer = data.tag_name || "v0.0.0";
+                        var currentVer = "v1.0.0";
+                        var html = "";
+
+                        if (latestVer === currentVer) {
+                            html = "<p style=\"color:#2ecc71;font-weight:600;\">✓ 已是最新版本 (" + latestVer + ")</p>";
+                            statusSpan.text("已是最新").css("color", "#2ecc71");
+                        } else {
+                            html = "<p style=\"color:#e67e22;font-weight:600;\">★ 发现新版本: " + latestVer + "</p>"
+                                 + "<p style=\"margin-top:6px;\">当前版本: " + currentVer + "</p>"
+                                 + (data.html_url ? "<p style=\"margin-top:8px;\"><a href=\"" + data.html_url + "\" target=\"_blank\" class=\"button button-primary\">下载 " + latestVer + "</a></p>" : "");
+                            statusSpan.text("有新版本: " + latestVer).css("color", "#e67e22");
+                        }
+                        if (data.body) {
+                            var bodyPreview = data.body.length > 300 ? data.body.substring(0, 300) + "..." : data.body;
+                            html += "<div style=\"margin-top:10px;padding:10px 14px;background:#f8f9fa;border-radius:8px;font-size:0.8125rem;color:#555;max-height:200px;overflow-y:auto;\">"
+                                 + "<strong>更新说明:</strong><br>" + bodyPreview.replace(/\\n/g, "<br>")
+                                 + "</div>";
+                        }
+                        resultDiv.html(html);
+                        btn.prop("disabled", false).text("检查 GitHub 更新");
+                    },
+                    error: function(xhr) {
+                        var msg = "无法连接到 GitHub API";
+                        if (xhr.status === 403) msg = "GitHub API 速率限制 (403)，请稍后再试";
+                        else if (xhr.status === 404) msg = "未找到 Release，仓库可能还没有发布版本";
+                        resultDiv.html("<p style=\"color:#e74c3c;\">✗ " + msg + "</p>");
+                        statusSpan.text("检查失败").css("color", "#e74c3c");
+                        btn.prop("disabled", false).text("检查 GitHub 更新");
+                    }
+                });
             });
         });
     ' );
