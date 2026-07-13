@@ -9,7 +9,7 @@
 // ============================================
 // 0. Theme Version & Load Includes
 // ============================================
-define( 'SPHOTOGRAPHY_VERSION', '1.0.1' );
+define( 'SPHOTOGRAPHY_VERSION', '1.0.2' );
 
 require_once get_template_directory() . '/admin/theme-settings.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
