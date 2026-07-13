@@ -169,75 +169,183 @@ require_once get_template_directory() . '/admin/media-fields.php';
 // 3c. Auto-detect EXIF GPS on image upload
 // ============================================
 function sphotography_read_exif_and_save( $attachment_id, $file_path ) {
-    if ( ! function_exists( 'exif_read_data' ) ) return false;
-    if ( ! $file_path || ! file_exists( $file_path ) ) return false;
+    $result = array( 'gps' => false, 'camera' => false, 'date' => false, 'debug' => '' );
 
-    // Read ALL EXIF data (not just GPS) so we can access IFD0 and EXIF sections too
-    $exif = @exif_read_data( $file_path, 0, true );
-    if ( ! $exif ) return false;
+    if ( ! $file_path || ! file_exists( $file_path ) ) {
+        $result['debug'] = 'File not found: ' . ( $file_path ?: 'empty path' );
+        return $result;
+    }
 
-    $updated = false;
+    // Method 1: PHP exif_read_data (requires PHP EXIF extension)
+    if ( function_exists( 'exif_read_data' ) ) {
+        $exif = @exif_read_data( $file_path, 0, true );
+        if ( $exif ) {
+            // GPS coordinates
+            if ( isset( $exif['GPS'] ) && is_array( $exif['GPS'] ) ) {
+                $lat = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLatitude', 'GPSLatitudeRef' );
+                $lng = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLongitude', 'GPSLongitudeRef' );
 
-    // GPS coordinates
-    if ( isset( $exif['GPS'] ) ) {
-        $lat = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLatitude', 'GPSLatitudeRef' );
-        $lng = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLongitude', 'GPSLongitudeRef' );
+                if ( $lat !== null && $lng !== null ) {
+                    update_post_meta( $attachment_id, 'latitude', $lat );
+                    update_post_meta( $attachment_id, 'longitude', $lng );
+                    $result['gps'] = true;
+                    $result['debug'] .= 'GPS OK ';
+                } else {
+                    $result['debug'] .= 'GPS parse failed ';
+                }
+            } else {
+                $result['debug'] .= 'No GPS section in EXIF ';
+            }
 
-        if ( $lat !== null && $lng !== null ) {
-            update_post_meta( $attachment_id, 'latitude', $lat );
-            update_post_meta( $attachment_id, 'longitude', $lng );
-            $updated = true;
+            // Camera model from IFD0
+            $camera = '';
+            if ( isset( $exif['IFD0']['Model'] ) ) {
+                $camera = $exif['IFD0']['Model'];
+            } elseif ( isset( $exif['IFD0']['Make'] ) ) {
+                $camera = $exif['IFD0']['Make'];
+            }
+            if ( ! empty( $camera ) ) {
+                update_post_meta( $attachment_id, 'camera_info', sanitize_text_field( $camera ) );
+                $result['camera'] = true;
+            }
+
+            // Date
+            $date_str = '';
+            if ( isset( $exif['EXIF']['DateTimeOriginal'] ) ) {
+                $date_str = $exif['EXIF']['DateTimeOriginal'];
+            } elseif ( isset( $exif['IFD0']['DateTime'] ) ) {
+                $date_str = $exif['IFD0']['DateTime'];
+            }
+            if ( ! empty( $date_str ) ) {
+                $ts = strtotime( $date_str );
+                if ( $ts !== false ) {
+                    update_post_meta( $attachment_id, 'taken_at', date( 'Y-m-d', $ts ) );
+                    $result['date'] = true;
+                }
+            }
+        } else {
+            $result['debug'] .= 'exif_read_data returned false ';
         }
+    } else {
+        $result['debug'] .= 'PHP EXIF extension not available ';
     }
 
-    // Camera info from IFD0
-    if ( isset( $exif['IFD0']['Model'] ) && ! empty( $exif['IFD0']['Model'] ) ) {
-        update_post_meta( $attachment_id, 'camera_info', sanitize_text_field( $exif['IFD0']['Model'] ) );
-        $updated = true;
-    }
-
-    // Date from EXIF
-    if ( isset( $exif['EXIF']['DateTimeOriginal'] ) && ! empty( $exif['EXIF']['DateTimeOriginal'] ) ) {
-        $ts = strtotime( $exif['EXIF']['DateTimeOriginal'] );
-        if ( $ts !== false ) {
-            update_post_meta( $attachment_id, 'taken_at', date( 'Y-m-d', $ts ) );
-            $updated = true;
-        }
-    }
-
-    return $updated;
+    return $result;
 }
 
-// Hook 1: Right when attachment is added (file may not be final yet)
-function sphotography_auto_gps_on_upload( $attachment_id ) {
-    if ( wp_is_post_revision( $attachment_id ) ) return;
-    if ( get_post_type( $attachment_id ) !== 'attachment' ) return;
-
-    // Check if already has coordinates
-    $existing_lat = get_post_meta( $attachment_id, 'latitude', true );
-    $existing_lng = get_post_meta( $attachment_id, 'longitude', true );
-    if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) return;
-
-    $file_path = get_attached_file( $attachment_id );
-    sphotography_read_exif_and_save( $attachment_id, $file_path );
-}
-add_action( 'add_attachment', 'sphotography_auto_gps_on_upload' );
-
-// Hook 2: After WordPress finishes processing the image (metadata generated, file final)
+// Main hook: fires when WordPress generates attachment metadata (file is guaranteed to exist)
 function sphotography_auto_gps_on_metadata( $metadata, $attachment_id ) {
     if ( get_post_type( $attachment_id ) !== 'attachment' ) return $metadata;
 
-    // Check if already has coordinates
     $existing_lat = get_post_meta( $attachment_id, 'latitude', true );
     $existing_lng = get_post_meta( $attachment_id, 'longitude', true );
     if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) return $metadata;
 
     $file_path = get_attached_file( $attachment_id );
-    sphotography_read_exif_and_save( $attachment_id, $file_path );
+    $result = sphotography_read_exif_and_save( $attachment_id, $file_path );
+
+    // Log debug info if WP_DEBUG is enabled
+    if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+        error_log( sprintf(
+            'Sphotography EXIF: attachment=%d file=%s gps=%s camera=%s date=%s debug=%s',
+            $attachment_id, basename( $file_path ),
+            $result['gps'] ? 'YES' : 'no',
+            $result['camera'] ? 'YES' : 'no',
+            $result['date'] ? 'YES' : 'no',
+            $result['debug']
+        ) );
+    }
 
     return $metadata;
 }
 add_filter( 'wp_generate_attachment_metadata', 'sphotography_auto_gps_on_metadata', 10, 2 );
+
+// AJAX handler: manually trigger EXIF reading for an attachment
+function sphotography_ajax_read_exif() {
+    if ( ! current_user_can( 'upload_files' ) ) {
+        wp_send_json_error( 'Permission denied' );
+    }
+    $attachment_id = intval( $_POST['attachment_id'] );
+    if ( ! $attachment_id ) {
+        wp_send_json_error( 'Invalid attachment ID' );
+    }
+    $file_path = get_attached_file( $attachment_id );
+    $result = sphotography_read_exif_and_save( $attachment_id, $file_path );
+
+    $lat = get_post_meta( $attachment_id, 'latitude', true );
+    $lng = get_post_meta( $attachment_id, 'longitude', true );
+
+    wp_send_json_success( array(
+        'latitude'    => $lat ? floatval( $lat ) : '',
+        'longitude'   => $lng ? floatval( $lng ) : '',
+        'hasGps'      => $result['gps'],
+        'hasCamera'   => $result['camera'],
+        'hasDate'     => $result['date'],
+        'debug'       => $result['debug'],
+    ) );
+}
+add_action( 'wp_ajax_sphotography_read_exif', 'sphotography_ajax_read_exif' );
+
+// Add "Read EXIF" button to media library fields
+function sphotography_attachment_exif_button( $form_fields, $post ) {
+    $form_fields['sphotography_read_exif'] = array(
+        'label' => __( 'EXIF 操作', 'sphotography' ),
+        'input' => 'html',
+        'html'  => '<button type="button" class="button sphotography-read-exif-btn" data-id="' . esc_attr( $post->ID ) . '">'
+                 . __( '从图片读取 GPS/EXIF', 'sphotography' ) . '</button>'
+                 . '<span class="sphotography-exif-status" style="margin-left:8px;font-size:0.8rem;color:#666;"></span>'
+                 . '<p class="description" style="margin-top:4px;">'
+                 . __( '点击按钮从图片文件中重新读取 GPS 坐标、相机信息和拍摄日期。', 'sphotography' )
+                 . ' <a href="#" class="sphotography-exif-debug-link" style="color:#999;">调试</a>'
+                 . '<span class="sphotography-exif-debug" style="display:none;font-size:0.75rem;color:#999;"></span>'
+                 . '</p>',
+    );
+    return $form_fields;
+}
+add_filter( 'attachment_fields_to_edit', 'sphotography_attachment_exif_button', 20, 2 );
+
+// Enqueue admin JS for EXIF button
+function sphotography_enqueue_media_scripts( $hook ) {
+    if ( $hook !== 'upload.php' && $hook !== 'post.php' ) return;
+    wp_add_inline_script( 'jquery', '
+        jQuery(document).on("click", ".sphotography-read-exif-btn", function() {
+            var btn = jQuery(this);
+            var statusEl = btn.siblings(".sphotography-exif-status");
+            var debugEl = btn.closest(".compat-field").find(".sphotography-exif-debug");
+            var aid = btn.data("id");
+            statusEl.text("读取中...");
+            btn.prop("disabled", true);
+            jQuery.post(ajaxurl, {
+                action: "sphotography_read_exif",
+                attachment_id: aid
+            }, function(res) {
+                if (res.success) {
+                    var d = res.data;
+                    statusEl.text("GPS: " + (d.hasGps ? "✅ " + d.latitude + ", " + d.longitude : "❌ 无GPS")
+                        + " | 相机: " + (d.hasCamera ? "✅" : "❌")
+                        + " | 日期: " + (d.hasDate ? "✅" : "❌"));
+                    // Auto-fill the form fields
+                    var latField = btn.closest("tr").siblings().find("input[name*=\'sphotography_latitude\']");
+                    var lngField = btn.closest("tr").siblings().find("input[name*=\'sphotography_longitude\']");
+                    if (d.latitude && latField.length) latField.val(d.latitude);
+                    if (d.longitude && lngField.length) lngField.val(d.longitude);
+                } else {
+                    statusEl.text("❌ " + (res.data || "读取失败"));
+                }
+                debugEl.text(d.debug || "");
+                btn.prop("disabled", false);
+            }).fail(function() {
+                statusEl.text("❌ 请求失败");
+                btn.prop("disabled", false);
+            });
+        });
+        jQuery(document).on("click", ".sphotography-exif-debug-link", function(e) {
+            e.preventDefault();
+            jQuery(this).siblings(".sphotography-exif-debug").toggle();
+        });
+    ' );
+}
+add_action( 'admin_enqueue_scripts', 'sphotography_enqueue_media_scripts' );
 
 function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
     if ( ! isset( $gps[ $coord_key ] ) || ! isset( $gps[ $ref_key ] ) ) {
