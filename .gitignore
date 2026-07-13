@@ -1,0 +1,29 @@
+# WordPress
+wp-content/
+wp-config.php
+wp-config-sample.php
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Build / Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Packages
+node_modules/
+vendor/
+package-lock.json
+yarn.lock
+
+# Logs
+*.log
