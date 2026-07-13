@@ -135,8 +135,22 @@ function sphotography_register_photograph_meta() {
     );
 
     foreach ( $meta_fields as $key => $args ) {
+        // Register for photograph CPT
         register_post_meta(
             'photograph',
+            $key,
+            array(
+                'show_in_rest'  => true,
+                'single'        => true,
+                'type'          => $args['type'],
+                'description'   => $args['description'],
+                'default'       => $args['default'],
+                'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
+            )
+        );
+        // Register for standard posts too
+        register_post_meta(
+            'post',
             $key,
             array(
                 'show_in_rest'  => true,
@@ -150,6 +164,104 @@ function sphotography_register_photograph_meta() {
     }
 }
 add_action( 'init', 'sphotography_register_photograph_meta' );
+
+// ============================================
+// 3b. Auto-detect EXIF GPS from featured image
+// ============================================
+function sphotography_auto_gps_from_featured_image( $post_id ) {
+    // Only run for 'post' type, skip autosave/revisions
+    if ( get_post_type( $post_id ) !== 'post' ) {
+        return;
+    }
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+        return;
+    }
+    if ( wp_is_post_revision( $post_id ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'edit_post', $post_id ) ) {
+        return;
+    }
+
+    // Check if post already has coordinates set
+    $existing_lat = get_post_meta( $post_id, 'latitude', true );
+    $existing_lng = get_post_meta( $post_id, 'longitude', true );
+    if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) {
+        return; // Already has coordinates, don't overwrite
+    }
+
+    // Get featured image
+    $thumb_id = get_post_thumbnail_id( $post_id );
+    if ( ! $thumb_id ) {
+        return;
+    }
+
+    // Get the attachment file path
+    $file_path = get_attached_file( $thumb_id );
+    if ( ! $file_path || ! file_exists( $file_path ) ) {
+        return;
+    }
+
+    // Read EXIF data
+    if ( ! function_exists( 'exif_read_data' ) ) {
+        return; // EXIF not supported on this server
+    }
+
+    $exif = @exif_read_data( $file_path, 'GPS', true );
+    if ( ! $exif || ! isset( $exif['GPS'] ) ) {
+        return;
+    }
+
+    $gps = $exif['GPS'];
+
+    // Helper: convert GPS coordinate to decimal
+    $lat = sphotography_gps_to_decimal( $gps, 'GPSLatitude', 'GPSLatitudeRef' );
+    $lng = sphotography_gps_to_decimal( $gps, 'GPSLongitude', 'GPSLongitudeRef' );
+
+    if ( $lat !== null && $lng !== null ) {
+        update_post_meta( $post_id, 'latitude', $lat );
+        update_post_meta( $post_id, 'longitude', $lng );
+    }
+}
+add_action( 'save_post', 'sphotography_auto_gps_from_featured_image' );
+
+function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
+    if ( ! isset( $gps[ $coord_key ] ) || ! isset( $gps[ $ref_key ] ) ) {
+        return null;
+    }
+    $parts = $gps[ $coord_key ];
+    if ( count( $parts ) !== 3 ) {
+        return null;
+    }
+
+    // Parts are arrays: [degrees, minutes, seconds] each with 'denominator' and 'nominator'
+    $degrees = sphotography_exif_frac_to_float( $parts[0] );
+    $minutes = sphotography_exif_frac_to_float( $parts[1] );
+    $seconds = sphotography_exif_frac_to_float( $parts[2] );
+
+    if ( $degrees === null || $minutes === null || $seconds === null ) {
+        return null;
+    }
+
+    $decimal = $degrees + ( $minutes / 60 ) + ( $seconds / 3600 );
+
+    $ref = $gps[ $ref_key ];
+    if ( $ref === 'S' || $ref === 'W' ) {
+        $decimal = -$decimal;
+    }
+
+    return round( $decimal, 6 );
+}
+
+function sphotography_exif_frac_to_float( $frac ) {
+    if ( is_array( $frac ) && isset( $frac[0] ) && isset( $frac[1] ) && $frac[1] != 0 ) {
+        return $frac[0] / $frac[1];
+    }
+    if ( is_float( $frac ) || is_int( $frac ) ) {
+        return $frac;
+    }
+    return null;
+}
 
 // ============================================
 // 4. Add Featured Image URLs to REST API
