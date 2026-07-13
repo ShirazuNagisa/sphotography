@@ -255,7 +255,7 @@
     function addPhotoSource(geojson) {
         var data = geojson || {type:'FeatureCollection',features:[]};
         [CONFIG.clusterSourceId, CONFIG.sourceId].forEach(function(id){if(state.map.getSource(id))state.map.removeSource(id);});
-        if (state.useClustering) {
+        if (USE_CLUSTERING) {
             state.map.addSource(CONFIG.clusterSourceId, {type:'geojson',data:data,cluster:true,clusterMaxZoom:14,clusterRadius:60,clusterMinPoints:2});
             state.map.addSource(CONFIG.sourceId, {type:'geojson',data:data});
         } else {
@@ -265,7 +265,7 @@
 
     function addPhotoLayers() {
         [CONFIG.clusterCountLayerId, CONFIG.clusterLayerId, CONFIG.layerId].forEach(function(id){if(state.map.getLayer(id))state.map.removeLayer(id);});
-        if (state.useClustering) {
+        if (USE_CLUSTERING) {
             state.map.addLayer({id:CONFIG.clusterLayerId,type:'circle',source:CONFIG.clusterSourceId,filter:['has','point_count'],paint:{'circle-color':'#e67e22','circle-radius':['step',['get','point_count'],18,10,22,50,28,200,36],'circle-opacity':0.85,'circle-stroke-width':2,'circle-stroke-color':'#ffffff'}});
             state.map.addLayer({id:CONFIG.clusterCountLayerId,type:'symbol',source:CONFIG.clusterSourceId,filter:['has','point_count'],layout:{'text-field':'{point_count_abbreviated}','text-size':12},paint:{'text-color':'#ffffff'}});
             state.map.addLayer({id:CONFIG.layerId,type:'circle',source:CONFIG.clusterSourceId,filter:['!',['has','point_count']],paint:{'circle-color':CONFIG.markerColor,'circle-radius':CONFIG.markerRadius,'circle-stroke-width':CONFIG.markerBorderWidth,'circle-stroke-color':CONFIG.markerBorderColor,'circle-opacity':0.95}});
@@ -278,7 +278,7 @@
 
     function updatePhotoData(geojson) {
         if (!state.map||!(state.map.isStyleLoaded()||state.map.loaded())) return;
-        if (state.useClustering) {
+        if (USE_CLUSTERING) {
             var cs=state.map.getSource(CONFIG.clusterSourceId); if(cs&&typeof cs.setData==='function')cs.setData(geojson);
             var ps=state.map.getSource(CONFIG.sourceId); if(ps&&typeof ps.setData==='function')ps.setData(geojson);
         } else {
@@ -300,7 +300,7 @@
         });
 
         // Click cluster → zoom in
-        if (state.useClustering) {
+        if (USE_CLUSTERING) {
             state.map.on('click', CONFIG.clusterLayerId, function(e) {
                 if (!e.features||e.features.length===0) return;
                 state.clickedMarker = true;
@@ -480,8 +480,7 @@
         var coords = clickLngLat || getFeatureCoords(props);
         if (!coords) coords = [0, 0];
 
-        var currentData = state.filteredPhotos || state.allPhotos;
-        var allFeatures = currentData.features || [];
+        var allFeatures = (state.allPhotos && state.allPhotos.features) || [];
         if (allFeatures.length === 0) return;
 
         // Filter photos near the clicked marker (within ~1km at zoom levels)
