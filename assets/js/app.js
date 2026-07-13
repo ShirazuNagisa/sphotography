@@ -335,29 +335,42 @@
     // ---------------------------------------------------------------
     function handleClusterInteraction() {
         if (!USE_CLUSTERING) return;
-        if (state.openClusterIds.length === 0) return;
+        if (!state.photoGridOpen || !state.trackedMarkerCoords) return;
 
-        var source = state.map.getSource(CONFIG.clusterSourceId);
-        if (!source || typeof source.getClusterLeaves !== 'function') return;
+        var queryPoint = state.map.project(new maplibregl.LngLat(
+            state.trackedMarkerCoords[0], state.trackedMarkerCoords[1]
+        ));
 
-        // For each tracked cluster, check if it still exists at current zoom
-        var stillOpen = [];
-        state.openClusterIds.forEach(function(cid) {
-            source.getClusterLeaves(cid, 100, 0, function(err, leaves) {
-                if (err || !leaves || leaves.length === 0) {
-                    // Cluster has split — check zoom level
-                    // Find any visible features that were part of this cluster
-                    return;
-                }
-                // Cluster still exists — keep tracking
-                stillOpen.push(cid);
-                // Use cluster leaves to render
-                renderPhotoGrid(leaves, state.trackedMarkerCoords);
-            });
+        // Query what's at the tracked marker position at current zoom
+        var features = state.map.queryRenderedFeatures(queryPoint, {
+            layers: [CONFIG.clusterLayerId, CONFIG.layerId]
         });
-        state.openClusterIds = stillOpen;
-        if (stillOpen.length === 0 && state.trackedMarkerCoords) {
+
+        if (features.length === 0) {
+            // Nothing here anymore → close grid
             closePhotoGrid();
+            return;
+        }
+
+        var topFeature = features[0];
+
+        if (topFeature.properties.cluster_id) {
+            // It's now a cluster → show all cluster leaves
+            var cid = topFeature.properties.cluster_id;
+            var clusterCoords = topFeature.geometry.coordinates;
+            var src = state.map.getSource(CONFIG.clusterSourceId);
+            if (src && typeof src.getClusterLeaves === 'function') {
+                src.getClusterLeaves(cid, 100, 0, function(err, leaves) {
+                    if (err || !leaves) return;
+                    state.openClusterIds = [cid];
+                    renderPhotoGrid(leaves, clusterCoords);
+                });
+            }
+        } else if (topFeature.properties) {
+            // It's an individual point → show nearby photos
+            state.openClusterIds = [];
+            var props = topFeature.properties;
+            openPhotoGrid(props, { lng: state.trackedMarkerCoords[0], lat: state.trackedMarkerCoords[1] });
         }
     }
 
