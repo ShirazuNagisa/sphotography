@@ -109,41 +109,33 @@ function sphotography_localize_data() {
 
     // ============================================
     // Embed photographs as inline JSON (bypasses REST API 403)
+    // Combines 4 sources:
+    //   a) 'photograph' CPT with coordinates
+    //   b) 'post' CPT with coordinates
+    //   c) 'attachment' (media library images) with coordinates
+    //   d) Featured images of any post that have coordinates
     // ============================================
-    // Fetch both 'photograph' CPT and standard 'post' that have coordinates
+    $photo_data_arr = array();
+
+    // Source 1: photograph CPT + post CPT with coordinates
     $photo_posts = get_posts( array(
         'post_type'      => array( 'photograph', 'post' ),
         'posts_per_page' => 500,
         'post_status'    => 'publish',
         'meta_query'     => array(
             'relation' => 'AND',
-            array(
-                'key'     => 'latitude',
-                'value'   => '',
-                'compare' => '!=',
-            ),
-            array(
-                'key'     => 'longitude',
-                'value'   => '',
-                'compare' => '!=',
-            ),
+            array( 'key' => 'latitude', 'value' => '', 'compare' => '!=' ),
+            array( 'key' => 'longitude', 'value' => '', 'compare' => '!=' ),
         ),
     ) );
 
-    // Collect IDs of posts that are shown as photos (to exclude from sidebar list)
-    $photo_post_ids = array();
-
-    $photo_data = array();
     foreach ( $photo_posts as $post ) {
-        $photo_post_ids[] = $post->ID;
         $lat    = get_post_meta( $post->ID, 'latitude', true );
         $lng    = get_post_meta( $post->ID, 'longitude', true );
+        if ( empty( $lat ) && empty( $lng ) ) continue;
+
         $camera = get_post_meta( $post->ID, 'camera_info', true );
         $taken  = get_post_meta( $post->ID, 'taken_at', true );
-
-        if ( empty( $lat ) && empty( $lng ) ) {
-            continue;
-        }
 
         $tags      = wp_get_post_terms( $post->ID, 'region_tag', array( 'fields' => 'all' ) );
         $tag_data  = array();
@@ -162,7 +154,7 @@ function sphotography_localize_data() {
             if ( $full )  { $full_url  = $full[0]; }
         }
 
-        $photo_data[] = array(
+        $photo_data_arr[] = array(
             'id'          => $post->ID,
             'title'       => get_the_title( $post->ID ),
             'description' => strip_tags( $post->post_content ),
@@ -174,6 +166,45 @@ function sphotography_localize_data() {
             'full_image'  => $full_url,
             'tags'        => $tag_data,
             'tag_slugs'   => $tag_slugs,
+        );
+    }
+
+    // Source 2: Attachments (media library images) with coordinates
+    $attachments = get_posts( array(
+        'post_type'      => 'attachment',
+        'post_mime_type' => 'image',
+        'posts_per_page' => 500,
+        'post_status'    => 'inherit',
+        'meta_query'     => array(
+            'relation' => 'AND',
+            array( 'key' => 'latitude', 'value' => '', 'compare' => '!=' ),
+            array( 'key' => 'longitude', 'value' => '', 'compare' => '!=' ),
+        ),
+    ) );
+
+    foreach ( $attachments as $att ) {
+        $lat = get_post_meta( $att->ID, 'latitude', true );
+        $lng = get_post_meta( $att->ID, 'longitude', true );
+        if ( empty( $lat ) && empty( $lng ) ) continue;
+
+        $camera = get_post_meta( $att->ID, 'camera_info', true );
+        $taken  = get_post_meta( $att->ID, 'taken_at', true );
+
+        $thumb_url = wp_get_attachment_image_url( $att->ID, 'medium' );
+        $full_url  = wp_get_attachment_image_url( $att->ID, 'full' );
+
+        $photo_data_arr[] = array(
+            'id'          => $att->ID,
+            'title'       => get_the_title( $att->ID ) ?: basename( $att->guid ),
+            'description' => strip_tags( $att->post_content ),
+            'latitude'    => floatval( $lat ),
+            'longitude'   => floatval( $lng ),
+            'camera_info' => $camera,
+            'taken_at'    => $taken,
+            'thumbnail'   => $thumb_url ?: '',
+            'full_image'  => $full_url ?: '',
+            'tags'        => array(),
+            'tag_slugs'   => array(),
         );
     }
 
@@ -223,7 +254,7 @@ function sphotography_localize_data() {
     // Inline script with all data (before map initializes)
     wp_add_inline_script( 'sphotography-app',
         'var SphotographyInlineData = ' . json_encode( array(
-            'photos' => $photo_data,
+            'photos' => $photo_data_arr,
             'posts'  => $post_data,
         ) ) . ';',
         'before'

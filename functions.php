@@ -136,94 +136,81 @@ function sphotography_register_photograph_meta() {
 
     foreach ( $meta_fields as $key => $args ) {
         // Register for photograph CPT
-        register_post_meta(
-            'photograph',
-            $key,
-            array(
-                'show_in_rest'  => true,
-                'single'        => true,
-                'type'          => $args['type'],
-                'description'   => $args['description'],
-                'default'       => $args['default'],
-                'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
-            )
-        );
+        register_post_meta( 'photograph', $key, array(
+            'show_in_rest'  => true, 'single' => true,
+            'type' => $args['type'], 'description' => $args['description'],
+            'default' => $args['default'],
+            'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
+        ) );
         // Register for standard posts too
-        register_post_meta(
-            'post',
-            $key,
-            array(
-                'show_in_rest'  => true,
-                'single'        => true,
-                'type'          => $args['type'],
-                'description'   => $args['description'],
-                'default'       => $args['default'],
-                'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
-            )
-        );
+        register_post_meta( 'post', $key, array(
+            'show_in_rest'  => true, 'single' => true,
+            'type' => $args['type'], 'description' => $args['description'],
+            'default' => $args['default'],
+            'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
+        ) );
+        // Register for attachments (media library images)
+        register_post_meta( 'attachment', $key, array(
+            'show_in_rest'  => true, 'single' => true,
+            'type' => $args['type'], 'description' => $args['description'],
+            'default' => $args['default'],
+            'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
+        ) );
     }
 }
 add_action( 'init', 'sphotography_register_photograph_meta' );
 
 // ============================================
-// 3b. Auto-detect EXIF GPS from featured image
+// 3b. Load media fields admin
 // ============================================
-function sphotography_auto_gps_from_featured_image( $post_id ) {
-    // Only run for 'post' type, skip autosave/revisions
-    if ( get_post_type( $post_id ) !== 'post' ) {
-        return;
-    }
-    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-        return;
-    }
-    if ( wp_is_post_revision( $post_id ) ) {
-        return;
-    }
-    if ( ! current_user_can( 'edit_post', $post_id ) ) {
-        return;
-    }
+require_once get_template_directory() . '/admin/media-fields.php';
 
-    // Check if post already has coordinates set
-    $existing_lat = get_post_meta( $post_id, 'latitude', true );
-    $existing_lng = get_post_meta( $post_id, 'longitude', true );
-    if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) {
-        return; // Already has coordinates, don't overwrite
-    }
+// ============================================
+// 3c. Auto-detect EXIF GPS on image upload
+// ============================================
+function sphotography_auto_gps_on_upload( $attachment_id ) {
+    if ( wp_is_post_revision( $attachment_id ) ) return;
+    if ( get_post_type( $attachment_id ) !== 'attachment' ) return;
 
-    // Get featured image
-    $thumb_id = get_post_thumbnail_id( $post_id );
-    if ( ! $thumb_id ) {
-        return;
-    }
+    // Check if already has coordinates
+    $existing_lat = get_post_meta( $attachment_id, 'latitude', true );
+    $existing_lng = get_post_meta( $attachment_id, 'longitude', true );
+    if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) return;
 
-    // Get the attachment file path
-    $file_path = get_attached_file( $thumb_id );
-    if ( ! $file_path || ! file_exists( $file_path ) ) {
-        return;
-    }
-
-    // Read EXIF data
-    if ( ! function_exists( 'exif_read_data' ) ) {
-        return; // EXIF not supported on this server
-    }
+    $file_path = get_attached_file( $attachment_id );
+    if ( ! $file_path || ! file_exists( $file_path ) ) return;
+    if ( ! function_exists( 'exif_read_data' ) ) return;
 
     $exif = @exif_read_data( $file_path, 'GPS', true );
-    if ( ! $exif || ! isset( $exif['GPS'] ) ) {
-        return;
-    }
+    if ( ! $exif || ! isset( $exif['GPS'] ) ) return;
 
     $gps = $exif['GPS'];
-
-    // Helper: convert GPS coordinate to decimal
     $lat = sphotography_gps_to_decimal( $gps, 'GPSLatitude', 'GPSLatitudeRef' );
     $lng = sphotography_gps_to_decimal( $gps, 'GPSLongitude', 'GPSLongitudeRef' );
 
     if ( $lat !== null && $lng !== null ) {
-        update_post_meta( $post_id, 'latitude', $lat );
-        update_post_meta( $post_id, 'longitude', $lng );
+        update_post_meta( $attachment_id, 'latitude', $lat );
+        update_post_meta( $attachment_id, 'longitude', $lng );
+    }
+
+    // Also read camera info and date from EXIF if available
+    if ( isset( $exif['IFD0'] ) ) {
+        if ( ! empty( $exif['IFD0']['Model'] ) ) {
+            update_post_meta( $attachment_id, 'camera_info', sanitize_text_field( $exif['IFD0']['Model'] ) );
+        }
+    }
+    if ( isset( $exif['EXIF'] ) ) {
+        if ( ! empty( $exif['EXIF']['DateTimeOriginal'] ) ) {
+            $date = $exif['EXIF']['DateTimeOriginal'];
+            // Convert to Y-m-d
+            $ts = strtotime( $date );
+            if ( $ts !== false ) {
+                update_post_meta( $attachment_id, 'taken_at', date( 'Y-m-d', $ts ) );
+            }
+        }
     }
 }
-add_action( 'save_post', 'sphotography_auto_gps_from_featured_image' );
+add_action( 'add_attachment', 'sphotography_auto_gps_on_upload' );
 
 function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
     if ( ! isset( $gps[ $coord_key ] ) || ! isset( $gps[ $ref_key ] ) ) {
