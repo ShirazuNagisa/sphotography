@@ -3,12 +3,14 @@
  * Sphotography Theme Functions
  *
  * @package Sphotography
- * @version 1.0.0
+ * @version 1.0.1
  */
 
 // ============================================
-// 0. Load Admin Settings Page & Theme Mods Applier
+// 0. Theme Version & Load Includes
 // ============================================
+define( 'SPHOTOGRAPHY_VERSION', '1.0.1' );
+
 require_once get_template_directory() . '/admin/theme-settings.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
 
@@ -278,7 +280,7 @@ function sphotography_enqueue_scripts() {
         'sphotography-style',
         get_template_directory_uri() . '/style.css',
         array( 'maplibre-gl' ),
-        '1.0.0'
+        SPHOTOGRAPHY_VERSION
     );
 
     wp_enqueue_script(
@@ -301,7 +303,7 @@ function sphotography_enqueue_scripts() {
         'sphotography-app',
         get_template_directory_uri() . '/assets/js/app.js',
         array( 'maplibre-gl', 'supercluster' ),
-        '1.0.0',
+        SPHOTOGRAPHY_VERSION,
         true
     );
 

@@ -454,7 +454,7 @@ function sphotography_render_settings_page() {
                     <div class="sphotography-field" id="sphotography-updater">
                         <label class="sphotography-label"><?php _e( '当前版本', 'sphotography' ); ?></label>
                         <p style="font-size:1rem;margin-bottom:10px;">
-                            <strong>v1.0.0</strong>
+                            <strong><?php echo 'v' . SPHOTOGRAPHY_VERSION; ?></strong>
                             <span id="sphotography-version-status" style="margin-left:12px;font-size:0.8125rem;color:var(--text-muted);"></span>
                         </p>
 
@@ -797,7 +797,7 @@ function sphotography_admin_enqueue_settings( $hook ) {
                             if (!release && releases.length > 0) release = releases[0];
                         }
 
-                        var currentVer = "v1.0.0";
+                        var currentVer = "' . esc_js( 'v' . SPHOTOGRAPHY_VERSION ) . '";
                         var html = "";
 
                         if (!release) {
