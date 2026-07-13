@@ -608,12 +608,53 @@
     }
 
     // ---------------------------------------------------------------
-    // 14. Main Initialization
+    // 14. Hitokoto (一言格言)
+    // ---------------------------------------------------------------
+    function initHitokoto() {
+        if (!SETTINGS.enableHitokoto) return;
+        var el = document.getElementById('hitokoto-text');
+        if (!el) return;
+        fetch('https://v1.hitokoto.cn/?c=d&c=i&c=k')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                el.textContent = data.hitokoto || ' ';
+                if (data.from) {
+                    el.textContent += ' ——' + data.from;
+                }
+            })
+            .catch(function () {
+                el.textContent = ' ';
+            });
+    }
+
+    // ---------------------------------------------------------------
+    // 15. Entry Animation (IntersectionObserver)
+    // ---------------------------------------------------------------
+    function initEntryAnimation() {
+        if (!SETTINGS.entryAnimation) return;
+        if (!('IntersectionObserver' in window)) return;
+        // Observe elements with .animate-on-scroll class
+        var targets = document.querySelectorAll('.animate-on-scroll');
+        if (targets.length === 0) return;
+        var observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animated');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1 });
+        targets.forEach(function (el) { observer.observe(el); });
+    }
+
+    // ---------------------------------------------------------------
+    // 16. Main Initialization
     // ---------------------------------------------------------------
     async function init() {
         try {
             // 1. Fetch tags
             var tagsData = await fetchRegionTags();
+
             if (tagsData && Array.isArray(tagsData)) {
                 state.regionTags = tagsData.map(function (t) {
                     return { id: t.id, name: t.name, slug: t.slug, count: t.count || 0 };
@@ -637,7 +678,11 @@
             // 5. Initialize map (adds data sources on load)
             initMap();
 
-            // 6. Bind UI events
+            // 6. Hitokoto & entry animation
+            initHitokoto();
+            initEntryAnimation();
+
+            // 7. Bind UI events
             bindUIEvents();
 
         } catch (err) {
@@ -647,7 +692,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 15. Kickoff
+    // 17. Kickoff
     // ---------------------------------------------------------------
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
