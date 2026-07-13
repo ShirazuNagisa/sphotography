@@ -365,25 +365,40 @@ function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
     if ( ! isset( $gps[ $coord_key ] ) || ! isset( $gps[ $ref_key ] ) ) {
         return null;
     }
+
     $parts = $gps[ $coord_key ];
-    if ( count( $parts ) !== 3 ) {
+    if ( ! is_array( $parts ) ) {
+        // Some cameras store a single float value directly
+        $decimal = floatval( $parts );
+    } elseif ( count( $parts ) === 1 ) {
+        // Single degree value
+        $decimal = sphotography_exif_frac_to_float( $parts[0] );
+    } elseif ( count( $parts ) === 2 ) {
+        // deg + min (no seconds)
+        $degrees = sphotography_exif_frac_to_float( $parts[0] );
+        $minutes = sphotography_exif_frac_to_float( $parts[1] );
+        if ( $degrees === null || $minutes === null ) return null;
+        $decimal = $degrees + ( $minutes / 60 );
+    } elseif ( count( $parts ) === 3 ) {
+        // deg + min + sec (standard)
+        $degrees = sphotography_exif_frac_to_float( $parts[0] );
+        $minutes = sphotography_exif_frac_to_float( $parts[1] );
+        $seconds = sphotography_exif_frac_to_float( $parts[2] );
+        if ( $degrees === null || $minutes === null || $seconds === null ) return null;
+        $decimal = $degrees + ( $minutes / 60 ) + ( $seconds / 3600 );
+    } else {
         return null;
     }
 
-    // Parts are arrays: [degrees, minutes, seconds] each with 'denominator' and 'nominator'
-    $degrees = sphotography_exif_frac_to_float( $parts[0] );
-    $minutes = sphotography_exif_frac_to_float( $parts[1] );
-    $seconds = sphotography_exif_frac_to_float( $parts[2] );
-
-    if ( $degrees === null || $minutes === null || $seconds === null ) {
-        return null;
-    }
-
-    $decimal = $degrees + ( $minutes / 60 ) + ( $seconds / 3600 );
+    if ( $decimal === null ) return null;
 
     $ref = $gps[ $ref_key ];
-    if ( $ref === 'S' || $ref === 'W' ) {
-        $decimal = -$decimal;
+    // GPSLatitudeRef can be 'N' or 'S', GPSLongitudeRef can be 'E' or 'W'
+    // Also handle string like "N28°13'40\""
+    if ( is_string( $ref ) && ( $ref === 'S' || $ref === 'W' || strpos( $ref, 'S' ) !== false || strpos( $ref, 'W' ) !== false ) ) {
+        $decimal = -abs( $decimal );
+    } else {
+        $decimal = abs( $decimal );
     }
 
     return round( $decimal, 6 );
@@ -394,7 +409,10 @@ function sphotography_exif_frac_to_float( $frac ) {
         return $frac[0] / $frac[1];
     }
     if ( is_float( $frac ) || is_int( $frac ) ) {
-        return $frac;
+        return floatval( $frac );
+    }
+    if ( is_string( $frac ) && is_numeric( $frac ) ) {
+        return floatval( $frac );
     }
     return null;
 }
