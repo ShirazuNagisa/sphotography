@@ -304,48 +304,62 @@ function sphotography_attachment_exif_button( $form_fields, $post ) {
 }
 add_filter( 'attachment_fields_to_edit', 'sphotography_attachment_exif_button', 20, 2 );
 
-// Enqueue admin JS for EXIF button
-function sphotography_enqueue_media_scripts( $hook ) {
-    if ( $hook !== 'upload.php' && $hook !== 'post.php' ) return;
-    wp_add_inline_script( 'jquery', '
+// Enqueue admin JS for EXIF button (loads on ALL admin pages where media modal can appear)
+function sphotography_enqueue_media_scripts() {
+    // Load exif-js for client-side EXIF reading (bypasses PHP EXIF extension)
+    wp_enqueue_script(
+        'exif-js',
+        'https://cdn.jsdelivr.net/npm/exif-js@2.3.0/dist/exif.min.js',
+        array(),
+        '2.3.0',
+        true
+    );
+
+    wp_add_inline_script( 'exif-js', '
         jQuery(document).on("click", ".sphotography-read-exif-btn", function() {
             var btn = jQuery(this);
-            var statusEl = btn.siblings(".sphotography-exif-status");
-            var debugEl = btn.closest(".compat-field").find(".sphotography-exif-debug");
+            var td = btn.closest("td");
+            var statusEl = td.find(".sphotography-exif-status");
+            var debugEl = td.find(".sphotography-exif-debug");
             var aid = btn.data("id");
             statusEl.text("读取中...");
             btn.prop("disabled", true);
+
+            // Method 1: Try AJAX (PHP exif_read_data)
             jQuery.post(ajaxurl, {
                 action: "sphotography_read_exif",
                 attachment_id: aid
             }, function(res) {
                 if (res.success) {
                     var d = res.data;
-                    statusEl.text("GPS: " + (d.hasGps ? "✅ " + d.latitude + ", " + d.longitude : "❌ 无GPS")
+                    statusEl.html("GPS: " + (d.hasGps ? "✅ " + d.latitude + ", " + d.longitude : "❌")
                         + " | 相机: " + (d.hasCamera ? "✅" : "❌")
-                        + " | 日期: " + (d.hasDate ? "✅" : "❌"));
+                        + " | 日期: " + (d.hasDate ? "✅" : "❌")
+                        + (d.debug ? " <span style=\"color:#aaa;font-size:0.7rem;\">[" + d.debug + "]</span>" : ""));
                     // Auto-fill the form fields
-                    var latField = btn.closest("tr").siblings().find("input[name*=\'sphotography_latitude\']");
-                    var lngField = btn.closest("tr").siblings().find("input[name*=\'sphotography_longitude\']");
-                    if (d.latitude && latField.length) latField.val(d.latitude);
-                    if (d.longitude && lngField.length) lngField.val(d.longitude);
+                    td.closest("tr").siblings().find("input[name*=\'sphotography_latitude\']").val(d.latitude || "");
+                    td.closest("tr").siblings().find("input[name*=\'sphotography_longitude\']").val(d.longitude || "");
+                    debugEl.text(d.debug || "");
                 } else {
                     statusEl.text("❌ " + (res.data || "读取失败"));
                 }
-                debugEl.text(d.debug || "");
                 btn.prop("disabled", false);
             }).fail(function() {
                 statusEl.text("❌ 请求失败");
                 btn.prop("disabled", false);
             });
         });
+
         jQuery(document).on("click", ".sphotography-exif-debug-link", function(e) {
             e.preventDefault();
-            jQuery(this).siblings(".sphotography-exif-debug").toggle();
+            jQuery(this).parent().find(".sphotography-exif-debug").toggle();
         });
     ' );
 }
 add_action( 'admin_enqueue_scripts', 'sphotography_enqueue_media_scripts' );
+
+// Also load on the media modal (which can appear on any admin page)
+add_action( 'wp_enqueue_media', 'sphotography_enqueue_media_scripts' );
 
 function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
     if ( ! isset( $gps[ $coord_key ] ) || ! isset( $gps[ $ref_key ] ) ) {
