@@ -168,6 +168,47 @@ require_once get_template_directory() . '/admin/media-fields.php';
 // ============================================
 // 3c. Auto-detect EXIF GPS on image upload
 // ============================================
+function sphotography_read_exif_and_save( $attachment_id, $file_path ) {
+    if ( ! function_exists( 'exif_read_data' ) ) return false;
+    if ( ! $file_path || ! file_exists( $file_path ) ) return false;
+
+    // Read ALL EXIF data (not just GPS) so we can access IFD0 and EXIF sections too
+    $exif = @exif_read_data( $file_path, 0, true );
+    if ( ! $exif ) return false;
+
+    $updated = false;
+
+    // GPS coordinates
+    if ( isset( $exif['GPS'] ) ) {
+        $lat = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLatitude', 'GPSLatitudeRef' );
+        $lng = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLongitude', 'GPSLongitudeRef' );
+
+        if ( $lat !== null && $lng !== null ) {
+            update_post_meta( $attachment_id, 'latitude', $lat );
+            update_post_meta( $attachment_id, 'longitude', $lng );
+            $updated = true;
+        }
+    }
+
+    // Camera info from IFD0
+    if ( isset( $exif['IFD0']['Model'] ) && ! empty( $exif['IFD0']['Model'] ) ) {
+        update_post_meta( $attachment_id, 'camera_info', sanitize_text_field( $exif['IFD0']['Model'] ) );
+        $updated = true;
+    }
+
+    // Date from EXIF
+    if ( isset( $exif['EXIF']['DateTimeOriginal'] ) && ! empty( $exif['EXIF']['DateTimeOriginal'] ) ) {
+        $ts = strtotime( $exif['EXIF']['DateTimeOriginal'] );
+        if ( $ts !== false ) {
+            update_post_meta( $attachment_id, 'taken_at', date( 'Y-m-d', $ts ) );
+            $updated = true;
+        }
+    }
+
+    return $updated;
+}
+
+// Hook 1: Right when attachment is added (file may not be final yet)
 function sphotography_auto_gps_on_upload( $attachment_id ) {
     if ( wp_is_post_revision( $attachment_id ) ) return;
     if ( get_post_type( $attachment_id ) !== 'attachment' ) return;
@@ -178,39 +219,25 @@ function sphotography_auto_gps_on_upload( $attachment_id ) {
     if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) return;
 
     $file_path = get_attached_file( $attachment_id );
-    if ( ! $file_path || ! file_exists( $file_path ) ) return;
-    if ( ! function_exists( 'exif_read_data' ) ) return;
-
-    $exif = @exif_read_data( $file_path, 'GPS', true );
-    if ( ! $exif || ! isset( $exif['GPS'] ) ) return;
-
-    $gps = $exif['GPS'];
-    $lat = sphotography_gps_to_decimal( $gps, 'GPSLatitude', 'GPSLatitudeRef' );
-    $lng = sphotography_gps_to_decimal( $gps, 'GPSLongitude', 'GPSLongitudeRef' );
-
-    if ( $lat !== null && $lng !== null ) {
-        update_post_meta( $attachment_id, 'latitude', $lat );
-        update_post_meta( $attachment_id, 'longitude', $lng );
-    }
-
-    // Also read camera info and date from EXIF if available
-    if ( isset( $exif['IFD0'] ) ) {
-        if ( ! empty( $exif['IFD0']['Model'] ) ) {
-            update_post_meta( $attachment_id, 'camera_info', sanitize_text_field( $exif['IFD0']['Model'] ) );
-        }
-    }
-    if ( isset( $exif['EXIF'] ) ) {
-        if ( ! empty( $exif['EXIF']['DateTimeOriginal'] ) ) {
-            $date = $exif['EXIF']['DateTimeOriginal'];
-            // Convert to Y-m-d
-            $ts = strtotime( $date );
-            if ( $ts !== false ) {
-                update_post_meta( $attachment_id, 'taken_at', date( 'Y-m-d', $ts ) );
-            }
-        }
-    }
+    sphotography_read_exif_and_save( $attachment_id, $file_path );
 }
 add_action( 'add_attachment', 'sphotography_auto_gps_on_upload' );
+
+// Hook 2: After WordPress finishes processing the image (metadata generated, file final)
+function sphotography_auto_gps_on_metadata( $metadata, $attachment_id ) {
+    if ( get_post_type( $attachment_id ) !== 'attachment' ) return $metadata;
+
+    // Check if already has coordinates
+    $existing_lat = get_post_meta( $attachment_id, 'latitude', true );
+    $existing_lng = get_post_meta( $attachment_id, 'longitude', true );
+    if ( ! empty( $existing_lat ) && ! empty( $existing_lng ) ) return $metadata;
+
+    $file_path = get_attached_file( $attachment_id );
+    sphotography_read_exif_and_save( $attachment_id, $file_path );
+
+    return $metadata;
+}
+add_filter( 'wp_generate_attachment_metadata', 'sphotography_auto_gps_on_metadata', 10, 2 );
 
 function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
     if ( ! isset( $gps[ $coord_key ] ) || ! isset( $gps[ $ref_key ] ) ) {
