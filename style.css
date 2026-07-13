@@ -43,7 +43,7 @@ html, body {
 img { display:block; max-width:100%; }
 
 /* ============================================
-   2. Glass Panel Base
+   2. Glass Panel Base + Light Mode
    ============================================ */
 .glass-panel {
     background: var(--panel-bg);
@@ -61,6 +61,26 @@ body.opaque-panels .glass-panel {
     background: #1a1a1a;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+}
+
+/* Light mode overrides */
+body.sphotography-night-force-light,
+body.sphotography-night-system:not(.sphotography-night-force-dark) {
+    --panel-bg: rgba(240, 240, 240, 0.65);
+    --panel-border: 1px solid rgba(0, 0, 0, 0.08);
+    --text-primary: #1a1a1a;
+    --text-secondary: #555555;
+    --text-muted: #888888;
+}
+
+@media (prefers-color-scheme: light) {
+    body.sphotography-night-system:not(.sphotography-night-force-dark) {
+        --panel-bg: rgba(240, 240, 240, 0.65);
+        --panel-border: 1px solid rgba(0, 0, 0, 0.08);
+        --text-primary: #1a1a1a;
+        --text-secondary: #555555;
+        --text-muted: #888888;
+    }
 }
 
 /* ============================================
@@ -111,8 +131,8 @@ body.sidebar-collapsed .sidebar {
     width: 100%;
     padding: 10px 36px 10px 14px;
     border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(128,128,128,0.2);
+    background: rgba(128,128,128,0.08);
     color: var(--text-primary);
     font-size: 0.875rem;
     outline: none;
@@ -309,7 +329,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .article-content {
     font-size: 0.9375rem;
     line-height: 1.75;
-    color: #d0d0d0;
+    color: var(--text-secondary);
 }
 
 .article-content p { margin-bottom: 1.2em; }
