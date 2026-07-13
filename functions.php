@@ -7,9 +7,10 @@
  */
 
 // ============================================
-// 0. Theme Version & Load Includes
+// 0. Theme Version (auto-read from style.css) & Load Includes
 // ============================================
-define( 'SPHOTOGRAPHY_VERSION', '1.0.2' );
+$sphotography_theme = wp_get_theme();
+define( 'SPHOTOGRAPHY_VERSION', $sphotography_theme->get( 'Version' ) );
 
 require_once get_template_directory() . '/admin/theme-settings.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
