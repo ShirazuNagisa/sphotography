@@ -18,8 +18,8 @@ Text Domain: sphotography
     --sidebar-width: 300px;
     --panel-radius: var(--sphotography-card-radius, 16px);
     --panel-shadow: var(--sphotography-card-shadow, 0 1px 3px rgba(0,0,0,0.06));
-    --panel-bg: rgba(20, 20, 20, 0.78);
-    --panel-blur: blur(18px);
+    --panel-bg: rgba(20, 20, 20, 0.50);
+    --panel-blur: blur(24px);
     --panel-border: 1px solid rgba(255, 255, 255, 0.08);
     --text-primary: #ffffff;
     --text-secondary: #aaaaaa;
@@ -236,15 +236,14 @@ body.sidebar-collapsed .sidebar {
     color: var(--text-primary);
 }
 
-/* Sidebar expand button (shown when collapsed) */
+/* Sidebar expand button (shown when collapsed, bottom-left) */
 .sidebar-expand-btn {
     position: fixed;
     left: 16px;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 24px;
     z-index: 45;
-    width: 40px;
-    height: 72px;
+    width: 44px;
+    height: 44px;
     display: none;
     align-items: center;
     justify-content: center;
@@ -254,7 +253,7 @@ body.sidebar-collapsed .sidebar {
     backdrop-filter: var(--panel-blur);
     color: var(--text-secondary);
     transition: all 0.2s;
-    border-radius: 12px;
+    border-radius: 50%;
 }
 
 .sidebar-expand-btn:hover {
