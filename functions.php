@@ -392,3 +392,88 @@ function sphotography_remove_admin_bar_margin() {
     }
 }
 add_action( 'wp_head', 'sphotography_remove_admin_bar_margin' );
+
+// ============================================
+// 11. AJAX: Update theme from GitHub branch
+// ============================================
+function sphotography_ajax_do_update() {
+    if ( ! wp_verify_nonce( $_POST['nonce'], 'sphotography_update_nonce' ) ) {
+        wp_send_json_error( 'Security check failed' );
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Permission denied' );
+    }
+
+    $branch = sanitize_text_field( $_POST['branch'] );
+    if ( empty( $branch ) ) {
+        wp_send_json_error( 'No branch specified' );
+    }
+
+    $theme_dir = get_template_directory();
+    $zip_url   = 'https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/' . $branch . '.zip';
+    $tmp_zip   = wp_tempnam( 'sphotography-update' );
+
+    // Download ZIP
+    $response = wp_remote_get( $zip_url, array( 'timeout' => 120, 'stream' => true, 'filename' => $tmp_zip ) );
+
+    if ( is_wp_error( $response ) ) {
+        unlink( $tmp_zip );
+        wp_send_json_error( 'Download failed: ' . $response->get_error_message() );
+    }
+
+    $code = wp_remote_retrieve_response_code( $response );
+    if ( $code !== 200 ) {
+        unlink( $tmp_zip );
+        wp_send_json_error( 'Download failed with HTTP code ' . $code );
+    }
+
+    // Unzip
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    WP_Filesystem();
+
+    $unzip_dir = get_temp_dir() . 'sphotography-update-' . uniqid();
+    $unzipped  = unzip_file( $tmp_zip, $unzip_dir );
+    unlink( $tmp_zip );
+
+    if ( is_wp_error( $unzipped ) ) {
+        wp_send_json_error( 'Unzip failed: ' . $unzipped->get_error_message() );
+    }
+
+    // Find the extracted folder (contains branch name, e.g. sphotography-beta)
+    $extracted = glob( $unzip_dir . '/sphotography-*' );
+    if ( empty( $extracted ) || ! is_dir( $extracted[0] ) ) {
+        // Cleanup
+        sphotography_rrmdir( $unzip_dir );
+        wp_send_json_error( 'Extracted folder not found' );
+    }
+    $src_dir = $extracted[0];
+
+    // Copy all files from src to theme directory, overwriting
+    $copied = copy_dir( $src_dir, $theme_dir );
+
+    // Cleanup temp
+    sphotography_rrmdir( $unzip_dir );
+
+    if ( is_wp_error( $copied ) ) {
+        wp_send_json_error( 'Copy failed: ' . $copied->get_error_message() );
+    }
+
+    wp_send_json_success( 'Theme updated from branch: ' . $branch );
+}
+add_action( 'wp_ajax_sphotography_do_update', 'sphotography_ajax_do_update' );
+
+// Recursive rmdir helper
+function sphotography_rrmdir( $dir ) {
+    if ( ! is_dir( $dir ) ) return;
+    $items = scandir( $dir );
+    foreach ( $items as $item ) {
+        if ( $item === '.' || $item === '..' ) continue;
+        $path = $dir . '/' . $item;
+        if ( is_dir( $path ) ) {
+            sphotography_rrmdir( $path );
+        } else {
+            unlink( $path );
+        }
+    }
+    rmdir( $dir );
+}
