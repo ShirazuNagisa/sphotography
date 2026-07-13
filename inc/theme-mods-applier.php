@@ -17,6 +17,23 @@ function sphotography_get_mod( $key ) {
 // ============================================
 // 2. Output dynamic CSS variables in <head>
 // ============================================
+function sphotography_output_head_links() {
+    if ( ! is_page_template( 'template-map.php' ) ) {
+        return;
+    }
+    // DNS preconnect for CDN resources to reduce latency
+    $cdn = sphotography_get_cdn_urls();
+    ?>
+    <link rel="preconnect" href="https://<?php echo esc_attr( $cdn['domain'] ); ?>" crossorigin>
+    <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://<?php echo esc_attr( $cdn['domain'] ); ?>">
+    <link rel="dns-prefetch" href="https://basemaps.cartocdn.com">
+    <?php
+}
+add_action( 'wp_head', 'sphotography_output_head_links', 1 );
+
 function sphotography_output_dynamic_css() {
     if ( ! is_page_template( 'template-map.php' ) ) {
         return;

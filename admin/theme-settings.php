@@ -40,6 +40,8 @@ function sphotography_get_default_settings() {
         'pjax_animation'      => true,
         // ⑥ Footer
         'footer_content'      => '',
+        // ⑦ CDN
+        'cdn_source'          => 'jsdelivr',
     );
 }
 
@@ -466,7 +468,28 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
-            <!-- Module 7: 版本与更新 -->
+            <!-- Module 8: CDN 来源配置 -->
+            <!-- ============================================ -->
+            <div class="sphotography-module">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-networking"></span>
+                    <h2><?php _e( 'CDN 来源', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-cdn-source"><?php _e( 'MapLibre / Supercluster 加载源', 'sphotography' ); ?></label>
+                        <select id="sphotography-cdn-source" name="sphotography[cdn_source]">
+                            <option value="jsdelivr" <?php selected( $values['cdn_source'], 'jsdelivr' ); ?>><?php _e( 'jsDelivr（推荐，速度最快）', 'sphotography' ); ?></option>
+                            <option value="unpkg" <?php selected( $values['cdn_source'], 'unpkg' ); ?>><?php _e( 'unpkg（当前默认）', 'sphotography' ); ?></option>
+                            <option value="cdnjs" <?php selected( $values['cdn_source'], 'cdnjs' ); ?>><?php _e( 'cdnjs（Cloudflare）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '切换前端地图引擎的 CDN 来源。jsDelivr 在中国大陆及全球均有较好的加速效果。更改后保存，刷新前端页面生效。地图瓦片始终从 CartoDB CDN 直接加载，不受此设置影响。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- Module 9: 版本与更新 -->
             <!-- ============================================ -->
             <div class="sphotography-module">
                 <div class="sphotography-module-header">
