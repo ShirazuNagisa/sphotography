@@ -30,6 +30,8 @@
         return DARK_STYLE;
     }
 
+    var USE_CLUSTERING = typeof supercluster !== 'undefined';
+
     const CONFIG = {
         center: [112.94, 28.23],
         zoom: 5,
@@ -59,20 +61,14 @@
     const state = {
         map: null,
         allPhotos: null,
-        filteredPhotos: null,
-        regionTags: [],
-        activeFilterSlugs: [],
         recentPosts: [],
         allPosts: [],
         sidebarOpen: true,
         articleOpen: false,
         photoGridOpen: false,
-        filterOpen: false,
         detailOpen: false,
-        useClustering: typeof supercluster !== 'undefined',
         isMobile: window.innerWidth < 768,
-        currentPhotoPostId: null,
-        clickedMarker: false, // flag to prevent bg-click from closing panel
+        clickedMarker: false,
     };
 
     // ---------------------------------------------------------------
