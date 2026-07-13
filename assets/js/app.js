@@ -79,10 +79,6 @@
         dom.photoGridClose = document.getElementById('photo-grid-close');
         dom.photoGridTitle = document.getElementById('photo-grid-title');
         dom.photoGridContainer = document.getElementById('photo-grid-container');
-        dom.filterPanel = document.getElementById('filter-panel');
-        dom.filterToggle = document.getElementById('filter-toggle');
-        dom.filterClose = document.getElementById('filter-close');
-        dom.tagList = document.getElementById('tag-list');
         dom.detailSheet = document.getElementById('detail-sheet');
         dom.closeDetail = document.getElementById('close-detail');
         dom.detailImg = document.getElementById('detail-img');
@@ -580,64 +576,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 14. Filter Panel
-    // ---------------------------------------------------------------
-    function renderFilterTags(tags, countMap) {
-        dom.tagList.innerHTML = '';
-        if (!tags || tags.length === 0) {
-            dom.tagList.innerHTML = '<p style="color:var(--text-muted);font-size:0.78125rem;">暂无标签</p>';
-            return;
-        }
-        tags.forEach(function(tag) {
-            var btn = document.createElement('button');
-            btn.className = 'tag-btn';
-            btn.dataset.slug = tag.slug;
-            btn.innerHTML = escapeHtml(tag.name) + '<span class="tag-count">(' + ((countMap&&countMap[tag.slug])||tag.count||0) + ')</span>';
-            if (state.activeFilterSlugs.indexOf(tag.slug) !== -1) btn.classList.add('active');
-            btn.addEventListener('click', function() { toggleFilterTag(tag.slug); });
-            dom.tagList.appendChild(btn);
-        });
-    }
-
-    function toggleFilterTag(slug) {
-        var idx = state.activeFilterSlugs.indexOf(slug);
-        if (idx === -1) state.activeFilterSlugs.push(slug);
-        else state.activeFilterSlugs.splice(idx, 1);
-        dom.tagList.querySelectorAll('.tag-btn').forEach(function(btn) { if (btn.dataset.slug === slug) btn.classList.toggle('active'); });
-        applyFilter();
-    }
-
-    function applyFilter() {
-        var data;
-        if (state.activeFilterSlugs.length === 0) data = state.allPhotos;
-        else data = filterGeoJSONByTags(state.allPhotos, state.activeFilterSlugs);
-        state.filteredPhotos = data;
-        updatePhotoData(data);
-        updateTagCounts(data);
-    }
-
-    function updateTagCounts(geojson) {
-        var counts = countTagsInPhotos(geojson);
-        dom.tagList.querySelectorAll('.tag-btn').forEach(function(btn) {
-            var span = btn.querySelector('.tag-count');
-            if (span) span.textContent = '(' + (counts[btn.dataset.slug] || 0) + ')';
-        });
-    }
-
-    function openFilterDrawer() {
-        dom.filterPanel.classList.add('open');
-        dom.filterPanel.classList.remove('hidden');
-        state.filterOpen = true;
-    }
-
-    function closeFilterDrawer() {
-        dom.filterPanel.classList.remove('open');
-        dom.filterPanel.classList.add('hidden');
-        state.filterOpen = false;
-    }
-
-    // ---------------------------------------------------------------
-    // 15. About Card
+    // 14. About Card
     // ---------------------------------------------------------------
     function toggleAboutCard(e) { if(e)e.stopPropagation(); dom.aboutCard.classList.toggle('hidden'); }
     function closeAboutCard() { dom.aboutCard.classList.add('hidden'); }
@@ -766,10 +705,6 @@
         // Photo grid close
         dom.photoGridClose.addEventListener('click', function(e) { e.stopPropagation(); closePhotoGrid(); });
 
-        // Filter toggle & close
-        dom.filterToggle.addEventListener('click', function(e) { e.stopPropagation(); if (state.filterOpen) closeFilterDrawer(); else openFilterDrawer(); });
-        dom.filterClose.addEventListener('click', function(e) { e.stopPropagation(); closeFilterDrawer(); });
-
         // Detail close
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
 
@@ -783,7 +718,6 @@
                 closeArticlePanel();
                 closePhotoGrid();
                 closeDetailPanel();
-                if (state.isMobile) { closeFilterDrawer(); closeSidebar(); }
                 closeAboutCard();
             }
         });
@@ -805,19 +739,13 @@
 
         try {
             if (!hasInlineData) {
-                // 1. Fetch tags
-                var tagsData = await fetchRegionTags();
-                if (tagsData && Array.isArray(tagsData)) {
-                    state.regionTags = tagsData.map(function(t) { return {id:t.id,name:t.name,slug:t.slug,count:t.count||0}; });
-                }
-
-                // 2. Fetch photos
+                // 1. Fetch photos
                 var photosData = await fetchPhotos();
                 if (photosData && Array.isArray(photosData) && photosData.length > 0) {
                     state.allPhotos = buildGeoJSON(photosData);
                 }
 
-                // 3. Fetch recent posts
+                // 2. Fetch recent posts
                 var postsData = await fetchPosts();
                 if (postsData && Array.isArray(postsData)) {
                     state.allPosts = postsData;
@@ -825,26 +753,20 @@
                 }
             }
 
-            // 4. Photo counts per tag
-            var countMap = countTagsInPhotos(state.allPhotos || {type:'FeatureCollection',features:[]});
-
-            // 5. Render sidebar posts
+            // 3. Render sidebar posts
             renderSidebarPosts(state.recentPosts);
 
-            // 6. Render filter tags
-            renderFilterTags(state.regionTags, countMap);
-
-            // 7. Initialize map
+            // 4. Initialize map
             initMap();
 
-            // 8. Hitokoto & animation
+            // 5. Hitokoto & animation
             initHitokoto();
             initEntryAnimation();
 
-            // 9. Bind UI events
+            // 6. Bind UI events
             bindUIEvents();
 
-            // 10. Sidebar default open
+            // 7. Sidebar default open
             openSidebar();
 
         } catch (err) {
