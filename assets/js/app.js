@@ -2,7 +2,7 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 2.0.0
+ * @version 1.0.0
  */
 
 (function () {
@@ -681,7 +681,74 @@
     }
 
     // ---------------------------------------------------------------
-    // 19. UI Event Bindings
+    // 19. Use inline PHP data if available (bypasses REST API 403)
+    // ---------------------------------------------------------------
+    function useInlineData() {
+        if (typeof SphotographyInlineData === 'undefined') return false;
+        var data = SphotographyInlineData;
+
+        // Build region tags from inline photos
+        var tagMap = {};
+        var allTags = [];
+
+        if (data.photos && data.photos.length > 0) {
+            // Build GeoJSON from inline data
+            var features = [];
+            data.photos.forEach(function(photo) {
+                var lat = parseFloat(photo.latitude) || 0;
+                var lng = parseFloat(photo.longitude) || 0;
+                if (lat === 0 && lng === 0) return;
+
+                features.push({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [lng, lat] },
+                    properties: {
+                        id: photo.id,
+                        title: photo.title || 'Untitled',
+                        description: photo.description || '',
+                        thumbnail: photo.thumbnail || '',
+                        fullImage: photo.full_image || '',
+                        cameraInfo: photo.camera_info || '',
+                        takenAt: photo.taken_at || '',
+                        tags: photo.tags || [],
+                        tagSlugs: photo.tag_slugs || [],
+                    },
+                });
+
+                (photo.tags || []).forEach(function(tag) {
+                    if (!tagMap[tag.slug]) {
+                        tagMap[tag.slug] = { id: tag.id, name: tag.name, slug: tag.slug, count: 0 };
+                    }
+                    tagMap[tag.slug].count++;
+                });
+            });
+
+            state.allPhotos = { type: 'FeatureCollection', features: features };
+            state.regionTags = Object.keys(tagMap).map(function(k) { return tagMap[k]; });
+        }
+
+        if (data.posts && data.posts.length > 0) {
+            // Map inline posts to the format expected by sidebar renderer
+            state.allPosts = data.posts.map(function(p) {
+                return {
+                    id: p.id,
+                    title: { rendered: p.title },
+                    date: p.date,
+                    excerpt: { rendered: p.excerpt },
+                    _embedded: {
+                        'wp:featuredmedia': p.thumb ? [{ source_url: p.thumb, media_details: { sizes: { thumbnail: { source_url: p.thumb } } } }] : [],
+                        'wp:term': [p.terms || []],
+                    },
+                };
+            });
+            state.recentPosts = state.allPosts;
+        }
+
+        return true;
+    }
+
+    // ---------------------------------------------------------------
+    // 20. UI Event Bindings
     // ---------------------------------------------------------------
     function bindUIEvents() {
         // Sidebar toggle
@@ -728,35 +795,38 @@
     }
 
     // ---------------------------------------------------------------
-    // 20. Main Init
+    // 21. Main Init (with inline data fallback)
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
 
+        // Try inline PHP data first (bypasses REST API 403)
+        var hasInlineData = useInlineData();
+
         try {
-            // 1. Fetch tags
-            var tagsData = await fetchRegionTags();
-            if (tagsData && Array.isArray(tagsData)) {
-                state.regionTags = tagsData.map(function(t) { return {id:t.id,name:t.name,slug:t.slug,count:t.count||0}; });
-            }
+            if (!hasInlineData) {
+                // 1. Fetch tags
+                var tagsData = await fetchRegionTags();
+                if (tagsData && Array.isArray(tagsData)) {
+                    state.regionTags = tagsData.map(function(t) { return {id:t.id,name:t.name,slug:t.slug,count:t.count||0}; });
+                }
 
-            // 2. Fetch photos
-            var photosData = await fetchPhotos();
-            var geojson = {type:'FeatureCollection',features:[]};
-            if (photosData && Array.isArray(photosData) && photosData.length > 0) {
-                geojson = buildGeoJSON(photosData);
-            }
-            state.allPhotos = geojson;
+                // 2. Fetch photos
+                var photosData = await fetchPhotos();
+                if (photosData && Array.isArray(photosData) && photosData.length > 0) {
+                    state.allPhotos = buildGeoJSON(photosData);
+                }
 
-            // 3. Fetch recent posts
-            var postsData = await fetchPosts();
-            if (postsData && Array.isArray(postsData)) {
-                state.allPosts = postsData;
-                state.recentPosts = postsData;
+                // 3. Fetch recent posts
+                var postsData = await fetchPosts();
+                if (postsData && Array.isArray(postsData)) {
+                    state.allPosts = postsData;
+                    state.recentPosts = postsData;
+                }
             }
 
             // 4. Photo counts per tag
-            var countMap = countTagsInPhotos(geojson);
+            var countMap = countTagsInPhotos(state.allPhotos || {type:'FeatureCollection',features:[]});
 
             // 5. Render sidebar posts
             renderSidebarPosts(state.recentPosts);
