@@ -349,6 +349,10 @@
         }
         document.body.classList.add('sidebar-collapsed');
         state.sidebarOpen = false;
+        // Force close dependent panels
+        closeArticlePanel();
+        closePhotoGrid();
+        closeDetailPanel();
     }
 
     function toggleSidebar() {
@@ -458,41 +462,53 @@
     // ---------------------------------------------------------------
     // 11. Photo Grid Panel
     // ---------------------------------------------------------------
-    function openPhotoGrid(props) {
-        if (!props) return;
+    var PHOTO_GRID_MARGIN = 16; // px gap from marker
+    var PANEL_PADDING = 16; // internal padding
+    var THUMB_SIZE = 120; // width of each thumb cell
 
-        // Find all photos with the same title or nearby location (simple: show all from current data)
-        var currentData = state.filteredPhotos || state.allPhotos;
-        var relatedPhotos = currentData.features || [];
-
-        // If only one photo, just open detail sheet (mobile) or direct article
-        if (relatedPhotos.length === 0) return;
-
-        // Group by location proximity: find photos near this point
-        var coords = props.thumbnail ? null : null; // use thumbnail-less as anchor
-        var anchorLng = 0, anchorLat = 0;
-        // Find current feature coords from the geojson
-        for (var i = 0; i < relatedPhotos.length; i++) {
-            var f = relatedPhotos[i];
+    function getFeatureCoords(props) {
+        if (!state.allPhotos) return null;
+        var features = state.allPhotos.features || [];
+        for (var i = 0; i < features.length; i++) {
+            var f = features[i];
             if (f.properties && f.properties.id === props.id) {
-                anchorLng = f.geometry.coordinates[0];
-                anchorLat = f.geometry.coordinates[1];
-                break;
+                return f.geometry.coordinates;
             }
         }
-
-        // If no anchor found, just show all photos
-        var gridPhotos = relatedPhotos;
-
-        // Limit to 30 photos
-        if (gridPhotos.length > 30) gridPhotos = gridPhotos.slice(0, 30);
-
-        renderPhotoGrid(gridPhotos, props.title || '照片');
+        return null;
     }
 
-    function renderPhotoGrid(photos, title) {
+    function openPhotoGrid(props, clickLngLat) {
+        if (!props) return;
+
+        var coords = clickLngLat || getFeatureCoords(props);
+        if (!coords) coords = [0, 0];
+
+        var currentData = state.filteredPhotos || state.allPhotos;
+        var relatedPhotos = currentData.features || [];
+        if (relatedPhotos.length === 0) return;
+
+        var gridPhotos = relatedPhotos;
+        if (gridPhotos.length > 6) gridPhotos = gridPhotos.slice(0, 6);
+
+        renderPhotoGrid(gridPhotos, props.title || '照片', coords);
+    }
+
+    function renderPhotoGrid(photos, title, coords) {
         dom.photoGridTitle.textContent = title;
         dom.photoGridContainer.innerHTML = '';
+        dom.photoGridPanel.classList.remove('active');
+
+        var count = photos.length;
+        var cols = Math.min(count, 3);
+        var rows = Math.ceil(count / cols);
+
+        // Dynamic sizing
+        var panelW = cols * THUMB_SIZE + (cols - 1) * 10 + PANEL_PADDING * 2;
+        var panelH = rows * THUMB_SIZE + (rows - 1) * 10 + PANEL_PADDING * 2 + 40; // +40 for title
+        dom.photoGridPanel.style.width = panelW + 'px';
+
+        dom.photoGridContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
 
         if (photos.length === 0) {
             dom.photoGridContainer.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">暂无照片</div>';
@@ -510,13 +526,10 @@
                 item.addEventListener('click', function(e) {
                     e.stopPropagation();
                     closePhotoGrid();
-                    // Open detail panel for the photo (shows camera info, description, tags, etc.)
                     if (state.isMobile) {
-                        // Mobile: use bottom sheet detail
                         openDetailPanel(p);
                     } else {
-                        // Desktop: open article-style detail using photograph content
-                        // First try fetching the photograph as a REST post
+                        openSidebar();
                         openPhotographArticle(p.id, p);
                     }
                 });
@@ -524,6 +537,30 @@
                 dom.photoGridContainer.appendChild(item);
             });
         }
+
+        // Position near marker: use map.project to get screen coords
+        if (state.map && coords) {
+            var screenPoint = state.map.project(new maplibregl.LngLat(coords[0], coords[1]));
+            var left = screenPoint.x + PHOTO_GRID_MARGIN;
+            var top = screenPoint.y - panelH / 2;
+
+            // Clamp to viewport
+            if (top < 20) top = 20;
+            if (top + panelH > window.innerHeight - 40) top = window.innerHeight - panelH - 40;
+            if (left + panelW > window.innerWidth - 20) {
+                // If too far right, place to left of marker
+                left = screenPoint.x - panelW - PHOTO_GRID_MARGIN;
+            }
+            if (left < 20) left = 20;
+
+            dom.photoGridPanel.style.left = left + 'px';
+            dom.photoGridPanel.style.top = top + 'px';
+            dom.photoGridPanel.style.right = 'auto';
+            dom.photoGridPanel.style.transform = 'none';
+        }
+
+        // Force sidebar open on desktop
+        if (!state.isMobile) openSidebar();
 
         dom.photoGridPanel.classList.add('active');
         state.photoGridOpen = true;
