@@ -180,10 +180,55 @@ function sphotography_read_exif_and_save( $attachment_id, $file_path ) {
     if ( function_exists( 'exif_read_data' ) ) {
         $exif = @exif_read_data( $file_path, 0, true );
         if ( $exif ) {
-            // GPS coordinates
+            // Debug: log the actual raw GPS data keys
+            $gps_raw_debug = '';
+            if ( isset( $exif['GPS'] ) ) {
+                $gps_keys = array_keys( $exif['GPS'] );
+                $gps_raw_debug = 'GPS keys: ' . implode(',', $gps_keys) . ' ';
+            }
+
+            // Try multiple sources for GPS data
+            $gps_source = null;
+
+            // Source A: Standard GPS IFD
             if ( isset( $exif['GPS'] ) && is_array( $exif['GPS'] ) ) {
-                $lat = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLatitude', 'GPSLatitudeRef' );
-                $lng = sphotography_gps_to_decimal( $exif['GPS'], 'GPSLongitude', 'GPSLongitudeRef' );
+                $gps_source = $exif['GPS'];
+                $result['debug'] .= 'Src=GPS ';
+            }
+            // Source B: Top-level GPS coordinates (some cameras)
+            if ( $gps_source === null && isset( $exif['GPSLatitude'] ) ) {
+                $gps_source = $exif;
+                $result['debug'] .= 'Src=TOP ';
+            }
+            // Source C: In COMPUTED section
+            if ( $gps_source === null && isset( $exif['COMPUTED']['GPSLatitude'] ) ) {
+                $gps_source = $exif['COMPUTED'];
+                $result['debug'] .= 'Src=COMPUTED ';
+            }
+
+            if ( $gps_source !== null ) {
+                // Debug: include raw GPS data structure
+                $gps_json = @json_encode( $gps_source, JSON_PRETTY_PRINT );
+                $result['debug'] .= 'Raw: ' . ( $gps_json ?: 'json_encode failed' ) . ' ';
+
+                $lat = sphotography_gps_to_decimal( $gps_source, 'GPSLatitude', 'GPSLatitudeRef' );
+                $lng = sphotography_gps_to_decimal( $gps_source, 'GPSLongitude', 'GPSLongitudeRef' );
+
+                if ( $lat === null ) {
+                    // Try alternate key names (lowercase, mixed case)
+                    foreach ( array_keys( $gps_source ) as $key ) {
+                        if ( stripos( $key, 'lat' ) !== false && $lat === null ) {
+                            $ref_key = str_replace( 'latitude', 'latituderef', $key );
+                            $ref_key = str_replace( 'Latitude', 'LatitudeRef', $ref_key );
+                            $ref_key = str_replace( 'latitude', 'LatitudeRef', ucfirst( $key ) );
+                            $lat = sphotography_gps_to_decimal( $gps_source, $key, isset( $gps_source[ $ref_key ] ) ? $ref_key : 'GPSLatitudeRef' );
+                        }
+                        if ( stripos( $key, 'lng' ) !== false || stripos( $key, 'lon' ) !== false ) {
+                            $ref_key2 = str_replace( array( 'longitude', 'Longitude' ), array( 'longituderef', 'LongitudeRef' ), $key );
+                            $lng = sphotography_gps_to_decimal( $gps_source, $key, isset( $gps_source[ $ref_key2 ] ) ? $ref_key2 : 'GPSLongitudeRef' );
+                        }
+                    }
+                }
 
                 if ( $lat !== null && $lng !== null ) {
                     update_post_meta( $attachment_id, 'latitude', $lat );
