@@ -7,6 +7,11 @@
  */
 
 // ============================================
+// 0. Load Admin Settings Page
+// ============================================
+require_once get_template_directory() . '/admin/theme-settings.php';
+
+// ============================================
 // 1. Register Custom Post Type: photograph
 // ============================================
 function sphotography_register_photograph_cpt() {
@@ -359,7 +364,26 @@ function sphotography_theme_activation() {
 add_action( 'after_switch_theme', 'sphotography_theme_activation' );
 
 // ============================================
-// 9. Remove admin bar margin for map template
+// 9. Register Admin Menu: 主题全局配置
+// ============================================
+function sphotography_register_admin_menu() {
+    add_menu_page(
+        __( '主题全局配置', 'sphotography' ),   // Page title
+        __( '主题全局配置', 'sphotography' ),   // Menu title
+        'manage_options',                       // Capability
+        'sphotography-settings',                // Menu slug
+        'sphotography_render_settings_page',    // Callback function (from theme-settings.php)
+        'dashicons-admin-generic',              // Icon
+        3                                       // Position (after Dashboard)
+    );
+}
+add_action( 'admin_menu', 'sphotography_register_admin_menu' );
+
+// Enqueue admin scripts for settings page
+add_action( 'admin_enqueue_scripts', 'sphotography_admin_enqueue_settings' );
+
+// ============================================
+// 10. Remove admin bar margin for map template
 // ============================================
 function sphotography_remove_admin_bar_margin() {
     if ( is_page_template( 'template-map.php' ) ) {
