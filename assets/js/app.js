@@ -489,10 +489,15 @@
 
                 item.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    // Open article for this photo, or if not a regular post, show detail
-                    if (p.id && p.fullImage) {
-                        // It's a photograph CPT → try opening as article or showing detail
+                    closePhotoGrid();
+                    // Open detail panel for the photo (shows camera info, description, tags, etc.)
+                    if (state.isMobile) {
+                        // Mobile: use bottom sheet detail
                         openDetailPanel(p);
+                    } else {
+                        // Desktop: open article-style detail using photograph content
+                        // First try fetching the photograph as a REST post
+                        openPhotographArticle(p.id, p);
                     }
                 });
 
@@ -510,7 +515,40 @@
     }
 
     // ---------------------------------------------------------------
-    // 12. Detail Panel (for photograph CPT, fallback)
+    // 12. Photograph Article Panel (desktop: shows photo in article panel)
+    // ---------------------------------------------------------------
+    async function openPhotographArticle(photoId, props) {
+        closePhotoGrid();
+        dom.articleTitle.textContent = props.title || 'Photograph';
+        dom.articleMeta.innerHTML = props.cameraInfo
+            ? '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/></svg>' + escapeHtml(props.cameraInfo) + '</span>'
+            : '';
+        if (props.takenAt) {
+            dom.articleMeta.innerHTML += '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + formatDate(props.takenAt) + '</span>';
+        }
+        // Build content with image + description + tags
+        var contentHtml = '';
+        if (props.fullImage) {
+            contentHtml += '<img src="' + props.fullImage + '" alt="' + escapeHtml(props.title) + '" style="width:100%;border-radius:12px;margin-bottom:20px;">';
+        }
+        if (props.description) {
+            contentHtml += '<p>' + escapeHtml(props.description) + '</p>';
+        }
+        if (props.tags && props.tags.length > 0) {
+            contentHtml += '<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:6px;">';
+            props.tags.forEach(function(tag) {
+                contentHtml += '<span style="padding:4px 12px;font-size:0.75rem;background:rgba(230,126,34,0.12);color:' + PRIMARY_COLOR + ';border:1px solid rgba(230,126,34,0.2);border-radius:12px;">' + escapeHtml(tag.name) + '</span>';
+            });
+            contentHtml += '</div>';
+        }
+        dom.articleContent.innerHTML = contentHtml;
+        dom.articlePanel.classList.add('active');
+        state.articleOpen = true;
+        if (state.isMobile) closeSidebar();
+    }
+
+    // ---------------------------------------------------------------
+    // 13. Detail Panel (for photograph CPT, mobile fallback)
     // ---------------------------------------------------------------
     function openDetailPanel(props) {
         if (!props) return;
@@ -542,7 +580,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 13. Filter Panel
+    // 14. Filter Panel
     // ---------------------------------------------------------------
     function renderFilterTags(tags, countMap) {
         dom.tagList.innerHTML = '';
@@ -599,13 +637,13 @@
     }
 
     // ---------------------------------------------------------------
-    // 14. About Card
+    // 15. About Card
     // ---------------------------------------------------------------
     function toggleAboutCard(e) { if(e)e.stopPropagation(); dom.aboutCard.classList.toggle('hidden'); }
     function closeAboutCard() { dom.aboutCard.classList.add('hidden'); }
 
     // ---------------------------------------------------------------
-    // 15. Loading
+    // 16. Loading
     // ---------------------------------------------------------------
     function hideLoading() {
         if (!dom.loadingOverlay) return;
@@ -614,7 +652,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 16. Hitokoto
+    // 17. Hitokoto
     // ---------------------------------------------------------------
     function initHitokoto() {
         if (!SETTINGS.enableHitokoto) return;
@@ -627,7 +665,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 17. Entry Animation
+    // 18. Entry Animation
     // ---------------------------------------------------------------
     function initEntryAnimation() {
         if (!SETTINGS.entryAnimation) return;
@@ -643,7 +681,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 18. UI Event Bindings
+    // 19. UI Event Bindings
     // ---------------------------------------------------------------
     function bindUIEvents() {
         // Sidebar toggle
@@ -690,7 +728,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 19. Main Init
+    // 20. Main Init
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
