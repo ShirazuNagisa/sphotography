@@ -38,6 +38,8 @@ function sphotography_get_default_settings() {
         'smooth_scroll'       => 'enabled',
         'entry_animation'     => true,
         'pjax_animation'      => true,
+        // ⑥ Footer
+        'footer_content'      => '',
     );
 }
 
@@ -443,7 +445,28 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
-            <!-- Module 6: 版本与更新 -->
+            <!-- Module 6: 页脚设置 -->
+            <!-- ============================================ -->
+            <div class="sphotography-module">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-editor-paragraph"></span>
+                    <h2><?php _e( '页脚设置', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-footer-content"><?php _e( '页脚内容', 'sphotography' ); ?></label>
+                        <textarea id="sphotography-footer-content"
+                                  name="sphotography[footer_content]"
+                                  rows="3"
+                                  style="max-width:100%;font-family:monospace;"
+                                  placeholder="<?php esc_attr_e( '例如：© 2026 Your Name. All rights reserved.', 'sphotography' ); ?>"><?php echo esc_textarea( $values['footer_content'] ); ?></textarea>
+                        <p class="sphotography-desc"><?php _e( '留空则隐藏页脚。支持 HTML 脚本标签。显示在地图底部中央位置。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- Module 7: 版本与更新 -->
             <!-- ============================================ -->
             <div class="sphotography-module">
                 <div class="sphotography-module-header">

@@ -146,6 +146,16 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
         <?php endif; ?>
     </div>
 
+    <!-- ============================================ -->
+    <!-- Footer -->
+    <!-- ============================================ -->
+    <?php $footer_content = get_theme_mod( 'sphotography_footer_content', '' ); ?>
+    <?php if ( ! empty( $footer_content ) ) : ?>
+    <div id="map-footer" class="map-footer glass-panel">
+        <div class="footer-content"><?php echo $footer_content; ?></div>
+    </div>
+    <?php endif; ?>
+
 <?php wp_footer(); ?>
 </body>
 </html>
