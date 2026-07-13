@@ -337,40 +337,57 @@
         if (!USE_CLUSTERING) return;
         if (!state.photoGridOpen || !state.trackedMarkerCoords) return;
 
-        var queryPoint = state.map.project(new maplibregl.LngLat(
-            state.trackedMarkerCoords[0], state.trackedMarkerCoords[1]
-        ));
+        var coords = state.trackedMarkerCoords;
+        var lngLat = new maplibregl.LngLat(coords[0], coords[1]);
 
-        // Query what's at the tracked marker position at current zoom
-        var features = state.map.queryRenderedFeatures(queryPoint, {
+        // Use a bounding box around the point to improve detection reliability
+        var pixelPoint = state.map.project(lngLat);
+        var boxSize = 20; // 20px radius
+        var bbox = [
+            [pixelPoint.x - boxSize, pixelPoint.y - boxSize],
+            [pixelPoint.x + boxSize, pixelPoint.y + boxSize]
+        ];
+
+        var features = state.map.queryRenderedFeatures(bbox, {
             layers: [CONFIG.clusterLayerId, CONFIG.layerId]
         });
 
         if (features.length === 0) {
-            // Nothing here anymore → close grid
             closePhotoGrid();
             return;
         }
 
-        var topFeature = features[0];
+        // Pick the feature closest to the tracked point
+        var closest = null;
+        var closestDist = Infinity;
+        for (var k = 0; k < features.length; k++) {
+            var feat = features[k];
+            var fCoords = feat.geometry.coordinates;
+            var screenF = state.map.project(fCoords);
+            var dx = screenF.x - pixelPoint.x;
+            var dy = screenF.y - pixelPoint.y;
+            var dist = dx * dx + dy * dy;
+            if (dist < closestDist) {
+                closestDist = dist;
+                closest = feat;
+            }
+        }
+        if (!closest) { closePhotoGrid(); return; }
 
-        if (topFeature.properties.cluster_id) {
-            // It's now a cluster → show all cluster leaves
-            var cid = topFeature.properties.cluster_id;
-            var clusterCoords = topFeature.geometry.coordinates;
+        if (closest.properties.cluster_id) {
+            var cid = closest.properties.cluster_id;
+            var clusterCoords = closest.geometry.coordinates;
+            state.openClusterIds = [cid];
             var src = state.map.getSource(CONFIG.clusterSourceId);
             if (src && typeof src.getClusterLeaves === 'function') {
                 src.getClusterLeaves(cid, 100, 0, function(err, leaves) {
                     if (err || !leaves) return;
-                    state.openClusterIds = [cid];
                     renderPhotoGrid(leaves, clusterCoords);
                 });
             }
-        } else if (topFeature.properties) {
-            // It's an individual point → show nearby photos
+        } else if (closest.properties) {
             state.openClusterIds = [];
-            var props = topFeature.properties;
-            openPhotoGrid(props, { lng: state.trackedMarkerCoords[0], lat: state.trackedMarkerCoords[1] });
+            openPhotoGrid(closest.properties, { lng: coords[0], lat: coords[1] });
         }
     }
 
