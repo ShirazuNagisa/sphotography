@@ -485,13 +485,40 @@
         if (!coords) coords = [0, 0];
 
         var currentData = state.filteredPhotos || state.allPhotos;
-        var relatedPhotos = currentData.features || [];
-        if (relatedPhotos.length === 0) return;
+        var allFeatures = currentData.features || [];
+        if (allFeatures.length === 0) return;
 
-        var gridPhotos = relatedPhotos;
-        if (gridPhotos.length > 6) gridPhotos = gridPhotos.slice(0, 6);
+        // Filter photos near the clicked marker (within ~1km at zoom levels)
+        var PROXIMITY_THRESHOLD = 0.05; // degrees (~5km)
+        var nearbyFeatures = [];
+        for (var i = 0; i < allFeatures.length; i++) {
+            var f = allFeatures[i];
+            if (!f.geometry || !f.geometry.coordinates) continue;
+            var dLng = Math.abs(f.geometry.coordinates[0] - coords[0]);
+            var dLat = Math.abs(f.geometry.coordinates[1] - coords[1]);
+            if (dLng < PROXIMITY_THRESHOLD && dLat < PROXIMITY_THRESHOLD) {
+                nearbyFeatures.push(f);
+            }
+        }
 
-        renderPhotoGrid(gridPhotos, props.title || '照片', coords);
+        // If no nearby photos found, show just the clicked one
+        var displayPhotos;
+        if (nearbyFeatures.length === 0) {
+            // Find the clicked feature by id
+            for (var i = 0; i < allFeatures.length; i++) {
+                if (allFeatures[i].properties && allFeatures[i].properties.id === props.id) {
+                    displayPhotos = [allFeatures[i]];
+                    break;
+                }
+            }
+            if (!displayPhotos) return;
+        } else {
+            displayPhotos = nearbyFeatures;
+        }
+
+        if (displayPhotos.length > 6) displayPhotos = displayPhotos.slice(0, 6);
+
+        renderPhotoGrid(displayPhotos, props.title || '照片', coords);
     }
 
     function renderPhotoGrid(photos, title, coords) {
