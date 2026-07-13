@@ -1,6 +1,6 @@
 {
-  "version": "1.0.8",
-  "changelog": "- 修复 EXIF GPS 坐标解析：支持字符串分数格式\n- 新增媒体库手动读取 EXIF 按钮\n- 媒体库图片自动检测 EXIF GPS 并填充坐标\n- 邻近距离过滤照片网格\n- 毛玻璃 UI 优化\n- 浅色模式适配",
+  "version": "1.1.0",
+  "changelog": "- 地图仅显示已发布文章中的图片\n- 照片网格跟随地图移动\n- 点击聚合点显示所有成员照片\n- 同一时刻仅一个展开页\n- 去掉照片网格标题\n- 更新检查接入 jsDelivr CDN",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
   "check_url": "https://cdn.jsdelivr.net/gh/ShirazuNagisa/sphotography@master/version.json"
 }
