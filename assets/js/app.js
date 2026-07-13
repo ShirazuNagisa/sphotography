@@ -231,8 +231,8 @@
             }
         });
 
-        // Map moveend → handle cluster split/merge interactions
-        state.map.on('moveend', function() {
+        // Map idle → handle cluster split/merge interactions (after full render)
+        state.map.on('idle', function() {
             handleClusterInteraction();
         });
 
@@ -337,57 +337,61 @@
         if (!USE_CLUSTERING) return;
         if (!state.photoGridOpen || !state.trackedMarkerCoords) return;
 
-        var coords = state.trackedMarkerCoords;
-        var lngLat = new maplibregl.LngLat(coords[0], coords[1]);
+        var trackedCoords = state.trackedMarkerCoords;
 
-        // Use a bounding box around the point to improve detection reliability
-        var pixelPoint = state.map.project(lngLat);
-        var boxSize = 20; // 20px radius
-        var bbox = [
-            [pixelPoint.x - boxSize, pixelPoint.y - boxSize],
-            [pixelPoint.x + boxSize, pixelPoint.y + boxSize]
-        ];
+        // Query ALL features visible on screen
+        var allFeatures = state.map.queryRenderedFeatures(undefined, { layers: [CONFIG.clusterLayerId, CONFIG.layerId] });
 
-        var features = state.map.queryRenderedFeatures(bbox, {
-            layers: [CONFIG.clusterLayerId, CONFIG.layerId]
-        });
-
-        if (features.length === 0) {
+        if (allFeatures.length === 0) {
             closePhotoGrid();
             return;
         }
 
-        // Pick the feature closest to the tracked point
+        // Find the feature nearest to the tracked coordinate in GEOGRAPHIC space (not screen space)
         var closest = null;
         var closestDist = Infinity;
-        for (var k = 0; k < features.length; k++) {
-            var feat = features[k];
+        for (var k = 0; k < allFeatures.length; k++) {
+            var feat = allFeatures[k];
+            if (!feat.geometry || !feat.geometry.coordinates) continue;
             var fCoords = feat.geometry.coordinates;
-            var screenF = state.map.project(fCoords);
-            var dx = screenF.x - pixelPoint.x;
-            var dy = screenF.y - pixelPoint.y;
+            var dx = fCoords[0] - trackedCoords[0];
+            var dy = fCoords[1] - trackedCoords[1];
             var dist = dx * dx + dy * dy;
             if (dist < closestDist) {
                 closestDist = dist;
                 closest = feat;
             }
         }
-        if (!closest) { closePhotoGrid(); return; }
+
+        if (!closest) {
+            closePhotoGrid();
+            return;
+        }
+
+        // Check if the closest feature is within a reasonable range (~0.5 degrees)
+        if (closestDist > 0.25) {
+            closePhotoGrid();
+            return;
+        }
 
         if (closest.properties.cluster_id) {
+            // It's a cluster — show all leaves
             var cid = closest.properties.cluster_id;
             var clusterCoords = closest.geometry.coordinates;
-            state.openClusterIds = [cid];
             var src = state.map.getSource(CONFIG.clusterSourceId);
             if (src && typeof src.getClusterLeaves === 'function') {
                 src.getClusterLeaves(cid, 100, 0, function(err, leaves) {
                     if (err || !leaves) return;
+                    // Save new coords before calling render
+                    state.trackedMarkerCoords = clusterCoords;
                     renderPhotoGrid(leaves, clusterCoords);
                 });
             }
         } else if (closest.properties) {
-            state.openClusterIds = [];
-            openPhotoGrid(closest.properties, { lng: coords[0], lat: coords[1] });
+            // It's an individual point — show nearby photos
+            var cp = closest.geometry.coordinates;
+            state.trackedMarkerCoords = cp;
+            openPhotoGrid(closest.properties, { lng: cp[0], lat: cp[1] });
         }
     }
 
