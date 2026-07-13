@@ -357,14 +357,48 @@ add_filter( 'rest_photograph_query', 'sphotography_rest_region_tag_filter', 20, 
 // ============================================
 // 7. Load Frontend Assets
 // ============================================
+function sphotography_get_cdn_urls() {
+    $source = get_theme_mod( 'sphotography_cdn_source', 'jsdelivr' );
+    $urls = array(
+        'maplibre_js'   => '',
+        'maplibre_css'  => '',
+        'supercluster'  => '',
+        'domain'        => '',
+    );
+
+    switch ( $source ) {
+        case 'jsdelivr':
+            $urls['maplibre_js']  = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js';
+            $urls['maplibre_css'] = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css';
+            $urls['supercluster'] = 'https://cdn.jsdelivr.net/npm/supercluster@8/dist/supercluster.min.js';
+            $urls['domain']       = 'cdn.jsdelivr.net';
+            break;
+        case 'unpkg':
+            $urls['maplibre_js']  = 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js';
+            $urls['maplibre_css'] = 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css';
+            $urls['supercluster'] = 'https://unpkg.com/supercluster@8/dist/supercluster.min.js';
+            $urls['domain']       = 'unpkg.com';
+            break;
+        case 'cdnjs':
+            $urls['maplibre_js']  = 'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.0.0/maplibre-gl.js';
+            $urls['maplibre_css'] = 'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.0.0/maplibre-gl.css';
+            $urls['supercluster'] = 'https://cdnjs.cloudflare.com/ajax/libs/supercluster/8.0.0/supercluster.min.js';
+            $urls['domain']       = 'cdnjs.cloudflare.com';
+            break;
+    }
+    return $urls;
+}
+
 function sphotography_enqueue_scripts() {
     if ( ! is_page_template( 'template-map.php' ) ) {
         return;
     }
 
+    $cdn = sphotography_get_cdn_urls();
+
     wp_enqueue_style(
         'maplibre-gl',
-        'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css',
+        $cdn['maplibre_css'],
         array(),
         '4.0.0'
     );
@@ -385,7 +419,7 @@ function sphotography_enqueue_scripts() {
 
     wp_enqueue_script(
         'maplibre-gl',
-        'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js',
+        $cdn['maplibre_js'],
         array(),
         '4.0.0',
         true
@@ -393,7 +427,7 @@ function sphotography_enqueue_scripts() {
 
     wp_enqueue_script(
         'supercluster',
-        'https://unpkg.com/supercluster@8/dist/supercluster.min.js',
+        $cdn['supercluster'],
         array(),
         '8.0.0',
         true
