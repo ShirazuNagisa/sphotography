@@ -450,12 +450,22 @@ function sphotography_gps_to_decimal( $gps, $coord_key, $ref_key ) {
 }
 
 function sphotography_exif_frac_to_float( $frac ) {
-    if ( is_array( $frac ) && isset( $frac[0] ) && isset( $frac[1] ) && $frac[1] != 0 ) {
+    // Case 1: array with [numerator, denominator] — e.g., [28, 1]
+    if ( is_array( $frac ) && count( $frac ) >= 2 && isset( $frac[1] ) && $frac[1] != 0 ) {
         return $frac[0] / $frac[1];
     }
+    // Case 2: float or int
     if ( is_float( $frac ) || is_int( $frac ) ) {
         return floatval( $frac );
     }
+    // Case 3: string like "28/1" or "147506/10000"
+    if ( is_string( $frac ) && strpos( $frac, '/' ) !== false ) {
+        $parts = explode( '/', $frac );
+        if ( count( $parts ) === 2 && is_numeric( $parts[0] ) && is_numeric( $parts[1] ) && $parts[1] != 0 ) {
+            return floatval( $parts[0] ) / floatval( $parts[1] );
+        }
+    }
+    // Case 4: numeric string like "28"
     if ( is_string( $frac ) && is_numeric( $frac ) ) {
         return floatval( $frac );
     }
