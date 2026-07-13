@@ -2,28 +2,22 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.0.1
+ * @version 1.1.0
  */
 
 (function () {
     'use strict';
 
-    // ---------------------------------------------------------------
-    // 1. Configuration & Settings
-    // ---------------------------------------------------------------
     const SETTINGS = typeof SphotographySettings !== 'undefined' ? SphotographySettings : {};
     const PRIMARY_COLOR = SETTINGS.primaryColor || '#e67e22';
 
-    // Light and dark map styles
     const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
     const LIGHT_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
-    // Choose initial map style based on night mode setting
     function getMapStyle() {
         var mode = SETTINGS.nightMode || 'system';
         if (mode === 'light') return LIGHT_STYLE;
         if (mode === 'dark') return DARK_STYLE;
-        // system: prefer-color-scheme
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
             return LIGHT_STYLE;
         }
@@ -40,7 +34,6 @@
         styleUrl: getMapStyle(),
         restBase: (typeof Sphotography !== 'undefined' ? Sphotography.restUrl : '/wp-json').replace(/\/$/, ''),
         photosEndpoint: 'wp/v2/photograph',
-        tagsEndpoint: 'wp/v2/region_tag',
         postsEndpoint: 'wp/v2/posts',
         perPage: 500,
         postsPerPage: 50,
@@ -69,6 +62,8 @@
         detailOpen: false,
         isMobile: window.innerWidth < 768,
         clickedMarker: false,
+        trackedMarkerCoords: null,  // Current grid position tracking
+        openClusterIds: [],         // Cluster ids whose photos are currently shown in the grid
     };
 
     // ---------------------------------------------------------------
@@ -166,16 +161,12 @@
         return fetchFromRest(CONFIG.photosEndpoint, { per_page: CONFIG.perPage, _embed: '1', ...(params||{}) });
     }
 
-    function fetchRegionTags() {
-        return fetchFromRest(CONFIG.tagsEndpoint, { per_page: 50 });
-    }
-
     function fetchPosts(params) {
         return fetchFromRest(CONFIG.postsEndpoint, { per_page: CONFIG.postsPerPage, _embed: '1', ...(params||{}) });
     }
 
     // ---------------------------------------------------------------
-    // 6. Photo Data Processing (unchanged)
+    // 6. Photo Data Processing
     // ---------------------------------------------------------------
     function buildGeoJSON(photos) {
         var features = [];
@@ -213,18 +204,6 @@
         return {type:'FeatureCollection',features:features};
     }
 
-    function countTagsInPhotos(geojson) {
-        var counts={};
-        (geojson.features||[]).forEach(function(f){(f.properties.tagSlugs||[]).forEach(function(s){counts[s]=(counts[s]||0)+1;});});
-        return counts;
-    }
-
-    function filterGeoJSONByTags(geojson, slugs) {
-        if (!slugs||slugs.length===0) return geojson;
-        var filtered=(geojson.features||[]).filter(function(f){var fs=f.properties.tagSlugs||[];return slugs.some(function(s){return fs.indexOf(s)!==-1;});});
-        return {type:'FeatureCollection',features:filtered};
-    }
-
     // ---------------------------------------------------------------
     // 7. Map
     // ---------------------------------------------------------------
@@ -244,6 +223,18 @@
             hideLoading();
         });
         state.map.on('error', function(e) { console.warn('Map error:',(e.error&&e.error.message)||e); });
+
+        // Map move → update photo grid position so it follows the marker
+        state.map.on('move', function() {
+            if (state.photoGridOpen && state.trackedMarkerCoords) {
+                updatePhotoGridPosition(state.trackedMarkerCoords);
+            }
+        });
+
+        // Map moveend → handle cluster split/merge interactions
+        state.map.on('moveend', function() {
+            handleClusterInteraction();
+        });
 
         window.addEventListener('resize', debounce(function() {
             if (state.map) state.map.resize();
@@ -287,45 +278,87 @@
     }
 
     // ---------------------------------------------------------------
-    // 8. Map Events
+    // 8. Map Events (includes cluster interaction)
     // ---------------------------------------------------------------
     function bindMapEvents() {
         // Click marker → open photo grid
         state.map.on('click', CONFIG.layerId, function(e) {
             if (!e.features||e.features.length===0) return;
-            state.clickedMarker = true; // prevent bg click handler
+            state.clickedMarker = true;
             var props = e.features[0].properties;
-            openPhotoGrid(props);
+            closePhotoGrid(); // only one grid at a time
+            openPhotoGrid(props, e.lngLat);
             if (e.originalEvent) e.originalEvent.stopPropagation();
         });
 
-        // Click cluster → zoom in
+        // Click cluster → show all photos in that cluster (no zoom)
         if (USE_CLUSTERING) {
             state.map.on('click', CONFIG.clusterLayerId, function(e) {
                 if (!e.features||e.features.length===0) return;
                 state.clickedMarker = true;
-                var cid=e.features[0].properties.cluster_id;
-                var src=state.map.getSource(CONFIG.clusterSourceId);
-                if(src&&typeof src.getClusterExpansionZoom==='function'){
-                    src.getClusterExpansionZoom(cid,function(err,zoom){if(!err)state.map.easeTo({center:e.features[0].geometry.coordinates,zoom:zoom,duration:400});});
+                closePhotoGrid();
+                var clusterFeature = e.features[0];
+                var clusterId = clusterFeature.properties.cluster_id;
+                var coords = clusterFeature.geometry.coordinates;
+                var source = state.map.getSource(CONFIG.clusterSourceId);
+                if (source && typeof source.getClusterLeaves === 'function') {
+                    source.getClusterLeaves(clusterId, 100, 0, function(err, leafFeatures) {
+                        if (err) return;
+                        state.openClusterIds = [clusterId];
+                        // Convert cluster leaves to our format
+                        var displayFeatures = leafFeatures.map(function(lf) { return lf; });
+                        var title = '聚合 (' + displayFeatures.length + ' 张)';
+                        renderPhotoGrid(displayFeatures, coords);
+                    });
                 }
-                if(e.originalEvent)e.originalEvent.stopPropagation();
+                if (e.originalEvent) e.originalEvent.stopPropagation();
             });
         }
 
         // Click map bg → close panels (keep sidebar)
         state.map.on('click', function() {
-            // If a marker was just clicked, skip closing panels
             if (state.clickedMarker) {
                 state.clickedMarker = false;
                 return;
             }
-            closeDetailPanel();
             closePhotoGrid();
             closeArticlePanel();
             if (state.isMobile) { closeSidebar(); }
             closeAboutCard();
+            state.openClusterIds = [];
+            state.trackedMarkerCoords = null;
         });
+    }
+
+    // ---------------------------------------------------------------
+    // 8b. Cluster split/merge handler (called on moveend)
+    // ---------------------------------------------------------------
+    function handleClusterInteraction() {
+        if (!USE_CLUSTERING) return;
+        if (state.openClusterIds.length === 0) return;
+
+        var source = state.map.getSource(CONFIG.clusterSourceId);
+        if (!source || typeof source.getClusterLeaves !== 'function') return;
+
+        // For each tracked cluster, check if it still exists at current zoom
+        var stillOpen = [];
+        state.openClusterIds.forEach(function(cid) {
+            source.getClusterLeaves(cid, 100, 0, function(err, leaves) {
+                if (err || !leaves || leaves.length === 0) {
+                    // Cluster has split — check zoom level
+                    // Find any visible features that were part of this cluster
+                    return;
+                }
+                // Cluster still exists — keep tracking
+                stillOpen.push(cid);
+                // Use cluster leaves to render
+                renderPhotoGrid(leaves, state.trackedMarkerCoords);
+            });
+        });
+        state.openClusterIds = stillOpen;
+        if (stillOpen.length === 0 && state.trackedMarkerCoords) {
+            closePhotoGrid();
+        }
     }
 
     // ---------------------------------------------------------------
@@ -345,10 +378,11 @@
         }
         document.body.classList.add('sidebar-collapsed');
         state.sidebarOpen = false;
-        // Force close dependent panels
-        closeArticlePanel();
         closePhotoGrid();
-        closeDetailPanel();
+        dom.articlePanel.classList.remove('active');
+        state.articleOpen = false;
+        dom.detailSheet.classList.remove('active');
+        state.detailOpen = false;
     }
 
     function toggleSidebar() {
@@ -407,7 +441,6 @@
     async function openArticle(postId) {
         closePhotoGrid();
 
-        // Show loading state
         dom.articleTitle.textContent = '加载中...';
         dom.articleMeta.textContent = '';
         dom.articleContent.innerHTML = '';
@@ -416,7 +449,6 @@
 
         if (state.isMobile) closeSidebar();
 
-        // Fetch full post
         var post = await fetchFromRest(CONFIG.postsEndpoint + '/' + postId, { _embed: '1' });
         if (!post) {
             dom.articleTitle.textContent = '文章加载失败';
@@ -439,13 +471,10 @@
         }
         dom.articleMeta.innerHTML = metaHtml;
 
-        // Render WP content
         dom.articleContent.innerHTML = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
 
-        // Target blank for external links
         dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
 
-        // Re-run entry animation
         if (SETTINGS.entryAnimation) initEntryAnimation();
     }
 
@@ -456,11 +485,11 @@
     }
 
     // ---------------------------------------------------------------
-    // 11. Photo Grid Panel
+    // 11. Photo Grid Panel (no title, single instance, position tracking)
     // ---------------------------------------------------------------
-    var PHOTO_GRID_MARGIN = 16; // px gap from marker
-    var PANEL_PADDING = 16; // internal padding
-    var THUMB_SIZE = 120; // width of each thumb cell
+    var PHOTO_GRID_MARGIN = 16;
+    var PANEL_PADDING = 16;
+    var THUMB_SIZE = 120;
 
     function getFeatureCoords(props) {
         if (!state.allPhotos) return null;
@@ -477,14 +506,13 @@
     function openPhotoGrid(props, clickLngLat) {
         if (!props) return;
 
-        var coords = clickLngLat || getFeatureCoords(props);
+        var coords = clickLngLat ? [clickLngLat.lng, clickLngLat.lat] : getFeatureCoords(props);
         if (!coords) coords = [0, 0];
 
         var allFeatures = (state.allPhotos && state.allPhotos.features) || [];
         if (allFeatures.length === 0) return;
 
-        // Filter photos near the clicked marker (within ~1km at zoom levels)
-        var PROXIMITY_THRESHOLD = 0.05; // degrees (~5km)
+        var PROXIMITY_THRESHOLD = 0.05;
         var nearbyFeatures = [];
         for (var i = 0; i < allFeatures.length; i++) {
             var f = allFeatures[i];
@@ -496,10 +524,8 @@
             }
         }
 
-        // If no nearby photos found, show just the clicked one
         var displayPhotos;
         if (nearbyFeatures.length === 0) {
-            // Find the clicked feature by id
             for (var i = 0; i < allFeatures.length; i++) {
                 if (allFeatures[i].properties && allFeatures[i].properties.id === props.id) {
                     displayPhotos = [allFeatures[i]];
@@ -513,11 +539,12 @@
 
         if (displayPhotos.length > 6) displayPhotos = displayPhotos.slice(0, 6);
 
-        renderPhotoGrid(displayPhotos, props.title || '照片', coords);
+        state.openClusterIds = [];
+        renderPhotoGrid(displayPhotos, coords);
     }
 
-    function renderPhotoGrid(photos, title, coords) {
-        dom.photoGridTitle.textContent = title;
+    function renderPhotoGrid(photos, coords) {
+        dom.photoGridTitle.textContent = ''; // no title (just clean)
         dom.photoGridContainer.innerHTML = '';
         dom.photoGridPanel.classList.remove('active');
 
@@ -525,11 +552,9 @@
         var cols = Math.min(count, 3);
         var rows = Math.ceil(count / cols);
 
-        // Dynamic sizing
         var panelW = cols * THUMB_SIZE + (cols - 1) * 10 + PANEL_PADDING * 2;
-        var panelH = rows * THUMB_SIZE + (rows - 1) * 10 + PANEL_PADDING * 2 + 40; // +40 for title
+        var panelH = rows * THUMB_SIZE + (rows - 1) * 10 + PANEL_PADDING * 2 + 8; // no title, minimal top padding
         dom.photoGridPanel.style.width = panelW + 'px';
-
         dom.photoGridContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
 
         if (photos.length === 0) {
@@ -538,8 +563,8 @@
             photos.forEach(function(feature) {
                 var item = document.createElement('div');
                 item.className = 'photo-grid-item';
-                var p = feature.properties;
-                var imgUrl = p.thumbnail || p.fullImage || '';
+                var p = feature.properties || feature;
+                var imgUrl = p.thumbnail || p.fullImage || (feature.properties ? feature.properties.thumbnail || feature.properties.fullImage : '');
 
                 item.innerHTML = ''
                     + (imgUrl ? '<img src="' + imgUrl + '" alt="' + escapeHtml(p.title) + '" loading="lazy">' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:0.75rem;">无图</div>')
@@ -560,41 +585,48 @@
             });
         }
 
-        // Position near marker: use map.project to get screen coords
-        if (state.map && coords) {
-            var screenPoint = state.map.project(new maplibregl.LngLat(coords[0], coords[1]));
-            var left = screenPoint.x + PHOTO_GRID_MARGIN;
-            var top = screenPoint.y - panelH / 2;
+        // Track and position near marker
+        state.trackedMarkerCoords = coords;
+        updatePhotoGridPosition(coords);
 
-            // Clamp to viewport
-            if (top < 20) top = 20;
-            if (top + panelH > window.innerHeight - 40) top = window.innerHeight - panelH - 40;
-            if (left + panelW > window.innerWidth - 20) {
-                // If too far right, place to left of marker
-                left = screenPoint.x - panelW - PHOTO_GRID_MARGIN;
-            }
-            if (left < 20) left = 20;
-
-            dom.photoGridPanel.style.left = left + 'px';
-            dom.photoGridPanel.style.top = top + 'px';
-            dom.photoGridPanel.style.right = 'auto';
-            dom.photoGridPanel.style.transform = 'none';
-        }
-
-        // Force sidebar open on desktop
         if (!state.isMobile) openSidebar();
 
         dom.photoGridPanel.classList.add('active');
         state.photoGridOpen = true;
     }
 
+    function updatePhotoGridPosition(coords) {
+        if (!state.map || !coords) return;
+        var panelW = parseInt(dom.photoGridPanel.style.width) || 200;
+        var panelH = dom.photoGridPanel.offsetHeight;
+        if (panelH === 0) panelH = 200;
+
+        var screenPoint = state.map.project(new maplibregl.LngLat(coords[0], coords[1]));
+        var left = screenPoint.x + PHOTO_GRID_MARGIN;
+        var top = screenPoint.y - panelH / 2;
+
+        if (top < 20) top = 20;
+        if (top + panelH > window.innerHeight - 40) top = window.innerHeight - panelH - 40;
+        if (left + panelW > window.innerWidth - 20) {
+            left = screenPoint.x - panelW - PHOTO_GRID_MARGIN;
+        }
+        if (left < 20) left = 20;
+
+        dom.photoGridPanel.style.left = left + 'px';
+        dom.photoGridPanel.style.top = top + 'px';
+        dom.photoGridPanel.style.right = 'auto';
+        dom.photoGridPanel.style.transform = 'none';
+    }
+
     function closePhotoGrid() {
         dom.photoGridPanel.classList.remove('active');
         state.photoGridOpen = false;
+        state.trackedMarkerCoords = null;
+        state.openClusterIds = [];
     }
 
     // ---------------------------------------------------------------
-    // 12. Photograph Article Panel (desktop: shows photo in article panel)
+    // 12. Photograph Article Panel
     // ---------------------------------------------------------------
     async function openPhotographArticle(photoId, props) {
         closePhotoGrid();
@@ -605,7 +637,6 @@
         if (props.takenAt) {
             dom.articleMeta.innerHTML += '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + formatDate(props.takenAt) + '</span>';
         }
-        // Build content with image + description + tags
         var contentHtml = '';
         if (props.fullImage) {
             contentHtml += '<img src="' + props.fullImage + '" alt="' + escapeHtml(props.title) + '" style="width:100%;border-radius:12px;margin-bottom:20px;">';
@@ -627,7 +658,7 @@
     }
 
     // ---------------------------------------------------------------
-    // 13. Detail Panel (for photograph CPT, mobile fallback)
+    // 13. Detail Panel
     // ---------------------------------------------------------------
     function openDetailPanel(props) {
         if (!props) return;
@@ -703,18 +734,13 @@
     }
 
     // ---------------------------------------------------------------
-    // 19. Use inline PHP data if available (bypasses REST API 403)
+    // 19. Use inline PHP data
     // ---------------------------------------------------------------
     function useInlineData() {
         if (typeof SphotographyInlineData === 'undefined') return false;
         var data = SphotographyInlineData;
 
-        // Build region tags from inline photos
-        var tagMap = {};
-        var allTags = [];
-
         if (data.photos && data.photos.length > 0) {
-            // Build GeoJSON from inline data
             var features = [];
             data.photos.forEach(function(photo) {
                 var lat = parseFloat(photo.latitude) || 0;
@@ -732,25 +758,14 @@
                         fullImage: photo.full_image || '',
                         cameraInfo: photo.camera_info || '',
                         takenAt: photo.taken_at || '',
-                        tags: photo.tags || [],
-                        tagSlugs: photo.tag_slugs || [],
                     },
-                });
-
-                (photo.tags || []).forEach(function(tag) {
-                    if (!tagMap[tag.slug]) {
-                        tagMap[tag.slug] = { id: tag.id, name: tag.name, slug: tag.slug, count: 0 };
-                    }
-                    tagMap[tag.slug].count++;
                 });
             });
 
             state.allPhotos = { type: 'FeatureCollection', features: features };
-            state.regionTags = Object.keys(tagMap).map(function(k) { return tagMap[k]; });
         }
 
         if (data.posts && data.posts.length > 0) {
-            // Map inline posts to the format expected by sidebar renderer
             state.allPosts = data.posts.map(function(p) {
                 return {
                     id: p.id,
@@ -773,62 +788,46 @@
     // 20. UI Event Bindings
     // ---------------------------------------------------------------
     function bindUIEvents() {
-        // Sidebar toggle
         dom.sidebarToggle.addEventListener('click', function(e) { e.stopPropagation(); toggleSidebar(); });
         dom.sidebarExpand.addEventListener('click', function(e) { e.stopPropagation(); openSidebar(); });
-
-        // Sidebar search
-        dom.sidebarSearch.addEventListener('input', debounce(function() {
-            filterSidebarPosts(this.value);
-        }, 300));
-
-        // Article close
+        dom.sidebarSearch.addEventListener('input', debounce(function() { filterSidebarPosts(this.value); }, 300));
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
-
-        // Photo grid close
         dom.photoGridClose.addEventListener('click', function(e) { e.stopPropagation(); closePhotoGrid(); });
-
-        // Detail close
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
-
-        // About
         dom.aboutTrigger.addEventListener('click', function(e) { toggleAboutCard(e); });
         dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
 
-        // ESC key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' || e.key === 'Esc') {
-                closeArticlePanel();
                 closePhotoGrid();
-                closeDetailPanel();
+                dom.articlePanel.classList.remove('active');
+                state.articleOpen = false;
+                dom.detailSheet.classList.remove('active');
+                state.detailOpen = false;
                 closeAboutCard();
             }
         });
 
-        // Stop propagation on panels so map click doesn't close them
         dom.articlePanel.addEventListener('click', function(e) { e.stopPropagation(); });
         dom.photoGridPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         dom.detailSheet.addEventListener('click', function(e) { e.stopPropagation(); });
     }
 
     // ---------------------------------------------------------------
-    // 21. Main Init (with inline data fallback)
+    // 21. Main Init
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
 
-        // Try inline PHP data first (bypasses REST API 403)
         var hasInlineData = useInlineData();
 
         try {
             if (!hasInlineData) {
-                // 1. Fetch photos
                 var photosData = await fetchPhotos();
                 if (photosData && Array.isArray(photosData) && photosData.length > 0) {
                     state.allPhotos = buildGeoJSON(photosData);
                 }
 
-                // 2. Fetch recent posts
                 var postsData = await fetchPosts();
                 if (postsData && Array.isArray(postsData)) {
                     state.allPosts = postsData;
@@ -836,22 +835,12 @@
                 }
             }
 
-            // 3. Render sidebar posts
             renderSidebarPosts(state.recentPosts);
-
-            // 4. Initialize map
             initMap();
-
-            // 5. Hitokoto & animation
             initHitokoto();
             initEntryAnimation();
-
-            // 6. Bind UI events
             bindUIEvents();
-
-            // 7. Sidebar default open
             openSidebar();
-
         } catch (err) {
             console.error('Init error:', err);
             hideLoading();

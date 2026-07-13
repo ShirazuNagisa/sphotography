@@ -186,18 +186,41 @@ function sphotography_localize_data() {
         );
     }
 
-    // Source 2: Attachments (media library images) with coordinates
-    $attachments = get_posts( array(
-        'post_type'      => 'attachment',
-        'post_mime_type' => 'image',
+    // Source 2: Attachments used in published posts only
+    $used_attachment_ids = array();
+    $published_posts = get_posts( array(
+        'post_type'      => array( 'post', 'photograph' ),
         'posts_per_page' => 500,
-        'post_status'    => 'inherit',
-        'meta_query'     => array(
-            'relation' => 'AND',
-            array( 'key' => 'latitude', 'value' => '', 'compare' => '!=' ),
-            array( 'key' => 'longitude', 'value' => '', 'compare' => '!=' ),
-        ),
+        'post_status'    => 'publish',
+        'fields'         => 'ids',
     ) );
+    foreach ( $published_posts as $pid ) {
+        $thumb_id = get_post_thumbnail_id( $pid );
+        if ( $thumb_id ) $used_attachment_ids[] = $thumb_id;
+        // Also check post content for attached images
+        $content = get_post_field( 'post_content', $pid );
+        preg_match_all( '/wp-image-(\d+)/', $content, $matches );
+        foreach ( $matches[1] as $mid ) {
+            $used_attachment_ids[] = intval( $mid );
+        }
+    }
+    $used_attachment_ids = array_unique( $used_attachment_ids );
+
+    $attachments = array();
+    if ( ! empty( $used_attachment_ids ) ) {
+        $attachments = get_posts( array(
+            'post_type'      => 'attachment',
+            'post_mime_type' => 'image',
+            'posts_per_page' => 500,
+            'post_status'    => 'inherit',
+            'include'        => $used_attachment_ids,
+            'meta_query'     => array(
+                'relation' => 'AND',
+                array( 'key' => 'latitude', 'value' => '', 'compare' => '!=' ),
+                array( 'key' => 'longitude', 'value' => '', 'compare' => '!=' ),
+            ),
+        ) );
+    }
 
     foreach ( $attachments as $att ) {
         $lat = get_post_meta( $att->ID, 'latitude', true );
