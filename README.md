@@ -78,7 +78,7 @@ git clone https://github.com/ShirazuNagisa/sphotography.git
 
 | 字段 | 说明 | 示例 |
 |------|------|------|
-| 标题 | 照片名称 | 衡阳日落 |
+| 标题 | 照片名称 | 城市日落 |
 | 内容 | 照片描述 | 傍晚在湘江边拍摄的落日余晖 |
 | 特色图片 | 上传照片 | JPG / PNG |
 | 地域标签 | Region Tags | 城市, 日落 |
@@ -186,7 +186,7 @@ GNU General Public License v2 or later
 
 ## 作者
 
-**Shirazu Nagisa** — 行走于街巷与山野，用镜头收集人间烟火与自然纹理。
+**Shirazu Nagisa** 
 
 ---
 
