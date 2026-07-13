@@ -235,7 +235,7 @@
         window.addEventListener('resize', debounce(function() {
             if (state.map) state.map.resize();
             var m = isMobileView();
-            if (m !== state.isMobile) { state.isMobile = m; if (!m) closeFilterDrawer(); }
+            if (m !== state.isMobile) { state.isMobile = m; }
         }, 200));
     }
 
@@ -303,7 +303,7 @@
             closeDetailPanel();
             closePhotoGrid();
             closeArticlePanel();
-            if (state.isMobile) { closeFilterDrawer(); closeSidebar(); }
+            if (state.isMobile) { closeSidebar(); }
             closeAboutCard();
         });
     }
