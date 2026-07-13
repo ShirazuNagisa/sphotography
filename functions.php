@@ -7,9 +7,10 @@
  */
 
 // ============================================
-// 0. Load Admin Settings Page
+// 0. Load Admin Settings Page & Theme Mods Applier
 // ============================================
 require_once get_template_directory() . '/admin/theme-settings.php';
+require_once get_template_directory() . '/inc/theme-mods-applier.php';
 
 // ============================================
 // 1. Register Custom Post Type: photograph

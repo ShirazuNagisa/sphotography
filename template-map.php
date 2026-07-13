@@ -71,8 +71,34 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <!-- About Trigger & Card -->
     <button id="about-trigger" class="about-trigger" aria-label="<?php esc_attr_e( 'About the photographer', 'sphotography' ); ?>">i</button>
     <div id="about-card" class="about-card hidden">
-        <h4><?php esc_html_e( 'Shirazu Nagisa', 'sphotography' ); ?></h4>
-        <p><?php esc_html_e( '行走于街巷与山野，用镜头收集人间烟火与自然纹理。', 'sphotography' ); ?></p>
+        <?php
+        $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
+        $author_name = get_theme_mod( 'sphotography_author_nickname', '' );
+        $bio = get_theme_mod( 'sphotography_bio', '' );
+        $site_title = get_theme_mod( 'sphotography_site_title', '' );
+        $hitokoto_enabled = get_theme_mod( 'sphotography_enable_hitokoto', false );
+
+        // Fallback defaults
+        if ( empty( $author_name ) ) {
+            $author_name = __( 'Shirazu Nagisa', 'sphotography' );
+        }
+        if ( empty( $bio ) ) {
+            $bio = __( '行走于街巷与山野，用镜头收集人间烟火与自然纹理。', 'sphotography' );
+        }
+        if ( empty( $site_title ) ) {
+            $site_title = get_bloginfo( 'name' );
+        }
+        ?>
+        <?php if ( $avatar_url ) : ?>
+            <img src="<?php echo esc_url( $avatar_url ); ?>" alt="" class="about-avatar" style="width:60px;height:60px;border-radius:50%;margin-bottom:12px;object-fit:cover;">
+        <?php endif; ?>
+        <h4><?php echo esc_html( $author_name ); ?></h4>
+        <p><?php echo esc_html( $bio ); ?></p>
+        <?php if ( $hitokoto_enabled ) : ?>
+            <div id="hitokoto" class="about-hitokoto" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);font-size:0.8125rem;color:#aaaaaa;font-style:italic;">
+                <span id="hitokoto-text">Loading...</span>
+            </div>
+        <?php endif; ?>
     </div>
 
 <?php wp_footer(); ?>

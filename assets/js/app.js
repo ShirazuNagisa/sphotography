@@ -9,8 +9,11 @@
     'use strict';
 
     // ---------------------------------------------------------------
-    // 1. Configuration
+    // 1. Configuration (with dynamic settings from WordPress)
     // ---------------------------------------------------------------
+    const SETTINGS = typeof SphotographySettings !== 'undefined' ? SphotographySettings : {};
+    const PRIMARY_COLOR = SETTINGS.primaryColor || '#e67e22';
+
     const CONFIG = {
         center: [112.94, 28.23],
         zoom: 5,
@@ -27,7 +30,7 @@
         clusterLayerId: 'photo-clusters',
         clusterCountLayerId: 'photo-cluster-count',
         markerColor: '#ffffff',
-        markerBorderColor: '#e67e22',
+        markerBorderColor: PRIMARY_COLOR,
         markerRadius: 8,
         markerBorderWidth: 3,
     };
@@ -78,9 +81,40 @@
 
     function formatDate(dateStr) {
         if (!dateStr) return '';
-        const parts = dateStr.split('-');
+        var parts = dateStr.split('-');
         if (parts.length !== 3) return dateStr;
-        return parts[0] + '年' + parseInt(parts[1]) + '月' + parseInt(parts[2]) + '日';
+
+        var year = parts[0];
+        var month = parseInt(parts[1]);
+        var day = parseInt(parts[2]);
+
+        var fmt = SETTINGS.dateFormat || 'Y-m-d';
+        if (fmt === 'custom' && SETTINGS.customDateFormat) {
+            fmt = SETTINGS.customDateFormat;
+        }
+
+        // Simple PHP date format emulation
+        var map = {
+            'Y': year,
+            'y': year.slice(-2),
+            'm': ('0' + month).slice(-2),
+            'n': String(month),
+            'd': ('0' + day).slice(-2),
+            'j': String(day),
+            'F': ['January','February','March','April','May','June','July','August','September','October','November','December'][month - 1] || '',
+            'M': ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month - 1] || '',
+        };
+
+        var result = '';
+        for (var i = 0; i < fmt.length; i++) {
+            var ch = fmt[i];
+            if (ch === '\\') {
+                if (i + 1 < fmt.length) { result += fmt[i + 1]; i++; }
+                continue;
+            }
+            result += map[ch] !== undefined ? map[ch] : ch;
+        }
+        return result;
     }
 
     function debounce(fn, delay) {
