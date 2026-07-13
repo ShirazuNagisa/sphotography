@@ -2,7 +2,7 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.0.0
+ * @version 1.0.1
  */
 
 (function () {
@@ -14,12 +14,28 @@
     const SETTINGS = typeof SphotographySettings !== 'undefined' ? SphotographySettings : {};
     const PRIMARY_COLOR = SETTINGS.primaryColor || '#e67e22';
 
+    // Light and dark map styles
+    const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+    const LIGHT_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+
+    // Choose initial map style based on night mode setting
+    function getMapStyle() {
+        var mode = SETTINGS.nightMode || 'system';
+        if (mode === 'light') return LIGHT_STYLE;
+        if (mode === 'dark') return DARK_STYLE;
+        // system: prefer-color-scheme
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            return LIGHT_STYLE;
+        }
+        return DARK_STYLE;
+    }
+
     const CONFIG = {
         center: [112.94, 28.23],
         zoom: 5,
         maxZoom: 18,
         minZoom: 2,
-        styleUrl: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        styleUrl: getMapStyle(),
         restBase: (typeof Sphotography !== 'undefined' ? Sphotography.restUrl : '/wp-json').replace(/\/$/, ''),
         photosEndpoint: 'wp/v2/photograph',
         tagsEndpoint: 'wp/v2/region_tag',
