@@ -110,14 +110,32 @@ function sphotography_localize_data() {
     // ============================================
     // Embed photographs as inline JSON (bypasses REST API 403)
     // ============================================
-    $photos = get_posts( array(
-        'post_type'      => 'photograph',
+    // Fetch both 'photograph' CPT and standard 'post' that have coordinates
+    $photo_posts = get_posts( array(
+        'post_type'      => array( 'photograph', 'post' ),
         'posts_per_page' => 500,
         'post_status'    => 'publish',
+        'meta_query'     => array(
+            'relation' => 'AND',
+            array(
+                'key'     => 'latitude',
+                'value'   => '',
+                'compare' => '!=',
+            ),
+            array(
+                'key'     => 'longitude',
+                'value'   => '',
+                'compare' => '!=',
+            ),
+        ),
     ) );
 
+    // Collect IDs of posts that are shown as photos (to exclude from sidebar list)
+    $photo_post_ids = array();
+
     $photo_data = array();
-    foreach ( $photos as $post ) {
+    foreach ( $photo_posts as $post ) {
+        $photo_post_ids[] = $post->ID;
         $lat    = get_post_meta( $post->ID, 'latitude', true );
         $lng    = get_post_meta( $post->ID, 'longitude', true );
         $camera = get_post_meta( $post->ID, 'camera_info', true );
