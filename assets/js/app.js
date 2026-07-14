@@ -471,218 +471,158 @@
     }
 
     // ---------------------------------------------------------------
-    // 10. Article Panel — macOS Genie Effect
+    // 10. Article Panel — Windows Native Scale Motion
     // ---------------------------------------------------------------
-    function getPostCardRect(postId) {
+    function getPostCardGeometry(postId) {
         var card = dom.sidebarPosts.querySelector('[data-post-id="' + postId + '"]');
         if (!card) return null;
         var rect = card.getBoundingClientRect();
-        var containerRect = dom.sidebarPosts.getBoundingClientRect();
-        var visible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
-        var direction = 'visible';
-        var effectiveTop = rect.top;
-        var effectiveLeft = rect.left;
-        var effectiveWidth = rect.width;
-        var effectiveHeight = rect.height;
-        if (!visible) {
-            if (rect.top < containerRect.top) {
-                direction = 'up';
-                effectiveTop = containerRect.top + 4;
-            } else {
-                direction = 'down';
-                effectiveTop = containerRect.bottom - rect.height - 4;
-                if (effectiveTop < containerRect.top) effectiveTop = containerRect.top + 4;
-            }
-        }
+        var listRect = dom.sidebarPosts.getBoundingClientRect();
         return {
-            top: effectiveTop, left: effectiveLeft, width: effectiveWidth, height: effectiveHeight,
-            visible: visible, direction: direction,
-            centerX: effectiveLeft + effectiveWidth / 2,
-            centerY: effectiveTop + effectiveHeight / 2,
-            rawTop: rect.top, rawBottom: rect.bottom,
-            containerTop: containerRect.top, containerBottom: containerRect.bottom
+            rect: rect,
+            listRect: listRect,
+            centerX: rect.left + rect.width / 2,
+            centerY: rect.top + rect.height / 2,
+            visible: rect.bottom > listRect.top && rect.top < listRect.bottom,
+            direction: rect.top < listRect.top ? 'up' : (rect.bottom > listRect.bottom ? 'down' : 'visible')
         };
     }
 
-    function genRectPolygon(n, w, h) {
-        var pts = [];
-        for (var i = 0; i <= n; i++) pts.push([w * i / n, 0]);
-        for (var i = 0; i <= n; i++) pts.push([w * (n - i) / n, h]);
-        return pts;
+    function createMotionRoot() {
+        var existing = document.getElementById('motion-layer');
+        if (existing) return existing;
+        var layer = document.createElement('div');
+        layer.id = 'motion-layer';
+        layer.className = 'motion-layer';
+        layer.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(layer);
+        return layer;
     }
 
-    function genFunnelPolygon(n, w, h, strength) {
-        var pts = [];
-        for (var i = 0; i <= n; i++) {
-            var t = i / n;
-            var shrink = Math.sin(t * Math.PI) * strength;
-            pts.push([w * t, h * 0.5 * shrink]);
-        }
-        for (var i = 0; i <= n; i++) {
-            var t = i / n;
-            var shrink = Math.sin((n - i) / n * Math.PI) * strength;
-            pts.push([w * (n - i) / n, h - h * 0.5 * shrink]);
-        }
-        return pts;
+    function ensureMotionPanel() {
+        if (dom.motionPanel) return dom.motionPanel;
+        var layer = createMotionRoot();
+        var panel = document.createElement('div');
+        panel.id = 'motion-panel';
+        panel.className = 'motion-panel';
+        panel.innerHTML = '<div class="motion-panel-surface"><div class="motion-panel-frame"></div></div>';
+        layer.appendChild(panel);
+        dom.motionPanel = panel;
+        dom.motionSurface = panel.querySelector('.motion-panel-surface');
+        dom.motionFrame = panel.querySelector('.motion-panel-frame');
+        return panel;
     }
 
-    function genPointPolygon(n, w, h, targetX, targetY, pointSize) {
-        var pts = [];
-        var ps = pointSize || 2;
-        for (var i = 0; i <= n; i++) {
-            var t = i / n;
-            pts.push([targetX + (w * t - targetX) * ps / w, targetY + (0 - targetY) * ps / h]);
-        }
-        for (var i = 0; i <= n; i++) {
-            var t = i / n;
-            pts.push([targetX + (w * (n-i)/n - targetX) * ps / w, targetY + (h - targetY) * ps / h]);
-        }
-        return pts;
+    function setMotionFrameContent(html) {
+        ensureMotionPanel();
+        dom.motionFrame.innerHTML = html;
     }
 
-    function polygonToStr(pts) {
-        return pts.map(function(p) { return p[0].toFixed(2) + '% ' + p[1].toFixed(2) + '%'; }).join(', ');
-    }
-
-    function genieOpen(panel, cardRect) {
-        if (!cardRect) {
-            panel.classList.add('active');
-            return null;
+    function showMotionPanelFromGeometry(geom, html) {
+        ensureMotionPanel();
+        setMotionFrameContent(html);
+        var rect = geom && geom.rect ? geom.rect : null;
+        if (!rect) {
+            dom.motionPanel.classList.add('motion-panel--open');
+            dom.motionPanel.style.transform = '';
+            return;
         }
-        var panelRect = panel.getBoundingClientRect();
-        var pw = panelRect.width, ph = panelRect.height;
-        var N = 12;
-
-        var cardCenterX = (cardRect.centerX - panelRect.left) / pw * 100;
-        var cardCenterY = (cardRect.centerY - panelRect.top) / ph * 100;
-        var cardWPct = cardRect.width / pw * 100;
-        var cardHPct = cardRect.height / ph * 100;
-
-        var k0 = genPointPolygon(N, 100, 100, cardCenterX, cardCenterY, Math.max(cardWPct, cardHPct));
-        var k1 = genFunnelPolygon(N, 100, 100, 20);
-        k1 = k1.map(function(p, idx) {
-            return [cardCenterX + (p[0] - 50) * 0.3, cardCenterY + (p[1] - 50) * 0.3];
+        dom.motionPanel.style.left = rect.left + 'px';
+        dom.motionPanel.style.top = rect.top + 'px';
+        dom.motionPanel.style.width = rect.width + 'px';
+        dom.motionPanel.style.height = rect.height + 'px';
+        dom.motionPanel.classList.add('motion-panel--open');
+        requestAnimationFrame(function () {
+            dom.motionPanel.classList.add('motion-panel--expand');
         });
-        var k2 = genFunnelPolygon(N, 100, 100, 35);
-        var k3 = genFunnelPolygon(N, 100, 100, 12);
-        var k4 = genRectPolygon(N, 100, 100);
+    }
 
-        var offsetX = cardRect.centerX - (panelRect.left + pw / 2);
-        var offsetY = cardRect.centerY - (panelRect.top + ph / 2);
+    function updateMotionPanelToArticle(targetGeom) {
+        if (!dom.motionPanel) return;
+        var articleRect = dom.articlePanel.getBoundingClientRect();
+        var rect = targetGeom && targetGeom.rect ? targetGeom.rect : articleRect;
+        dom.motionPanel.style.left = rect.left + 'px';
+        dom.motionPanel.style.top = rect.top + 'px';
+        dom.motionPanel.style.width = rect.width + 'px';
+        dom.motionPanel.style.height = rect.height + 'px';
+        dom.motionPanel.classList.add('motion-panel--open');
+        dom.motionPanel.classList.add('motion-panel--expanded');
+    }
 
-        var keyframes = [
-            { clipPath: 'polygon(' + polygonToStr(k0) + ')',
-              transform: 'translate(' + offsetX + 'px,' + offsetY + 'px) scale(0.3)',
-              opacity: 0.3 },
-            { clipPath: 'polygon(' + polygonToStr(k1) + ')',
-              transform: 'translate(' + (offsetX * 0.6) + 'px,' + (offsetY * 0.6) + 'px) scale(0.5)',
-              opacity: 0.7, offset: 0.3 },
-            { clipPath: 'polygon(' + polygonToStr(k2) + ')',
-              transform: 'translate(' + (offsetX * 0.3) + 'px,' + (offsetY * 0.3) + 'px) scale(0.8)',
-              opacity: 0.9, offset: 0.6 },
-            { clipPath: 'polygon(' + polygonToStr(k3) + ')',
-              transform: 'translate(0,0) scale(0.98)',
-              opacity: 1, offset: 0.85 },
-            { clipPath: 'polygon(' + polygonToStr(k4) + ')',
-              transform: 'translate(0,0) scale(1)',
-              opacity: 1 }
-        ];
-
-        panel.classList.add('active', 'article-panel--animating');
-        var anim = panel.animate(keyframes, {
-            duration: 420,
-            easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-            fill: 'forwards'
-        });
-        anim.onfinish = function() {
-            panel.classList.remove('article-panel--animating');
-            panel.style.clipPath = '';
-            panel.style.transform = '';
-            panel.style.opacity = '';
+    function animateMotionOpen(postId, articleHtml) {
+        var geom = getPostCardGeometry(postId);
+        if (!geom) {
+            dom.articlePanel.classList.add('active');
+            return;
+        }
+        showMotionPanelFromGeometry(geom, articleHtml);
+        var panel = dom.motionPanel;
+        var target = dom.articlePanel.getBoundingClientRect();
+        if (!target.width || !target.height) {
+            dom.articlePanel.classList.add('active');
+            return;
+        }
+        var dx = target.left - geom.rect.left;
+        var dy = target.top - geom.rect.top;
+        var sx = target.width / Math.max(1, geom.rect.width);
+        var sy = target.height / Math.max(1, geom.rect.height);
+        panel.animate([
+            { transform: 'translate3d(0,0,0) scale(1)', borderRadius: '18px', filter: 'blur(0px)' },
+            { transform: 'translate3d(' + (dx * 0.32) + 'px,' + (dy * 0.32) + 'px,0) scale(' + (1 + (sx - 1) * 0.32).toFixed(4) + ',' + (1 + (sy - 1) * 0.32).toFixed(4) + ')', borderRadius: '16px', offset: 0.22 },
+            { transform: 'translate3d(' + (dx * 0.68) + 'px,' + (dy * 0.68) + 'px,0) scale(' + (1 + (sx - 1) * 0.68).toFixed(4) + ',' + (1 + (sy - 1) * 0.68).toFixed(4) + ')', borderRadius: '14px', offset: 0.62 },
+            { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '12px', filter: 'blur(0px)' }
+        ], { duration: 520, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' }).onfinish = function () {
+            dom.motionPanel.classList.remove('motion-panel--expand');
+            dom.motionPanel.classList.add('motion-panel--hidden');
+            dom.articlePanel.classList.add('active');
+            dom.articlePanel.style.willChange = '';
+            dom.motionPanel.classList.remove('motion-panel--open');
         };
-        return anim;
     }
 
-    function genieClose(panel, cardRect, callback) {
-        if (!cardRect) {
-            panel.classList.remove('active');
-            if (callback) callback();
-            return null;
+    function animateMotionClose(postId) {
+        var geom = getPostCardGeometry(postId);
+        if (!geom || !dom.motionPanel) {
+            dom.articlePanel.classList.remove('active');
+            return;
         }
-        var panelRect = panel.getBoundingClientRect();
-        var pw = panelRect.width, ph = panelRect.height;
-        var N = 12;
-
-        var cardCenterX = (cardRect.centerX - panelRect.left) / pw * 100;
-        var cardCenterY = (cardRect.centerY - panelRect.top) / ph * 100;
-        var cardWPct = cardRect.width / pw * 100;
-        var cardHPct = cardRect.height / ph * 100;
-
-        var k4 = genRectPolygon(N, 100, 100);
-        var k3 = genFunnelPolygon(N, 100, 100, 12);
-        var k2 = genFunnelPolygon(N, 100, 100, 35);
-        var k1 = genFunnelPolygon(N, 100, 100, 20);
-        k1 = k1.map(function(p, idx) {
-            return [cardCenterX + (p[0] - 50) * 0.3, cardCenterY + (p[1] - 50) * 0.3];
-        });
-        var k0 = genPointPolygon(N, 100, 100, cardCenterX, cardCenterY, Math.max(cardWPct, cardHPct));
-
-        var offsetX = cardRect.centerX - (panelRect.left + pw / 2);
-        var offsetY = cardRect.centerY - (panelRect.top + ph / 2);
-
-        var keyframes = [
-            { clipPath: 'polygon(' + polygonToStr(k4) + ')',
-              transform: 'translate(0,0) scale(1)',
-              opacity: 1 },
-            { clipPath: 'polygon(' + polygonToStr(k3) + ')',
-              transform: 'translate(' + (offsetX * 0.2) + 'px,' + (offsetY * 0.2) + 'px) scale(0.98)',
-              opacity: 1, offset: 0.15 },
-            { clipPath: 'polygon(' + polygonToStr(k2) + ')',
-              transform: 'translate(' + (offsetX * 0.4) + 'px,' + (offsetY * 0.4) + 'px) scale(0.8)',
-              opacity: 0.9, offset: 0.4 },
-            { clipPath: 'polygon(' + polygonToStr(k1) + ')',
-              transform: 'translate(' + (offsetX * 0.7) + 'px,' + (offsetY * 0.7) + 'px) scale(0.5)',
-              opacity: 0.7, offset: 0.7 },
-            { clipPath: 'polygon(' + polygonToStr(k0) + ')',
-              transform: 'translate(' + offsetX + 'px,' + offsetY + 'px) scale(0.3)',
-              opacity: 0.3 }
-        ];
-
-        panel.classList.add('article-panel--animating');
-        var anim = panel.animate(keyframes, {
-            duration: 380,
-            easing: 'cubic-bezier(0.7, 0, 0.84, 0)',
-            fill: 'forwards'
-        });
-        anim.onfinish = function() {
-            panel.classList.remove('active', 'article-panel--animating');
-            panel.style.clipPath = '';
-            panel.style.transform = '';
-            panel.style.opacity = '';
-            if (callback) callback();
+        var panel = dom.motionPanel;
+        var articleRect = dom.articlePanel.getBoundingClientRect();
+        var dx = geom.rect.left - articleRect.left;
+        var dy = geom.rect.top - articleRect.top;
+        var sx = Math.max(0.18, geom.rect.width / Math.max(1, articleRect.width));
+        var sy = Math.max(0.18, geom.rect.height / Math.max(1, articleRect.height));
+        panel.classList.remove('motion-panel--hidden');
+        panel.animate([
+            { transform: 'translate3d(0,0,0) scale(1)', borderRadius: '12px', opacity: 1 },
+            { transform: 'translate3d(' + (dx * 0.28) + 'px,' + (dy * 0.28) + 'px,0) scale(' + (1 + (sx - 1) * 0.28).toFixed(4) + ',' + (1 + (sy - 1) * 0.28).toFixed(4) + ')', borderRadius: '14px', offset: 0.22 },
+            { transform: 'translate3d(' + (dx * 0.72) + 'px,' + (dy * 0.72) + 'px,0) scale(' + (1 + (sx - 1) * 0.72).toFixed(4) + ',' + (1 + (sy - 1) * 0.72).toFixed(4) + ')', borderRadius: '16px', offset: 0.62 },
+            { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '18px', opacity: 0.15 }
+        ], { duration: 420, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }).onfinish = function () {
+            dom.motionPanel.classList.remove('motion-panel--open', 'motion-panel--expand', 'motion-panel--expanded');
+            dom.motionPanel.remove();
+            dom.motionPanel = null;
+            dom.motionSurface = null;
+            dom.motionFrame = null;
+            dom.articlePanel.classList.remove('active');
         };
-        return anim;
     }
 
     function openArticle(postId) {
         var requestPostId = postId;
         closeAllPhotoPanels();
-
         if (state.articleOpen) {
-            dom.articlePanel.getAnimations().forEach(function(animation) { animation.cancel(); });
-            dom.articlePanel.classList.remove('active', 'article-panel--animating');
+            if (state.openedPostId && state.openedPostId !== requestPostId) {
+                animateMotionClose(state.openedPostId);
+            }
         }
-
         state.openedPostId = requestPostId;
-        var sourceRect = getPostCardRect(requestPostId);
         state.articleOpen = true;
-
         dom.articleTitle.textContent = '加载中...';
         dom.articleMeta.textContent = '';
         dom.articleContent.innerHTML = '';
-
+        dom.articlePanel.style.willChange = 'transform, opacity';
         if (state.isMobile) closeSidebar(true);
-
         fetchFromRest(CONFIG.postsEndpoint + '/' + requestPostId, { _embed: '1' }).then(function(post) {
             if (state.openedPostId !== requestPostId) return;
             if (!post) {
@@ -690,54 +630,29 @@
                 dom.articlePanel.classList.add('active');
                 return;
             }
-
-        var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
-        dom.articleTitle.textContent = post.title.rendered || '';
-
-        var metaHtml = '';
-        if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
-        if (post._embedded && post._embedded['wp:term']) {
-            post._embedded['wp:term'].forEach(function(ta) {
-                ta.forEach(function(t) {
-                    if (t.taxonomy === 'category' || t.taxonomy === 'region_tag') {
-                        metaHtml += '<span style="color:var(--primary);font-size:0.75rem;">#' + escapeHtml(t.name) + '</span>';
-                    }
-                });
-            });
-        }
-        dom.articleMeta.innerHTML = metaHtml;
-
-        dom.articleContent.innerHTML = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
-
-        dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
-
-        if (!state.isMobile && sourceRect) {
-            genieOpen(dom.articlePanel, sourceRect);
-        } else {
-            dom.articlePanel.classList.add('active');
-        }
-
-        if (SETTINGS.entryAnimation) initEntryAnimation();
+            var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
+            dom.articleTitle.textContent = post.title.rendered || '';
+            var metaHtml = '';
+            if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
+            if (post._embedded && post._embedded['wp:term']) {
+                post._embedded['wp:term'].forEach(function(ta) { ta.forEach(function(t) { if (t.taxonomy === 'category' || t.taxonomy === 'region_tag') metaHtml += '<span style="color:var(--primary);font-size:0.75rem;">#' + escapeHtml(t.name) + '</span>'; }); });
+            }
+            dom.articleMeta.innerHTML = metaHtml;
+            var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
+            dom.articleContent.innerHTML = articleHtml;
+            dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
+            animateMotionOpen(requestPostId, articleHtml);
         });
     }
 
     function closeArticlePanel() {
         if (!state.articleOpen) return;
-        var targetRect = state.openedPostId ? getPostCardRect(state.openedPostId) : null;
-        var panel = dom.articlePanel;
-
+        var targetPostId = state.openedPostId;
         state.articleOpen = false;
         state.openedPostId = null;
-
-        if (!state.isMobile && targetRect) {
-            genieClose(panel, targetRect);
-        } else {
-            panel.getAnimations().forEach(function(animation) { animation.cancel(); });
-            panel.classList.remove('active', 'article-panel--animating');
-            if (state.isMobile && !hasOpenPhotoPanels()) openSidebar();
-        }
+        if (!targetPostId) return;
+        animateMotionClose(targetPostId);
     }
-
     // ---------------------------------------------------------------
     // 11. Dynamic Photo Grid Panels
     // ---------------------------------------------------------------
