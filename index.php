@@ -7,7 +7,7 @@
  * simple setup notice.
  *
  * @package Sphotography
- * @version 1.0.0
+ * @version 1.1.6
  */
 
 ?><!DOCTYPE html>

@@ -2,7 +2,7 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.1.3
+ * @version 1.1.6
  */
 
 (function () {
@@ -63,9 +63,7 @@
         visibleEntities: new Map(),
         photoPanels: new Map(),
         reconcileToken: 0,
-        // 需求1: 文章面板位置追踪
         openedPostId: null,
-        // 需求3: 照片网格互斥（同时只允许一个展开）
         activePhotoPanelKey: null,
     };
 
@@ -224,15 +222,13 @@
         });
         state.map.on('error', function(e) { console.warn('Map error:',(e.error&&e.error.message)||e); });
 
-        // Map move → keep every open panel attached to its current entity.
         state.map.on('move', function() {
             positionAllPhotoPanels();
         });
 
-        // Map idle → handle cluster split/merge interactions (after full render)
-        state.map.on('idle', function() {
+        state.map.on('idle', debounce(function() {
             reconcileOpenPhotoPanels();
-        });
+        }, 120));
 
         window.addEventListener('resize', debounce(function() {
             if (state.map) state.map.resize();
@@ -268,28 +264,27 @@
     }
 
     // ---------------------------------------------------------------
-    // 8. Map Events (includes cluster interaction)
+    // 8. Map Events
     // ---------------------------------------------------------------
     function bindMapEvents() {
-        // Click marker → open photo grid
         state.map.on('click', CONFIG.layerId, function(e) {
             if (!e.features||e.features.length===0) return;
             state.clickedMarker = true;
-            var props = e.features[0].properties;
-            var id = photoId(props);
+            var id = photoId(e.features[0].properties);
             if (id) {
+                state.openPhotoIds.clear();
                 state.openPhotoIds.add(id);
                 reconcileOpenPhotoPanels();
             }
             if (e.originalEvent) e.originalEvent.stopPropagation();
         });
 
-        // Click cluster → show all photos in that cluster (no zoom)
         state.map.on('click', CONFIG.clusterLayerId, function(e) {
             if (!e.features||e.features.length===0) return;
             state.clickedMarker = true;
             var clusterFeature = e.features[0];
             getClusterLeaves(clusterFeature).then(function(leaves) {
+                state.openPhotoIds.clear();
                 leaves.forEach(function(leaf) {
                     var id = photoId(leaf.properties);
                     if (id) state.openPhotoIds.add(id);
@@ -299,7 +294,6 @@
             if (e.originalEvent) e.originalEvent.stopPropagation();
         });
 
-        // Click map bg → close panels (keep sidebar)
         state.map.on('click', function() {
             if (state.clickedMarker) {
                 state.clickedMarker = false;
@@ -328,16 +322,25 @@
                 return;
             }
             var count = Math.max(2, parseInt(props.point_count, 10) || 2);
-            // MapLibre v4 returns a Promise; older compatible builds used a callback.
             if (source.getClusterLeaves.length >= 4) {
                 source.getClusterLeaves(props.cluster_id, count, 0, function(err, leaves) {
                     resolve(err || !leaves ? [] : leaves);
                 });
                 return;
             }
-            source.getClusterLeaves(props.cluster_id, count, 0)
-                .then(function(leaves) { resolve(leaves || []); })
-                .catch(function() { resolve([]); });
+            var result;
+            try {
+                result = source.getClusterLeaves(props.cluster_id, count, 0);
+            } catch (err) {
+                resolve([]);
+                return;
+            }
+            if (result && typeof result.then === 'function') {
+                result.then(function(leaves) { resolve(leaves || []); })
+                    .catch(function() { resolve([]); });
+            } else {
+                resolve(result || []);
+            }
         });
     }
 
@@ -380,8 +383,6 @@
                 entity.photos = entity.photos.filter(function(photo) { return !!photoId(photo.properties); });
                 var ids = entity.photos.map(function(photo) { return photoId(photo.properties); }).sort();
                 if (!ids.some(function(id) { return state.openPhotoIds.has(id); })) return;
-                // Once an entity is visibly expanded, every member inherits that
-                // state so a later split expands all descendant entities.
                 ids.forEach(function(id) { state.openPhotoIds.add(id); });
                 entity.ids = ids;
                 entity.key = 'members:' + ids.join(',');
@@ -402,15 +403,15 @@
         state.sidebarOpen = true;
     }
 
-    function closeSidebar() {
+    function closeSidebar(preserveOverlays) {
         if (state.isMobile) {
             dom.sidebar.classList.remove('open');
         }
         document.body.classList.add('sidebar-collapsed');
         state.sidebarOpen = false;
+        if (preserveOverlays) return;
         closeAllPhotoPanels();
-        dom.articlePanel.classList.remove('active');
-        state.articleOpen = false;
+        closeArticlePanel();
         dom.detailSheet.classList.remove('active');
         state.detailOpen = false;
     }
@@ -448,7 +449,11 @@
 
             card.addEventListener('click', function(e) {
                 e.stopPropagation();
-                openArticle(post.id);
+                if (state.articleOpen && state.openedPostId === post.id) {
+                    closeArticlePanel();
+                } else {
+                    openArticle(post.id);
+                }
             });
 
             dom.sidebarPosts.appendChild(card);
@@ -466,46 +471,225 @@
     }
 
     // ---------------------------------------------------------------
-    // 10. Article Panel
+    // 10. Article Panel — macOS Genie Effect
     // ---------------------------------------------------------------
-    // 需求1: 获取边栏文章卡片的实时屏幕位置
     function getPostCardRect(postId) {
         var card = dom.sidebarPosts.querySelector('[data-post-id="' + postId + '"]');
         if (!card) return null;
         var rect = card.getBoundingClientRect();
-        return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+        var containerRect = dom.sidebarPosts.getBoundingClientRect();
+        var visible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
+        var direction = 'visible';
+        var effectiveTop = rect.top;
+        var effectiveLeft = rect.left;
+        var effectiveWidth = rect.width;
+        var effectiveHeight = rect.height;
+        if (!visible) {
+            if (rect.top < containerRect.top) {
+                direction = 'up';
+                effectiveTop = containerRect.top + 4;
+            } else {
+                direction = 'down';
+                effectiveTop = containerRect.bottom - rect.height - 4;
+                if (effectiveTop < containerRect.top) effectiveTop = containerRect.top + 4;
+            }
+        }
+        return {
+            top: effectiveTop, left: effectiveLeft, width: effectiveWidth, height: effectiveHeight,
+            visible: visible, direction: direction,
+            centerX: effectiveLeft + effectiveWidth / 2,
+            centerY: effectiveTop + effectiveHeight / 2,
+            rawTop: rect.top, rawBottom: rect.bottom,
+            containerTop: containerRect.top, containerBottom: containerRect.bottom
+        };
     }
 
-    async function openArticle(postId) {
+    function genRectPolygon(n, w, h) {
+        var pts = [];
+        for (var i = 0; i <= n; i++) pts.push([w * i / n, 0]);
+        for (var i = 0; i <= n; i++) pts.push([w * (n - i) / n, h]);
+        return pts;
+    }
+
+    function genFunnelPolygon(n, w, h, strength) {
+        var pts = [];
+        for (var i = 0; i <= n; i++) {
+            var t = i / n;
+            var shrink = Math.sin(t * Math.PI) * strength;
+            pts.push([w * t, h * 0.5 * shrink]);
+        }
+        for (var i = 0; i <= n; i++) {
+            var t = i / n;
+            var shrink = Math.sin((n - i) / n * Math.PI) * strength;
+            pts.push([w * (n - i) / n, h - h * 0.5 * shrink]);
+        }
+        return pts;
+    }
+
+    function genPointPolygon(n, w, h, targetX, targetY, pointSize) {
+        var pts = [];
+        var ps = pointSize || 2;
+        for (var i = 0; i <= n; i++) {
+            var t = i / n;
+            pts.push([targetX + (w * t - targetX) * ps / w, targetY + (0 - targetY) * ps / h]);
+        }
+        for (var i = 0; i <= n; i++) {
+            var t = i / n;
+            pts.push([targetX + (w * (n-i)/n - targetX) * ps / w, targetY + (h - targetY) * ps / h]);
+        }
+        return pts;
+    }
+
+    function polygonToStr(pts) {
+        return pts.map(function(p) { return p[0].toFixed(2) + '% ' + p[1].toFixed(2) + '%'; }).join(', ');
+    }
+
+    function genieOpen(panel, cardRect) {
+        if (!cardRect) {
+            panel.classList.add('active');
+            return null;
+        }
+        var panelRect = panel.getBoundingClientRect();
+        var pw = panelRect.width, ph = panelRect.height;
+        var N = 12;
+
+        var cardCenterX = (cardRect.centerX - panelRect.left) / pw * 100;
+        var cardCenterY = (cardRect.centerY - panelRect.top) / ph * 100;
+        var cardWPct = cardRect.width / pw * 100;
+        var cardHPct = cardRect.height / ph * 100;
+
+        var k0 = genPointPolygon(N, 100, 100, cardCenterX, cardCenterY, Math.max(cardWPct, cardHPct));
+        var k1 = genFunnelPolygon(N, 100, 100, 20);
+        k1 = k1.map(function(p, idx) {
+            return [cardCenterX + (p[0] - 50) * 0.3, cardCenterY + (p[1] - 50) * 0.3];
+        });
+        var k2 = genFunnelPolygon(N, 100, 100, 35);
+        var k3 = genFunnelPolygon(N, 100, 100, 12);
+        var k4 = genRectPolygon(N, 100, 100);
+
+        var offsetX = cardRect.centerX - (panelRect.left + pw / 2);
+        var offsetY = cardRect.centerY - (panelRect.top + ph / 2);
+
+        var keyframes = [
+            { clipPath: 'polygon(' + polygonToStr(k0) + ')',
+              transform: 'translate(' + offsetX + 'px,' + offsetY + 'px) scale(0.3)',
+              opacity: 0.3 },
+            { clipPath: 'polygon(' + polygonToStr(k1) + ')',
+              transform: 'translate(' + (offsetX * 0.6) + 'px,' + (offsetY * 0.6) + 'px) scale(0.5)',
+              opacity: 0.7, offset: 0.3 },
+            { clipPath: 'polygon(' + polygonToStr(k2) + ')',
+              transform: 'translate(' + (offsetX * 0.3) + 'px,' + (offsetY * 0.3) + 'px) scale(0.8)',
+              opacity: 0.9, offset: 0.6 },
+            { clipPath: 'polygon(' + polygonToStr(k3) + ')',
+              transform: 'translate(0,0) scale(0.98)',
+              opacity: 1, offset: 0.85 },
+            { clipPath: 'polygon(' + polygonToStr(k4) + ')',
+              transform: 'translate(0,0) scale(1)',
+              opacity: 1 }
+        ];
+
+        panel.classList.add('active', 'article-panel--animating');
+        var anim = panel.animate(keyframes, {
+            duration: 420,
+            easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            fill: 'forwards'
+        });
+        anim.onfinish = function() {
+            panel.classList.remove('article-panel--animating');
+            panel.style.clipPath = '';
+            panel.style.transform = '';
+            panel.style.opacity = '';
+        };
+        return anim;
+    }
+
+    function genieClose(panel, cardRect, callback) {
+        if (!cardRect) {
+            panel.classList.remove('active');
+            if (callback) callback();
+            return null;
+        }
+        var panelRect = panel.getBoundingClientRect();
+        var pw = panelRect.width, ph = panelRect.height;
+        var N = 12;
+
+        var cardCenterX = (cardRect.centerX - panelRect.left) / pw * 100;
+        var cardCenterY = (cardRect.centerY - panelRect.top) / ph * 100;
+        var cardWPct = cardRect.width / pw * 100;
+        var cardHPct = cardRect.height / ph * 100;
+
+        var k4 = genRectPolygon(N, 100, 100);
+        var k3 = genFunnelPolygon(N, 100, 100, 12);
+        var k2 = genFunnelPolygon(N, 100, 100, 35);
+        var k1 = genFunnelPolygon(N, 100, 100, 20);
+        k1 = k1.map(function(p, idx) {
+            return [cardCenterX + (p[0] - 50) * 0.3, cardCenterY + (p[1] - 50) * 0.3];
+        });
+        var k0 = genPointPolygon(N, 100, 100, cardCenterX, cardCenterY, Math.max(cardWPct, cardHPct));
+
+        var offsetX = cardRect.centerX - (panelRect.left + pw / 2);
+        var offsetY = cardRect.centerY - (panelRect.top + ph / 2);
+
+        var keyframes = [
+            { clipPath: 'polygon(' + polygonToStr(k4) + ')',
+              transform: 'translate(0,0) scale(1)',
+              opacity: 1 },
+            { clipPath: 'polygon(' + polygonToStr(k3) + ')',
+              transform: 'translate(' + (offsetX * 0.2) + 'px,' + (offsetY * 0.2) + 'px) scale(0.98)',
+              opacity: 1, offset: 0.15 },
+            { clipPath: 'polygon(' + polygonToStr(k2) + ')',
+              transform: 'translate(' + (offsetX * 0.4) + 'px,' + (offsetY * 0.4) + 'px) scale(0.8)',
+              opacity: 0.9, offset: 0.4 },
+            { clipPath: 'polygon(' + polygonToStr(k1) + ')',
+              transform: 'translate(' + (offsetX * 0.7) + 'px,' + (offsetY * 0.7) + 'px) scale(0.5)',
+              opacity: 0.7, offset: 0.7 },
+            { clipPath: 'polygon(' + polygonToStr(k0) + ')',
+              transform: 'translate(' + offsetX + 'px,' + offsetY + 'px) scale(0.3)',
+              opacity: 0.3 }
+        ];
+
+        panel.classList.add('article-panel--animating');
+        var anim = panel.animate(keyframes, {
+            duration: 380,
+            easing: 'cubic-bezier(0.7, 0, 0.84, 0)',
+            fill: 'forwards'
+        });
+        anim.onfinish = function() {
+            panel.classList.remove('active', 'article-panel--animating');
+            panel.style.clipPath = '';
+            panel.style.transform = '';
+            panel.style.opacity = '';
+            if (callback) callback();
+        };
+        return anim;
+    }
+
+    function openArticle(postId) {
+        var requestPostId = postId;
         closeAllPhotoPanels();
 
-        // 需求1: 记录源卡片位置，用于FLIP动画
-        state.openedPostId = postId;
-        var sourceRect = getPostCardRect(postId);
+        if (state.articleOpen) {
+            dom.articlePanel.getAnimations().forEach(function(animation) { animation.cancel(); });
+            dom.articlePanel.classList.remove('active', 'article-panel--animating');
+        }
+
+        state.openedPostId = requestPostId;
+        var sourceRect = getPostCardRect(requestPostId);
+        state.articleOpen = true;
 
         dom.articleTitle.textContent = '加载中...';
         dom.articleMeta.textContent = '';
         dom.articleContent.innerHTML = '';
 
-        // 需求1: 设置初始位置（从边栏卡片位置出发）
-        if (sourceRect && !state.isMobile) {
-            var panel = dom.articlePanel;
-            panel.style.transformOrigin = sourceRect.left + 'px ' + sourceRect.top + 'px';
-            panel.classList.add('article-panel--opening');
-            // 强制重排以应用初始状态
-            void panel.offsetHeight;
-        }
+        if (state.isMobile) closeSidebar(true);
 
-        dom.articlePanel.classList.add('active');
-        state.articleOpen = true;
-
-        if (state.isMobile) closeSidebar();
-
-        var post = await fetchFromRest(CONFIG.postsEndpoint + '/' + postId, { _embed: '1' });
-        if (!post) {
-            dom.articleTitle.textContent = '文章加载失败';
-            return;
-        }
+        fetchFromRest(CONFIG.postsEndpoint + '/' + requestPostId, { _embed: '1' }).then(function(post) {
+            if (state.openedPostId !== requestPostId) return;
+            if (!post) {
+                dom.articleTitle.textContent = '文章加载失败';
+                dom.articlePanel.classList.add('active');
+                return;
+            }
 
         var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
         dom.articleTitle.textContent = post.title.rendered || '';
@@ -527,38 +711,31 @@
 
         dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
 
+        if (!state.isMobile && sourceRect) {
+            genieOpen(dom.articlePanel, sourceRect);
+        } else {
+            dom.articlePanel.classList.add('active');
+        }
+
         if (SETTINGS.entryAnimation) initEntryAnimation();
+        });
     }
 
     function closeArticlePanel() {
-        // 需求1: 收起时追踪实时卡片位置，FLIP回弹
+        if (!state.articleOpen) return;
         var targetRect = state.openedPostId ? getPostCardRect(state.openedPostId) : null;
         var panel = dom.articlePanel;
 
-        if (targetRect && !state.isMobile && state.articleOpen) {
-            // 设置收起点为当前卡片位置
-            panel.style.transformOrigin = targetRect.left + 'px ' + targetRect.top + 'px';
-            panel.classList.add('article-panel--closing');
-            // 强制重排
-            void panel.offsetHeight;
-
-            // 移除 active 触发 CSS 收起过渡
-            panel.classList.remove('active');
-
-            // 过渡结束后清理
-            setTimeout(function() {
-                panel.classList.remove('article-panel--closing', 'article-panel--opening');
-                panel.style.transformOrigin = '';
-            }, 520); // 匹配 CSS duration-slow
-        } else {
-            panel.classList.remove('active');
-            panel.classList.remove('article-panel--opening', 'article-panel--closing');
-            panel.style.transformOrigin = '';
-        }
-
         state.articleOpen = false;
         state.openedPostId = null;
-        if (state.isMobile && !hasOpenPhotoPanels()) openSidebar();
+
+        if (!state.isMobile && targetRect) {
+            genieClose(panel, targetRect);
+        } else {
+            panel.getAnimations().forEach(function(animation) { animation.cancel(); });
+            panel.classList.remove('active', 'article-panel--animating');
+            if (state.isMobile && !hasOpenPhotoPanels()) openSidebar();
+        }
     }
 
     // ---------------------------------------------------------------
@@ -576,49 +753,43 @@
         return props;
     }
 
-    // 需求3: 丝滑关闭面板（带过渡动画后移除）
     function dismissPhotoPanelWithAnim(key) {
         var panel = state.photoPanels.get(key);
-        if (!panel) return;
+        if (!panel || panel.dismissing) return;
+        panel.dismissing = true;
         var el = panel.element;
         el.classList.add('photo-grid-panel--dismiss');
         el.classList.remove('active');
         setTimeout(function() {
+            if (state.photoPanels.get(key) !== panel) return;
             el.remove();
             state.photoPanels.delete(key);
-        }, 400); // 匹配 CSS 过渡时长
+        }, 400);
     }
 
     function renderVisibleEntities(nextEntities) {
         var prevActiveKey = state.activePhotoPanelKey;
-
-        // 需求3: 互斥逻辑 — 若有多个实体，只保留一个展开
         var keys = Array.from(nextEntities.keys());
-        var newActiveKey = null;
-
-        if (keys.length > 0) {
-            // 优先保留之前活跃的 key，否则取第一个
-            newActiveKey = nextEntities.has(prevActiveKey) ? prevActiveKey : keys[0];
-        }
+        var newActiveKey = keys.length > 0
+            ? (nextEntities.has(prevActiveKey) ? prevActiveKey : keys[0])
+            : null;
         state.activePhotoPanelKey = newActiveKey;
 
-        // 关闭不在新列表中的旧面板（带动画）
         state.photoPanels.forEach(function(panel, key) {
             if (!nextEntities.has(key)) {
                 dismissPhotoPanelWithAnim(key);
             }
         });
 
-        // 创建/更新面板
         nextEntities.forEach(function(entity, key) {
             var panel = state.photoPanels.get(key);
             if (!panel) {
-                // 需求3: 只有 active key 的面板默认展开，其余收起
-                var isActive = (key === newActiveKey);
-                panel = createPhotoPanel(entity, isActive);
+                panel = createPhotoPanel(entity, key === newActiveKey);
                 state.photoPanels.set(key, panel);
             } else {
                 panel.entity = entity;
+                panel.element.classList.toggle('active', key === newActiveKey);
+                panel.element.classList.remove('photo-grid-panel--dismiss');
             }
         });
 
@@ -626,7 +797,6 @@
         positionAllPhotoPanels();
         if (!state.isMobile && nextEntities.size > 0) openSidebar();
 
-        // 需求2: 聚合/散开时触发位置平滑过渡
         requestAnimationFrame(function() {
             state.photoPanels.forEach(function(panel) {
                 panel.element.classList.add('photo-grid-panel--positioned');
@@ -637,7 +807,6 @@
     function createPhotoPanel(entity, isActive) {
         if (typeof isActive === 'undefined') isActive = true;
         var element = document.createElement('div');
-        // 需求3: 根据 isActive 决定初始状态
         element.className = 'photo-grid-panel glass-panel' + (isActive ? ' active' : '');
         element.setAttribute('role', 'dialog');
         element.setAttribute('aria-modal', 'false');
@@ -724,6 +893,7 @@
         state.photoPanels.forEach(function(panel) { panel.element.remove(); });
         state.photoPanels.clear();
         state.visibleEntities.clear();
+        state.activePhotoPanelKey = null;
     }
 
     function closeAllPhotoPanels() {
@@ -735,8 +905,12 @@
     // ---------------------------------------------------------------
     // 12. Photograph Article Panel
     // ---------------------------------------------------------------
-    async function openPhotographArticle(photoId, props) {
+    function openPhotographArticle(photoId, props) {
         closeAllPhotoPanels();
+        if (state.articleOpen) {
+            dom.articlePanel.getAnimations().forEach(function(animation) { animation.cancel(); });
+        }
+        state.openedPostId = null;
         dom.articleTitle.textContent = props.title || 'Photograph';
         dom.articleMeta.innerHTML = props.cameraInfo
             ? '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/></svg>' + escapeHtml(props.cameraInfo) + '</span>'
@@ -761,7 +935,7 @@
         dom.articleContent.innerHTML = contentHtml;
         dom.articlePanel.classList.add('active');
         state.articleOpen = true;
-        if (state.isMobile) closeSidebar();
+        if (state.isMobile) closeSidebar(true);
     }
 
     // ---------------------------------------------------------------
@@ -906,8 +1080,7 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' || e.key === 'Esc') {
                 closeAllPhotoPanels();
-                dom.articlePanel.classList.remove('active');
-                state.articleOpen = false;
+                closeArticlePanel();
                 dom.detailSheet.classList.remove('active');
                 state.detailOpen = false;
                 closeAboutCard();

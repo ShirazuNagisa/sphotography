@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.1.3
+ * @version 1.1.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
