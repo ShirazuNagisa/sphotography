@@ -1275,6 +1275,64 @@ body.sidebar-collapsed .sidebar-expand-btn {
 /* ============================================
    14. Animation Support
    ============================================ */
+
+/* 需求1: 文章面板 FLIP 展开动画 — 从边栏卡片位置出发 */
+.article-panel--opening {
+    /* 初始缩放+偏移，由 JS 设置 transformOrigin 后触发 */
+    transform: translateX(20px) scale(0.92) !important;
+}
+.article-panel.active.article-panel--opening {
+    /* 展开目标态：平滑过渡到最终位置 */
+    transform: translateX(0) scale(1) !important;
+}
+
+/* 需求1: 文章面板 FLIP 收起动画 — 回弹至边栏卡片位置 */
+.article-panel--closing {
+    /* 收起时从当前位置向卡片位置收缩 */
+    transform: translateX(10px) scale(0.96) !important;
+    opacity: 0.6 !important;
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo),
+        border-radius var(--duration-slow) ease;
+    border-radius: 12px; /* 收起时圆角微变，增加视觉引导 */
+}
+
+/* 需求2: 照片网格面板位置平滑过渡（聚合/散开时） */
+.photo-grid-panel {
+    /* 基础无过渡（首次创建时不需要过渡） */
+    will-change: transform, opacity, left, top;
+}
+.photo-grid-panel--positioned {
+    /* 聚合/散开后位置变化使用丝滑过渡 */
+    transition:
+        left var(--duration-slow) var(--ease-out-expo),
+        top var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo),
+        transform var(--duration-slow) var(--ease-out-expo);
+}
+
+/* 需求3: 照片网格面板关闭动画（丝滑消失） */
+.photo-grid-panel--dismiss {
+    transition:
+        opacity var(--duration-normal) var(--ease-in-out-sine),
+        transform var(--duration-normal) var(--ease-out-expo);
+    opacity: 0 !important;
+    transform: scale(0.92) translateY(8px) !important;
+    pointer-events: none;
+}
+
+/* 需求3: 未激活的面板收起状态（互斥逻辑下的非活跃面板） */
+.photo-grid-panel:not(.active):not(.photo-grid-panel--dismiss) {
+    opacity: 0.35;
+    transform: scale(0.95);
+    pointer-events: none;
+    transition:
+        opacity var(--duration-fast) ease,
+        transform var(--duration-fast) var(--ease-spring);
+}
+
+/* Scroll reveal */
 .animate-on-scroll {
     opacity: 0;
     transform: translateY(16px);
