@@ -783,62 +783,63 @@ function sphotography_admin_enqueue_settings( $hook ) {
                 }
             });
 
-            // Check update via jsDelivr CDN (stable, no API token required)
+            // Helper: compare semantic versions, returns true if a > b
+            function semverGreater(a, b) {
+                var pa = a.split('.');
+                var pb = b.split('.');
+                for (var i = 0; i < 3; i++) {
+                    var na = parseInt(pa[i]) || 0;
+                    var nb = parseInt(pb[i]) || 0;
+                    if (na > nb) return true;
+                    if (na < nb) return false;
+                }
+                return false;
+            }
+
+            // Check update via raw GitHub (reliable, no CDN delay)
             $("#sphotography-check-update").on("click", function() {
                 var btn = $(this);
                 var resultDiv = $("#sphotography-update-result");
                 var statusSpan = $("#sphotography-version-status");
 
                 btn.prop("disabled", true).text("检查中...");
-                resultDiv.html("<p style=\"color:#718096;\">正在从 CDN 检查更新...</p>");
+                resultDiv.html("<p style=\"color:#718096;\">正在检查更新...</p>");
 
-                var checkUrls = [
-                    "https://cdn.jsdelivr.net/gh/ShirazuNagisa/sphotography@master/version.json",
-                    "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
-                ];
-                var urlIndex = 0;
+                $.ajax({
+                    url: "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json",
+                    type: "GET", dataType: "json",
+                    timeout: 15000,
+                    success: function(data) {
+                        var currentVer = "' . esc_js( SPHOTOGRAPHY_VERSION ) . '";
+                        var latestVer = data.version || "";
+                        var html = "";
 
-                function tryCheck() {
-                    if (urlIndex >= checkUrls.length) {
-                        resultDiv.html("<p style=\"color:#e74c3c;\">✗ 无法连接到更新服务器，请稍后再试。可直接访问 <a href=\'https://github.com/ShirazuNagisa/sphotography/releases\' target=\'_blank\'>GitHub Releases</a> 手动下载。</p>");
+                        if (!latestVer) {
+                            html = "<p style=\"color:#e67e22;\">ℹ 无法解析版本信息。</p>";
+                            statusSpan.text("检查失败").css("color", "#e67e22");
+                        } else if (semverGreater(latestVer, currentVer)) {
+                            html = "<p style=\"color:#e67e22;font-weight:600;\">★ 发现新版本: v" + latestVer + "</p>"
+                                 + "<p style=\"margin-top:6px;\">当前版本: v" + currentVer + "</p>"
+                                 + '<p style="margin-top:8px;"><a href="https://github.com/ShirazuNagisa/sphotography/releases" target="_blank" class="button button-secondary">查看 Release</a></p>';
+                            statusSpan.text("有新版本: v" + latestVer).css("color", "#e67e22");
+                            if (data.changelog) {
+                                var log = data.changelog.replace(/\\n/g, "<br>");
+                                html += "<div style=\"margin-top:10px;padding:10px 14px;background:#f8f9fa;border-radius:8px;font-size:0.8125rem;color:#555;max-height:200px;overflow-y:auto;\">"
+                                     + "<strong>更新说明:</strong><br>" + log + "</div>";
+                            }
+                        } else {
+                            html = "<p style=\"color:#2ecc71;font-weight:600;\">✓ 当前 v" + currentVer + " 已是最新版本</p>";
+                            statusSpan.text("已是最新").css("color", "#2ecc71");
+                        }
+                        resultDiv.html(html);
+                        btn.prop("disabled", false).text("检查更新");
+                    },
+                    error: function() {
+                        resultDiv.html("<p style=\"color:#e74c3c;\">✗ 无法连接到 raw.githubusercontent.com。可直接访问 <a href=\'https://github.com/ShirazuNagisa/sphotography/releases\' target=\'_blank\'>GitHub Releases</a> 手动查看。</p>");
                         statusSpan.text("检查失败").css("color", "#e74c3c");
                         btn.prop("disabled", false).text("检查更新");
-                        return;
                     }
-                    $.ajax({
-                        url: checkUrls[urlIndex],
-                        type: "GET", dataType: "json",
-                        success: function(data) {
-                            var currentVer = "' . esc_js( SPHOTOGRAPHY_VERSION ) . '";
-                            var latestVer = data.version || "";
-                            var html = "";
-
-                            if (latestVer === currentVer) {
-                                html = "<p style=\"color:#2ecc71;font-weight:600;\">✓ 当前 v" + currentVer + " 已是最新版本</p>";
-                                statusSpan.text("已是最新").css("color", "#2ecc71");
-                            } else if (latestVer) {
-                                html = "<p style=\"color:#e67e22;font-weight:600;\">★ 发现新版本: v" + latestVer + "</p>"
-                                     + "<p style=\"margin-top:6px;\">当前版本: v" + currentVer + "</p>";
-                                statusSpan.text("有新版本: v" + latestVer).css("color", "#e67e22");
-                                if (data.changelog) {
-                                    var log = data.changelog.replace(/\\n/g, "<br>");
-                                    html += "<div style=\"margin-top:10px;padding:10px 14px;background:#f8f9fa;border-radius:8px;font-size:0.8125rem;color:#555;max-height:200px;overflow-y:auto;\">"
-                                         + "<strong>更新说明:</strong><br>" + log + "</div>";
-                                }
-                            } else {
-                                html = "<p style=\"color:#e67e22;\">ℹ 从 CDN 获取版本信息失败，请检查网络或直接访问 GitHub。</p>";
-                                statusSpan.text("检查失败").css("color", "#e67e22");
-                            }
-                            resultDiv.html(html);
-                            btn.prop("disabled", false).text("检查更新");
-                        },
-                        error: function() {
-                            urlIndex++;
-                            tryCheck();
-                        }
-                    });
-                }
-                tryCheck();
+                });
             });
 
             // One-click update: download ZIP and overwrite theme
