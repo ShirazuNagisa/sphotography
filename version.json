@@ -1,6 +1,6 @@
 {
-  "version": "1.1.1",
-  "changelog": "- 边栏底部重新设计：收起按钮缩小至 44×44，中间显示 Theme Sphotography，右侧 GitHub 链接\n- 修复动态聚合/分离交互：moveend 事件使用 queryRenderedFeatures 检测位置变化",
+  "version": "1.1.2",
+  "changelog": "- Bug fix: 动态聚合/分离交互，moveend → idle，修复 queryRenderedFeatures 兼容性\n- UI 改进：边栏底部重新设计，衬线字体品牌文字，GitHub 链接\n- 更新检查改为 GitHub Release API，版本对比使用语义化比较",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
-  "check_url": "https://cdn.jsdelivr.net/gh/ShirazuNagisa/sphotography@master/version.json"
+  "check_url": "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
 }
