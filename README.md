@@ -14,7 +14,7 @@
 - **📂 左侧边栏** — 可展开/收起，显示最近文章列表，支持搜索过滤
 - **📄 文章面板** — 点击文章卡片加载完整 WordPress 文章内容
 - **🖼️ 照片网格** — 点击地图标记点显示 3 列照片网格，点击照片查看详情
-- **🔍 点聚合** — 基于 supercluster，照片密集区域自动聚合显示数量
+- **🔍 点聚合** — 基于 MapLibre 内建 GeoJSON 聚合，照片密集区域自动聚合显示数量
 - **👤 作者浮层** — 右下角信息按钮，显示头像、昵称、简介、一言格言
 - **📱 响应式布局** — 桌面端/平板/移动端三断点适配
 
@@ -38,7 +38,7 @@
 - MapLibre GL JS v4+（开源地图库，无需 API Token）
 - CartoDB Dark Matter / Positron 底图
 - WordPress REST API（含内联数据回退，解决 403 问题）
-- Supercluster 点聚合
+- MapLibre 内建 GeoJSON 点聚合
 - 纯原生 JavaScript（无前端框架依赖）
 
 ---
@@ -172,7 +172,6 @@ sphotography/
 |------|------|------|
 | [MapLibre GL JS](https://maplibre.org/) | 4.x | 地图渲染 |
 | [CartoDB basemaps](https://carto.com/basemaps/) | - | 底图样式（Dark Matter / Positron） |
-| [supercluster](https://github.com/mapbox/supercluster) | 8.x | 点聚合 |
 | [Playfair Display](https://fonts.google.com/specimen/Playfair+Display) | - | 标题字体（Google Fonts） |
 | WordPress | 5.x / 6.x | 内容管理系统 |
 

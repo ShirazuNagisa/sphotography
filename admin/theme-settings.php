@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.0.0
+ * @version 1.1.3
  */
 
 // Prevent direct access
@@ -50,6 +50,13 @@ function sphotography_get_default_settings() {
 // ============================================
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
+    $input = is_array( $input ) ? wp_unslash( $input ) : array();
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'enable_hitokoto', 'entry_animation', 'pjax_animation' ) as $checkbox ) {
+        if ( ! array_key_exists( $checkbox, $input ) ) {
+            $input[ $checkbox ] = 0;
+        }
+    }
+    $input = wp_parse_args( $input, $defaults );
     $sanitized = array();
 
     // ① Global Theme
@@ -81,6 +88,16 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['smooth_scroll'] = in_array( $input['smooth_scroll'], $allowed_scroll, true ) ? $input['smooth_scroll'] : $defaults['smooth_scroll'];
     $sanitized['entry_animation'] = ! empty( $input['entry_animation'] ) ? 1 : 0;
     $sanitized['pjax_animation'] = ! empty( $input['pjax_animation'] ) ? 1 : 0;
+
+    // ⑥ Footer. This settings page is restricted to trusted administrators.
+    // Raw HTML (including scripts) is intentionally supported by the theme.
+    $sanitized['footer_content'] = (string) $input['footer_content'];
+
+    // ⑦ CDN
+    $allowed_cdn = array( 'jsdelivr', 'unpkg', 'cdnjs' );
+    $sanitized['cdn_source'] = in_array( $input['cdn_source'], $allowed_cdn, true )
+        ? $input['cdn_source']
+        : $defaults['cdn_source'];
 
     return $sanitized;
 }
@@ -462,7 +479,7 @@ function sphotography_render_settings_page() {
                                   rows="3"
                                   style="max-width:100%;font-family:monospace;"
                                   placeholder="<?php esc_attr_e( '例如：© 2026 Your Name. All rights reserved.', 'sphotography' ); ?>"><?php echo esc_textarea( $values['footer_content'] ); ?></textarea>
-                        <p class="sphotography-desc"><?php _e( '留空则隐藏页脚。支持 HTML 脚本标签。显示在地图底部中央位置。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '留空则隐藏页脚。支持可信管理员输入的 HTML 与脚本标签，显示在地图底部中央位置。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
@@ -477,7 +494,7 @@ function sphotography_render_settings_page() {
                 </div>
                 <div class="sphotography-module-body">
                     <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-cdn-source"><?php _e( 'MapLibre / Supercluster 加载源', 'sphotography' ); ?></label>
+                        <label class="sphotography-label" for="sphotography-cdn-source"><?php _e( 'MapLibre 加载源', 'sphotography' ); ?></label>
                         <select id="sphotography-cdn-source" name="sphotography[cdn_source]">
                             <option value="jsdelivr" <?php selected( $values['cdn_source'], 'jsdelivr' ); ?>><?php _e( 'jsDelivr（推荐，速度最快）', 'sphotography' ); ?></option>
                             <option value="unpkg" <?php selected( $values['cdn_source'], 'unpkg' ); ?>><?php _e( 'unpkg（当前默认）', 'sphotography' ); ?></option>
@@ -747,136 +764,21 @@ function sphotography_admin_enqueue_settings( $hook ) {
         }
     ' );
 
-    // Admin custom script
-    wp_add_inline_script( 'wp-color-picker', '
-        jQuery(document).ready(function($) {
-            // Init color picker
-            $(".sphotography-color-picker").wpColorPicker({
-                change: function(event, ui) {
-                    var color = ui.color.toString();
-                    $(".sphotography-preset-btn").removeClass("active");
-                }
-            });
+    wp_enqueue_script(
+        'sphotography-admin-settings',
+        get_template_directory_uri() . '/assets/js/admin-settings.js',
+        array( 'jquery', 'wp-color-picker' ),
+        SPHOTOGRAPHY_VERSION,
+        true
+    );
 
-            // Preset color buttons
-            $(".sphotography-preset-btn").on("click", function() {
-                var color = $(this).data("color");
-                $(".sphotography-color-picker").iris("color", color);
-                $(".sphotography-color-picker").val(color);
-                $(".sphotography-preset-btn").removeClass("active");
-                $(this).addClass("active");
-            });
-
-            // Date format toggle
-            $("#sphotography-date-format").on("change", function() {
-                if ($(this).val() === "custom") {
-                    $(".sphotography-custom-date-field").show();
-                } else {
-                    $(".sphotography-custom-date-field").hide();
-                }
-            });
-
-            // Reset confirmation
-            $("#sphotography-reset-btn").on("click", function() {
-                if (confirm("' . esc_js( __( '确定要重置所有设置为默认值吗？此操作不可撤销。', 'sphotography' ) ) . '")) {
-                    $("#sphotography-reset-form").submit();
-                }
-            });
-
-            // Helper: compare semantic versions, returns true if a > b
-            function semverGreater(a, b) {
-                var pa = a.split(".");
-                var pb = b.split(".");
-                for (var i = 0; i < 3; i++) {
-                    var na = parseInt(pa[i]) || 0;
-                    var nb = parseInt(pb[i]) || 0;
-                    if (na > nb) return true;
-                    if (na < nb) return false;
-                }
-                return false;
-            }
-
-            // Check update via raw GitHub (reliable, no CDN delay)
-            $("#sphotography-check-update").on("click", function() {
-                var btn = $(this);
-                var resultDiv = $("#sphotography-update-result");
-                var statusSpan = $("#sphotography-version-status");
-
-                btn.prop("disabled", true).text("检查中...");
-                resultDiv.html("<p style=\"color:#718096;\">正在检查更新...</p>");
-
-                $.ajax({
-                    url: "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json",
-                    type: "GET", dataType: "json",
-                    timeout: 15000,
-                    success: function(data) {
-                        var currentVer = "' . esc_js( SPHOTOGRAPHY_VERSION ) . '";
-                        var latestVer = data.version || "";
-                        var html = "";
-
-                        if (!latestVer) {
-                            html = "<p style=\"color:#e67e22;\">ℹ 无法解析版本信息。</p>";
-                            statusSpan.text("检查失败").css("color", "#e67e22");
-                        } else if (semverGreater(latestVer, currentVer)) {
-                            html = "<p style=\"color:#e67e22;font-weight:600;\">★ 发现新版本: v" + latestVer + "</p>"
-                                 + "<p style=\"margin-top:6px;\">当前版本: v" + currentVer + "</p>"
-                                 + '<p style="margin-top:8px;"><a href="https://github.com/ShirazuNagisa/sphotography/releases" target="_blank" class="button button-secondary">查看 Release</a></p>';
-                            statusSpan.text("有新版本: v" + latestVer).css("color", "#e67e22");
-                            if (data.changelog) {
-                                var log = data.changelog.replace(/\\n/g, "<br>");
-                                html += "<div style=\"margin-top:10px;padding:10px 14px;background:#f8f9fa;border-radius:8px;font-size:0.8125rem;color:#555;max-height:200px;overflow-y:auto;\">"
-                                     + "<strong>更新说明:</strong><br>" + log + "</div>";
-                            }
-                        } else {
-                            html = "<p style=\"color:#2ecc71;font-weight:600;\">✓ 当前 v" + currentVer + " 已是最新版本</p>";
-                            statusSpan.text("已是最新").css("color", "#2ecc71");
-                        }
-                        resultDiv.html(html);
-                        btn.prop("disabled", false).text("检查更新");
-                    },
-                    error: function() {
-                        resultDiv.html("<p style=\"color:#e74c3c;\">✗ 无法连接到 raw.githubusercontent.com。可直接访问 <a href=\'https://github.com/ShirazuNagisa/sphotography/releases\' target=\'_blank\'>GitHub Releases</a> 手动查看。</p>");
-                        statusSpan.text("检查失败").css("color", "#e74c3c");
-                        btn.prop("disabled", false).text("检查更新");
-                    }
-                });
-            });
-
-            // One-click update: download ZIP and overwrite theme
-            $("#sphotography-do-update").on("click", function() {
-                var btn = $(this);
-                var resultDiv = $("#sphotography-update-result");
-
-                if (!confirm("确定从 master 分支下载并覆盖主题文件吗？\n\n配置数据存在数据库中，不受影响。\n更新后请重新激活主题。")) {
-                    return;
-                }
-
-                btn.prop("disabled", true).text("下载更新中...");
-                resultDiv.html("<p style=\"color:#718096;\">正在从 master 分支下载更新...</p>");
-
-                $.ajax({
-                    url: ajaxurl || window.location.origin + "/wp-admin/admin-ajax.php",
-                    type: "POST",
-                    data: {
-                        action: "sphotography_do_update",
-                        branch: "master",
-                        nonce: "' . wp_create_nonce( 'sphotography_update_nonce' ) . '"
-                    },
-                    success: function(res) {
-                        if (res.success) {
-                            resultDiv.html("<p style=\"color:#2ecc71;font-weight:600;\">✓ 更新完成！请重新激活主题以确保生效。</p>"
-                                         + "<p><a href=\"" + window.location.href + "\" class=\"button button-primary\">刷新页面</a></p>");
-                        } else {
-                            resultDiv.html("<p style=\"color:#e74c3c;\">✗ 更新失败: " + (res.data || "未知错误") + "</p>");
-                        }
-                        btn.prop("disabled", false).text("从 master 分支更新主题");
-                    },
-                    error: function() {
-                        resultDiv.html("<p style=\"color:#e74c3c;\">✗ 请求失败，请查看服务器错误日志</p>");
-                        btn.prop("disabled", false).text("从 master 分支更新主题");
-                    }
-                });
-            });
-        });
-    ' );
+    wp_localize_script( 'sphotography-admin-settings', 'SphotographyAdmin', array(
+        'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+        'currentVersion' => SPHOTOGRAPHY_VERSION,
+        'updateUrl'      => 'https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json',
+        'releaseUrl'     => 'https://github.com/ShirazuNagisa/sphotography/releases',
+        'updateNonce'    => wp_create_nonce( 'sphotography_update_nonce' ),
+        'resetConfirm'   => __( '确定要重置所有设置为默认值吗？此操作不可撤销。', 'sphotography' ),
+        'updateConfirm'  => __( "确定从 master 分支下载并覆盖主题文件吗？\n\n配置数据存在数据库中，不受影响。\n更新后请重新激活主题。", 'sphotography' ),
+    ) );
 }

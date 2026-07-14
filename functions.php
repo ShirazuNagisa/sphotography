@@ -3,14 +3,16 @@
  * Sphotography Theme Functions
  *
  * @package Sphotography
- * @version 1.0.1
+ * @version 1.1.3
  */
 
 // ============================================
 // 0. Theme Version (auto-read from style.css) & Load Includes
 // ============================================
 $sphotography_theme = wp_get_theme();
-define( 'SPHOTOGRAPHY_VERSION', $sphotography_theme->get( 'Version' ) );
+if ( ! defined( 'SPHOTOGRAPHY_VERSION' ) ) {
+    define( 'SPHOTOGRAPHY_VERSION', $sphotography_theme->get( 'Version' ) );
+}
 
 require_once get_template_directory() . '/admin/theme-settings.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
@@ -584,7 +586,6 @@ function sphotography_get_cdn_urls() {
     $urls = array(
         'maplibre_js'   => '',
         'maplibre_css'  => '',
-        'supercluster'  => '',
         'domain'        => '',
     );
 
@@ -592,19 +593,16 @@ function sphotography_get_cdn_urls() {
         case 'jsdelivr':
             $urls['maplibre_js']  = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js';
             $urls['maplibre_css'] = 'https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css';
-            $urls['supercluster'] = 'https://cdn.jsdelivr.net/npm/supercluster@8/dist/supercluster.min.js';
             $urls['domain']       = 'cdn.jsdelivr.net';
             break;
         case 'unpkg':
             $urls['maplibre_js']  = 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js';
             $urls['maplibre_css'] = 'https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css';
-            $urls['supercluster'] = 'https://unpkg.com/supercluster@8/dist/supercluster.min.js';
             $urls['domain']       = 'unpkg.com';
             break;
         case 'cdnjs':
             $urls['maplibre_js']  = 'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.0.0/maplibre-gl.js';
             $urls['maplibre_css'] = 'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.0.0/maplibre-gl.css';
-            $urls['supercluster'] = 'https://cdnjs.cloudflare.com/ajax/libs/supercluster/8.0.0/supercluster.min.js';
             $urls['domain']       = 'cdnjs.cloudflare.com';
             break;
     }
@@ -648,17 +646,9 @@ function sphotography_enqueue_scripts() {
     );
 
     wp_enqueue_script(
-        'supercluster',
-        $cdn['supercluster'],
-        array(),
-        '8.0.0',
-        true
-    );
-
-    wp_enqueue_script(
         'sphotography-app',
         get_template_directory_uri() . '/assets/js/app.js',
-        array( 'maplibre-gl', 'supercluster' ),
+        array( 'maplibre-gl' ),
         SPHOTOGRAPHY_VERSION,
         true
     );
@@ -682,9 +672,6 @@ function sphotography_theme_activation() {
     // Register post types and taxonomies first
     sphotography_register_photograph_cpt();
     sphotography_register_region_tag_taxonomy();
-
-    // Flush rewrite rules
-    flush_rewrite_rules();
 
     // Check if the map page already exists
     $map_page = get_page_by_path( 'photography-map', OBJECT, 'page' );
@@ -719,6 +706,9 @@ function sphotography_theme_activation() {
             update_option( 'page_on_front', $map_page->ID );
         }
     }
+
+    // Flush only after all types and the front page are in their final state.
+    flush_rewrite_rules();
 }
 add_action( 'after_switch_theme', 'sphotography_theme_activation' );
 
