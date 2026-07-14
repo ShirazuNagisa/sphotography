@@ -488,133 +488,110 @@
         };
     }
 
-    function createMotionRoot() {
-        var existing = document.getElementById('motion-layer');
-        if (existing) return existing;
-        var layer = document.createElement('div');
+    function getArticleChrome() {
+        return dom.articlePanel.innerHTML;
+    }
+
+    function createMotionLayer() {
+        var layer = document.getElementById('motion-layer');
+        if (layer) return layer;
+        layer = document.createElement('div');
         layer.id = 'motion-layer';
         layer.className = 'motion-layer';
-        layer.setAttribute('aria-hidden', 'true');
         document.body.appendChild(layer);
         return layer;
     }
 
-    function ensureMotionPanel() {
-        if (dom.motionPanel) return dom.motionPanel;
-        var layer = createMotionRoot();
-        var panel = document.createElement('div');
-        panel.id = 'motion-panel';
-        panel.className = 'motion-panel';
-        panel.innerHTML = '<div class="motion-panel-surface"><div class="motion-panel-frame"></div></div>';
-        layer.appendChild(panel);
-        dom.motionPanel = panel;
-        dom.motionSurface = panel.querySelector('.motion-panel-surface');
-        dom.motionFrame = panel.querySelector('.motion-panel-frame');
-        return panel;
+    function createMotionCard() {
+        var layer = createMotionLayer();
+        var card = document.createElement('div');
+        card.id = 'motion-card';
+        card.className = 'motion-card';
+        card.innerHTML = '<div class="motion-card-surface"><div class="motion-card-content"></div></div>';
+        layer.appendChild(card);
+        return card;
     }
 
-    function setMotionFrameContent(html) {
-        ensureMotionPanel();
-        dom.motionFrame.innerHTML = html;
-    }
-
-    function showMotionPanelFromGeometry(geom, html) {
-        ensureMotionPanel();
-        setMotionFrameContent(html);
-        var rect = geom && geom.rect ? geom.rect : null;
-        if (!rect) {
-            dom.motionPanel.classList.add('motion-panel--open');
-            dom.motionPanel.style.transform = '';
-            return;
+    function ensureMotionState() {
+        if (!dom.motionLayer) dom.motionLayer = createMotionLayer();
+        if (!dom.motionCard || !dom.motionCard.isConnected) {
+            dom.motionCard = createMotionCard();
+            dom.motionSurface = dom.motionCard.querySelector('.motion-card-surface');
+            dom.motionContent = dom.motionCard.querySelector('.motion-card-content');
         }
-        dom.motionPanel.style.left = rect.left + 'px';
-        dom.motionPanel.style.top = rect.top + 'px';
-        dom.motionPanel.style.width = rect.width + 'px';
-        dom.motionPanel.style.height = rect.height + 'px';
-        dom.motionPanel.classList.add('motion-panel--open');
-        requestAnimationFrame(function () {
-            dom.motionPanel.classList.add('motion-panel--expand');
-        });
     }
 
-    function updateMotionPanelToArticle(targetGeom) {
-        if (!dom.motionPanel) return;
-        var articleRect = dom.articlePanel.getBoundingClientRect();
-        var rect = targetGeom && targetGeom.rect ? targetGeom.rect : articleRect;
-        dom.motionPanel.style.left = rect.left + 'px';
-        dom.motionPanel.style.top = rect.top + 'px';
-        dom.motionPanel.style.width = rect.width + 'px';
-        dom.motionPanel.style.height = rect.height + 'px';
-        dom.motionPanel.classList.add('motion-panel--open');
-        dom.motionPanel.classList.add('motion-panel--expanded');
+    function setMotionContentFromArticle() {
+        ensureMotionState();
+        dom.motionContent.innerHTML = dom.articlePanel.innerHTML;
     }
 
-    function animateMotionOpen(postId, articleHtml) {
+    function animateWindowsOpen(postId, articleHtml) {
         var geom = getPostCardGeometry(postId);
         if (!geom) {
             dom.articlePanel.classList.add('active');
             return;
         }
-        showMotionPanelFromGeometry(geom, articleHtml);
-        var panel = dom.motionPanel;
-        var target = dom.articlePanel.getBoundingClientRect();
-        if (!target.width || !target.height) {
-            dom.articlePanel.classList.add('active');
-            return;
-        }
-        var dx = target.left - geom.rect.left;
-        var dy = target.top - geom.rect.top;
-        var sx = target.width / Math.max(1, geom.rect.width);
-        var sy = target.height / Math.max(1, geom.rect.height);
-        panel.animate([
+        ensureMotionState();
+        dom.motionContent.innerHTML = articleHtml;
+        dom.motionCard.style.left = geom.rect.left + 'px';
+        dom.motionCard.style.top = geom.rect.top + 'px';
+        dom.motionCard.style.width = geom.rect.width + 'px';
+        dom.motionCard.style.height = geom.rect.height + 'px';
+        dom.motionCard.style.opacity = '1';
+        dom.motionCard.classList.add('motion-card--visible');
+        var targetRect = dom.articlePanel.getBoundingClientRect();
+        var sx = targetRect.width / Math.max(1, geom.rect.width);
+        var sy = targetRect.height / Math.max(1, geom.rect.height);
+        var dx = targetRect.left - geom.rect.left;
+        var dy = targetRect.top - geom.rect.top;
+        dom.motionCard.animate([
             { transform: 'translate3d(0,0,0) scale(1)', borderRadius: '18px', filter: 'blur(0px)' },
-            { transform: 'translate3d(' + (dx * 0.32) + 'px,' + (dy * 0.32) + 'px,0) scale(' + (1 + (sx - 1) * 0.32).toFixed(4) + ',' + (1 + (sy - 1) * 0.32).toFixed(4) + ')', borderRadius: '16px', offset: 0.22 },
-            { transform: 'translate3d(' + (dx * 0.68) + 'px,' + (dy * 0.68) + 'px,0) scale(' + (1 + (sx - 1) * 0.68).toFixed(4) + ',' + (1 + (sy - 1) * 0.68).toFixed(4) + ')', borderRadius: '14px', offset: 0.62 },
+            { transform: 'translate3d(' + (dx * 0.24).toFixed(2) + 'px,' + (dy * 0.24).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.24).toFixed(4) + ',' + (1 + (sy - 1) * 0.24).toFixed(4) + ')', borderRadius: '16px', offset: 0.25 },
+            { transform: 'translate3d(' + (dx * 0.64).toFixed(2) + 'px,' + (dy * 0.64).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.64).toFixed(4) + ',' + (1 + (sy - 1) * 0.64).toFixed(4) + ')', borderRadius: '14px', offset: 0.7 },
             { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '12px', filter: 'blur(0px)' }
         ], { duration: 520, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' }).onfinish = function () {
-            dom.motionPanel.classList.remove('motion-panel--expand');
-            dom.motionPanel.classList.add('motion-panel--hidden');
             dom.articlePanel.classList.add('active');
             dom.articlePanel.style.willChange = '';
-            dom.motionPanel.classList.remove('motion-panel--open');
+            dom.motionCard.classList.remove('motion-card--visible');
+            dom.motionCard.remove();
+            dom.motionCard = null;
+            dom.motionSurface = null;
+            dom.motionContent = null;
+            dom.motionLayer = document.getElementById('motion-layer');
         };
     }
 
-    function animateMotionClose(postId) {
+    function animateWindowsClose(postId) {
         var geom = getPostCardGeometry(postId);
-        if (!geom || !dom.motionPanel) {
+        if (!geom || !dom.motionCard) {
             dom.articlePanel.classList.remove('active');
             return;
         }
-        var panel = dom.motionPanel;
         var articleRect = dom.articlePanel.getBoundingClientRect();
+        var sx = Math.max(0.2, geom.rect.width / Math.max(1, articleRect.width));
+        var sy = Math.max(0.2, geom.rect.height / Math.max(1, articleRect.height));
         var dx = geom.rect.left - articleRect.left;
         var dy = geom.rect.top - articleRect.top;
-        var sx = Math.max(0.18, geom.rect.width / Math.max(1, articleRect.width));
-        var sy = Math.max(0.18, geom.rect.height / Math.max(1, articleRect.height));
-        panel.classList.remove('motion-panel--hidden');
-        panel.animate([
+        dom.motionCard.animate([
             { transform: 'translate3d(0,0,0) scale(1)', borderRadius: '12px', opacity: 1 },
-            { transform: 'translate3d(' + (dx * 0.28) + 'px,' + (dy * 0.28) + 'px,0) scale(' + (1 + (sx - 1) * 0.28).toFixed(4) + ',' + (1 + (sy - 1) * 0.28).toFixed(4) + ')', borderRadius: '14px', offset: 0.22 },
-            { transform: 'translate3d(' + (dx * 0.72) + 'px,' + (dy * 0.72) + 'px,0) scale(' + (1 + (sx - 1) * 0.72).toFixed(4) + ',' + (1 + (sy - 1) * 0.72).toFixed(4) + ')', borderRadius: '16px', offset: 0.62 },
-            { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '18px', opacity: 0.15 }
+            { transform: 'translate3d(' + (dx * 0.24).toFixed(2) + 'px,' + (dy * 0.24).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.24).toFixed(4) + ',' + (1 + (sy - 1) * 0.24).toFixed(4) + ')', borderRadius: '14px', offset: 0.25 },
+            { transform: 'translate3d(' + (dx * 0.68).toFixed(2) + 'px,' + (dy * 0.68).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.68).toFixed(4) + ',' + (1 + (sy - 1) * 0.68).toFixed(4) + ')', borderRadius: '16px', offset: 0.7 },
+            { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '18px', opacity: 0.18 }
         ], { duration: 420, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }).onfinish = function () {
-            dom.motionPanel.classList.remove('motion-panel--open', 'motion-panel--expand', 'motion-panel--expanded');
-            dom.motionPanel.remove();
-            dom.motionPanel = null;
-            dom.motionSurface = null;
-            dom.motionFrame = null;
             dom.articlePanel.classList.remove('active');
+            dom.motionCard.remove();
+            dom.motionCard = null;
+            dom.motionSurface = null;
+            dom.motionContent = null;
         };
     }
 
     function openArticle(postId) {
         var requestPostId = postId;
         closeAllPhotoPanels();
-        if (state.articleOpen) {
-            if (state.openedPostId && state.openedPostId !== requestPostId) {
-                animateMotionClose(state.openedPostId);
-            }
+        if (state.articleOpen && state.openedPostId && state.openedPostId !== requestPostId) {
+            animateWindowsClose(state.openedPostId);
         }
         state.openedPostId = requestPostId;
         state.articleOpen = true;
@@ -641,7 +618,7 @@
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
-            animateMotionOpen(requestPostId, articleHtml);
+            animateWindowsOpen(requestPostId, articleHtml);
         });
     }
 
@@ -651,7 +628,7 @@
         state.articleOpen = false;
         state.openedPostId = null;
         if (!targetPostId) return;
-        animateMotionClose(targetPostId);
+        animateWindowsClose(targetPostId);
     }
     // ---------------------------------------------------------------
     // 11. Dynamic Photo Grid Panels

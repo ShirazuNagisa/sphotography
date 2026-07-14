@@ -1418,3 +1418,50 @@ body.sidebar-collapsed .sidebar-expand-btn {
     max-width: 100%;
     border-radius: 12px;
 }
+
+
+.motion-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 145;
+    pointer-events: none;
+}
+
+.motion-card {
+    position: fixed;
+    left: 0;
+    top: 0;
+    overflow: hidden;
+    border-radius: 18px;
+    background: var(--glass-elevated-bg);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+    transform-origin: top left;
+    will-change: transform, opacity, left, top, width, height;
+    contain: layout paint size;
+    opacity: 0;
+}
+
+.motion-card--visible {
+    opacity: 1;
+}
+
+.motion-card-surface {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.motion-card-content {
+    width: 100%;
+    height: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+    overflow: auto;
+    color: var(--text-primary);
+}
+
+.motion-card-content img {
+    max-width: 100%;
+    border-radius: 12px;
+}
