@@ -785,8 +785,8 @@ function sphotography_admin_enqueue_settings( $hook ) {
 
             // Helper: compare semantic versions, returns true if a > b
             function semverGreater(a, b) {
-                var pa = a.split('.');
-                var pb = b.split('.');
+                var pa = a.split(".");
+                var pb = b.split(".");
                 for (var i = 0; i < 3; i++) {
                     var na = parseInt(pa[i]) || 0;
                     var nb = parseInt(pb[i]) || 0;
