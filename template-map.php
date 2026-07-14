@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.0.0
+ * @version 1.1.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -88,17 +88,9 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     </div>
 
     <!-- ============================================ -->
-    <!-- Photo Grid Panel (click map marker)           -->
+    <!-- Dynamic photo grid panels (click map markers) -->
     <!-- ============================================ -->
-    <div id="photo-grid-panel" class="photo-grid-panel glass-panel" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Photo grid', 'sphotography' ); ?>">
-        <button id="photo-grid-close" class="panel-close-btn" aria-label="<?php esc_attr_e( 'Close photo grid', 'sphotography' ); ?>">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-        <div id="photo-grid-title" class="photo-grid-title"></div>
-        <div id="photo-grid-container" class="photo-grid-container">
-            <!-- 3-column photo grid populated by JS -->
-        </div>
-    </div>
+    <div id="photo-panels" class="photo-panels" aria-live="polite"></div>
 
     <!-- ============================================ -->
     <!-- Detail Sheet (existing, repurposed)           -->
@@ -155,7 +147,8 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <?php $footer_content = get_theme_mod( 'sphotography_footer_content', '' ); ?>
     <?php if ( ! empty( $footer_content ) ) : ?>
     <div id="map-footer" class="map-footer glass-panel">
-        <div class="footer-content"><?php echo $footer_content; ?></div>
+        <?php // Intentionally raw: this value can only be saved by a trusted administrator. ?>
+        <div class="footer-content"><?php echo $footer_content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
     </div>
     <?php endif; ?>
 

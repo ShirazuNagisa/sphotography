@@ -2,7 +2,7 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.1.0
+ * @version 1.1.3
  */
 
 (function () {
@@ -23,8 +23,6 @@
         }
         return DARK_STYLE;
     }
-
-    var USE_CLUSTERING = typeof supercluster !== 'undefined';
 
     const CONFIG = {
         center: [112.94, 28.23],
@@ -58,12 +56,13 @@
         allPosts: [],
         sidebarOpen: true,
         articleOpen: false,
-        photoGridOpen: false,
         detailOpen: false,
         isMobile: window.innerWidth < 768,
         clickedMarker: false,
-        trackedMarkerCoords: null,  // Current grid position tracking
-        openClusterIds: [],         // Cluster ids whose photos are currently shown in the grid
+        openPhotoIds: new Set(),
+        visibleEntities: new Map(),
+        photoPanels: new Map(),
+        reconcileToken: 0,
     };
 
     // ---------------------------------------------------------------
@@ -83,10 +82,7 @@
         dom.articleTitle = document.getElementById('article-title');
         dom.articleMeta = document.getElementById('article-meta');
         dom.articleContent = document.getElementById('article-content');
-        dom.photoGridPanel = document.getElementById('photo-grid-panel');
-        dom.photoGridClose = document.getElementById('photo-grid-close');
-        dom.photoGridTitle = document.getElementById('photo-grid-title');
-        dom.photoGridContainer = document.getElementById('photo-grid-container');
+        dom.photoPanels = document.getElementById('photo-panels');
         dom.detailSheet = document.getElementById('detail-sheet');
         dom.closeDetail = document.getElementById('close-detail');
         dom.detailImg = document.getElementById('detail-img');
@@ -224,16 +220,14 @@
         });
         state.map.on('error', function(e) { console.warn('Map error:',(e.error&&e.error.message)||e); });
 
-        // Map move → update photo grid position so it follows the marker
+        // Map move → keep every open panel attached to its current entity.
         state.map.on('move', function() {
-            if (state.photoGridOpen && state.trackedMarkerCoords) {
-                updatePhotoGridPosition(state.trackedMarkerCoords);
-            }
+            positionAllPhotoPanels();
         });
 
         // Map idle → handle cluster split/merge interactions (after full render)
         state.map.on('idle', function() {
-            handleClusterInteraction();
+            reconcileOpenPhotoPanels();
         });
 
         window.addEventListener('resize', debounce(function() {
@@ -246,35 +240,27 @@
     function addPhotoSource(geojson) {
         var data = geojson || {type:'FeatureCollection',features:[]};
         [CONFIG.clusterSourceId, CONFIG.sourceId].forEach(function(id){if(state.map.getSource(id))state.map.removeSource(id);});
-        if (USE_CLUSTERING) {
-            state.map.addSource(CONFIG.clusterSourceId, {type:'geojson',data:data,cluster:true,clusterMaxZoom:14,clusterRadius:60,clusterMinPoints:2});
-            state.map.addSource(CONFIG.sourceId, {type:'geojson',data:data});
-        } else {
-            state.map.addSource(CONFIG.sourceId, {type:'geojson',data:data});
-        }
+        state.map.addSource(CONFIG.clusterSourceId, {
+            type:'geojson', data:data, cluster:true,
+            clusterMaxZoom:CONFIG.maxZoom, clusterRadius:60, clusterMinPoints:2
+        });
     }
 
     function addPhotoLayers() {
         [CONFIG.clusterCountLayerId, CONFIG.clusterLayerId, CONFIG.layerId].forEach(function(id){if(state.map.getLayer(id))state.map.removeLayer(id);});
-        if (USE_CLUSTERING) {
-            state.map.addLayer({id:CONFIG.clusterLayerId,type:'circle',source:CONFIG.clusterSourceId,filter:['has','point_count'],paint:{'circle-color':'#e67e22','circle-radius':['step',['get','point_count'],18,10,22,50,28,200,36],'circle-opacity':0.85,'circle-stroke-width':2,'circle-stroke-color':'#ffffff'}});
-            state.map.addLayer({id:CONFIG.clusterCountLayerId,type:'symbol',source:CONFIG.clusterSourceId,filter:['has','point_count'],layout:{'text-field':'{point_count_abbreviated}','text-size':12},paint:{'text-color':'#ffffff'}});
-            state.map.addLayer({id:CONFIG.layerId,type:'circle',source:CONFIG.clusterSourceId,filter:['!',['has','point_count']],paint:{'circle-color':CONFIG.markerColor,'circle-radius':CONFIG.markerRadius,'circle-stroke-width':CONFIG.markerBorderWidth,'circle-stroke-color':CONFIG.markerBorderColor,'circle-opacity':0.95}});
-        } else {
-            state.map.addLayer({id:CONFIG.layerId,type:'circle',source:CONFIG.sourceId,paint:{'circle-color':CONFIG.markerColor,'circle-radius':CONFIG.markerRadius,'circle-stroke-width':CONFIG.markerBorderWidth,'circle-stroke-color':CONFIG.markerBorderColor,'circle-opacity':0.95}});
-        }
+        state.map.addLayer({id:CONFIG.clusterLayerId,type:'circle',source:CONFIG.clusterSourceId,filter:['has','point_count'],paint:{'circle-color':'#e67e22','circle-radius':['step',['get','point_count'],18,10,22,50,28,200,36],'circle-opacity':0.85,'circle-stroke-width':2,'circle-stroke-color':'#ffffff'}});
+        state.map.addLayer({id:CONFIG.clusterCountLayerId,type:'symbol',source:CONFIG.clusterSourceId,filter:['has','point_count'],layout:{'text-field':'{point_count_abbreviated}','text-size':12},paint:{'text-color':'#ffffff'}});
+        state.map.addLayer({id:CONFIG.layerId,type:'circle',source:CONFIG.clusterSourceId,filter:['!',['has','point_count']],paint:{'circle-color':CONFIG.markerColor,'circle-radius':CONFIG.markerRadius,'circle-stroke-width':CONFIG.markerBorderWidth,'circle-stroke-color':CONFIG.markerBorderColor,'circle-opacity':0.95}});
         state.map.on('mouseenter',CONFIG.layerId,function(){state.map.getCanvas().style.cursor='pointer';});
         state.map.on('mouseleave',CONFIG.layerId,function(){state.map.getCanvas().style.cursor='';});
+        state.map.on('mouseenter',CONFIG.clusterLayerId,function(){state.map.getCanvas().style.cursor='pointer';});
+        state.map.on('mouseleave',CONFIG.clusterLayerId,function(){state.map.getCanvas().style.cursor='';});
     }
 
     function updatePhotoData(geojson) {
         if (!state.map||!(state.map.isStyleLoaded()||state.map.loaded())) return;
-        if (USE_CLUSTERING) {
-            var cs=state.map.getSource(CONFIG.clusterSourceId); if(cs&&typeof cs.setData==='function')cs.setData(geojson);
-            var ps=state.map.getSource(CONFIG.sourceId); if(ps&&typeof ps.setData==='function')ps.setData(geojson);
-        } else {
-            var s=state.map.getSource(CONFIG.sourceId); if(s&&typeof s.setData==='function')s.setData(geojson);
-        }
+        var source=state.map.getSource(CONFIG.clusterSourceId);
+        if(source&&typeof source.setData==='function')source.setData(geojson);
     }
 
     // ---------------------------------------------------------------
@@ -286,34 +272,28 @@
             if (!e.features||e.features.length===0) return;
             state.clickedMarker = true;
             var props = e.features[0].properties;
-            closePhotoGrid(); // only one grid at a time
-            openPhotoGrid(props, e.lngLat);
+            var id = photoId(props);
+            if (id) {
+                state.openPhotoIds.add(id);
+                reconcileOpenPhotoPanels();
+            }
             if (e.originalEvent) e.originalEvent.stopPropagation();
         });
 
         // Click cluster → show all photos in that cluster (no zoom)
-        if (USE_CLUSTERING) {
-            state.map.on('click', CONFIG.clusterLayerId, function(e) {
-                if (!e.features||e.features.length===0) return;
-                state.clickedMarker = true;
-                closePhotoGrid();
-                var clusterFeature = e.features[0];
-                var clusterId = clusterFeature.properties.cluster_id;
-                var coords = clusterFeature.geometry.coordinates;
-                var source = state.map.getSource(CONFIG.clusterSourceId);
-                if (source && typeof source.getClusterLeaves === 'function') {
-                    source.getClusterLeaves(clusterId, 100, 0, function(err, leafFeatures) {
-                        if (err) return;
-                        state.openClusterIds = [clusterId];
-                        // Convert cluster leaves to our format
-                        var displayFeatures = leafFeatures.map(function(lf) { return lf; });
-                        var title = '聚合 (' + displayFeatures.length + ' 张)';
-                        renderPhotoGrid(displayFeatures, coords);
-                    });
-                }
-                if (e.originalEvent) e.originalEvent.stopPropagation();
+        state.map.on('click', CONFIG.clusterLayerId, function(e) {
+            if (!e.features||e.features.length===0) return;
+            state.clickedMarker = true;
+            var clusterFeature = e.features[0];
+            getClusterLeaves(clusterFeature).then(function(leaves) {
+                leaves.forEach(function(leaf) {
+                    var id = photoId(leaf.properties);
+                    if (id) state.openPhotoIds.add(id);
+                });
+                reconcileOpenPhotoPanels();
             });
-        }
+            if (e.originalEvent) e.originalEvent.stopPropagation();
+        });
 
         // Click map bg → close panels (keep sidebar)
         state.map.on('click', function() {
@@ -321,78 +301,90 @@
                 state.clickedMarker = false;
                 return;
             }
-            closePhotoGrid();
+            closeAllPhotoPanels();
             closeArticlePanel();
             if (state.isMobile) { closeSidebar(); }
             closeAboutCard();
-            state.openClusterIds = [];
-            state.trackedMarkerCoords = null;
         });
     }
 
     // ---------------------------------------------------------------
-    // 8b. Cluster split/merge handler (called on moveend)
+    // 8b. Cluster split/merge reconciliation
     // ---------------------------------------------------------------
-    function handleClusterInteraction() {
-        if (!USE_CLUSTERING) return;
-        if (!state.photoGridOpen || !state.trackedMarkerCoords) return;
+    function photoId(props) {
+        return props && props.id !== undefined && props.id !== null ? String(props.id) : '';
+    }
 
-        var trackedCoords = state.trackedMarkerCoords;
-
-        // Query ALL features visible on screen
-        var allFeatures = state.map.queryRenderedFeatures(undefined, { layers: [CONFIG.clusterLayerId, CONFIG.layerId] });
-
-        if (allFeatures.length === 0) {
-            closePhotoGrid();
-            return;
-        }
-
-        // Find the feature nearest to the tracked coordinate in GEOGRAPHIC space (not screen space)
-        var closest = null;
-        var closestDist = Infinity;
-        for (var k = 0; k < allFeatures.length; k++) {
-            var feat = allFeatures[k];
-            if (!feat.geometry || !feat.geometry.coordinates) continue;
-            var fCoords = feat.geometry.coordinates;
-            var dx = fCoords[0] - trackedCoords[0];
-            var dy = fCoords[1] - trackedCoords[1];
-            var dist = dx * dx + dy * dy;
-            if (dist < closestDist) {
-                closestDist = dist;
-                closest = feat;
+    function getClusterLeaves(feature) {
+        return new Promise(function(resolve) {
+            var source = state.map && state.map.getSource(CONFIG.clusterSourceId);
+            var props = feature && feature.properties;
+            if (!source || !props || typeof source.getClusterLeaves !== 'function') {
+                resolve([]);
+                return;
             }
-        }
-
-        if (!closest) {
-            closePhotoGrid();
-            return;
-        }
-
-        // Check if the closest feature is within a reasonable range (~0.5 degrees)
-        if (closestDist > 0.25) {
-            closePhotoGrid();
-            return;
-        }
-
-        if (closest.properties.cluster_id) {
-            // It's a cluster — show all leaves
-            var cid = closest.properties.cluster_id;
-            var clusterCoords = closest.geometry.coordinates;
-            var src = state.map.getSource(CONFIG.clusterSourceId);
-            if (src && typeof src.getClusterLeaves === 'function') {
-                src.getClusterLeaves(cid, 100, 0, function(err, leaves) {
-                    if (err || !leaves) return;
-                    // Save new coords before calling render
-                    state.trackedMarkerCoords = clusterCoords;
-                    renderPhotoGrid(leaves, clusterCoords);
+            var count = Math.max(2, parseInt(props.point_count, 10) || 2);
+            // MapLibre v4 returns a Promise; older compatible builds used a callback.
+            if (source.getClusterLeaves.length >= 4) {
+                source.getClusterLeaves(props.cluster_id, count, 0, function(err, leaves) {
+                    resolve(err || !leaves ? [] : leaves);
                 });
+                return;
             }
-        } else if (closest.properties) {
-            // It's an individual point — show nearby photos
-            var cp = closest.geometry.coordinates;
-            state.trackedMarkerCoords = cp;
-            openPhotoGrid(closest.properties, { lng: cp[0], lat: cp[1] });
+            source.getClusterLeaves(props.cluster_id, count, 0)
+                .then(function(leaves) { resolve(leaves || []); })
+                .catch(function() { resolve([]); });
+        });
+    }
+
+    function entityFromFeature(feature) {
+        if (feature.properties && feature.properties.cluster_id !== undefined) {
+            return getClusterLeaves(feature).then(function(leaves) {
+                return { coords: feature.geometry.coordinates, photos: leaves };
+            });
         }
+        return Promise.resolve({ coords: feature.geometry.coordinates, photos: [feature] });
+    }
+
+    function reconcileOpenPhotoPanels() {
+        if (!state.map || !state.map.isStyleLoaded()) return;
+        var token = ++state.reconcileToken;
+        if (state.openPhotoIds.size === 0) {
+            clearRenderedPhotoPanels();
+            return;
+        }
+
+        var rendered = state.map.queryRenderedFeatures(undefined, {
+            layers: [CONFIG.clusterLayerId, CONFIG.layerId]
+        });
+        var seenRendered = new Set();
+        var tasks = [];
+        rendered.forEach(function(feature) {
+            if (!feature.geometry || !feature.properties) return;
+            var renderedKey = feature.properties.cluster_id !== undefined
+                ? 'cluster:' + feature.properties.cluster_id
+                : 'photo:' + photoId(feature.properties);
+            if (seenRendered.has(renderedKey)) return;
+            seenRendered.add(renderedKey);
+            tasks.push(entityFromFeature(feature));
+        });
+
+        Promise.all(tasks).then(function(entities) {
+            if (token !== state.reconcileToken) return;
+            var next = new Map();
+            entities.forEach(function(entity) {
+                entity.photos = entity.photos.filter(function(photo) { return !!photoId(photo.properties); });
+                var ids = entity.photos.map(function(photo) { return photoId(photo.properties); }).sort();
+                if (!ids.some(function(id) { return state.openPhotoIds.has(id); })) return;
+                // Once an entity is visibly expanded, every member inherits that
+                // state so a later split expands all descendant entities.
+                ids.forEach(function(id) { state.openPhotoIds.add(id); });
+                entity.ids = ids;
+                entity.key = 'members:' + ids.join(',');
+                next.set(entity.key, entity);
+            });
+            renderVisibleEntities(next);
+        });
     }
 
     // ---------------------------------------------------------------
@@ -412,7 +404,7 @@
         }
         document.body.classList.add('sidebar-collapsed');
         state.sidebarOpen = false;
-        closePhotoGrid();
+        closeAllPhotoPanels();
         dom.articlePanel.classList.remove('active');
         state.articleOpen = false;
         dom.detailSheet.classList.remove('active');
@@ -473,7 +465,7 @@
     // 10. Article Panel
     // ---------------------------------------------------------------
     async function openArticle(postId) {
-        closePhotoGrid();
+        closeAllPhotoPanels();
 
         dom.articleTitle.textContent = '加载中...';
         dom.articleMeta.textContent = '';
@@ -515,155 +507,147 @@
     function closeArticlePanel() {
         dom.articlePanel.classList.remove('active');
         state.articleOpen = false;
-        if (state.isMobile && !state.photoGridOpen) openSidebar();
+        if (state.isMobile && !hasOpenPhotoPanels()) openSidebar();
     }
 
     // ---------------------------------------------------------------
-    // 11. Photo Grid Panel (no title, single instance, position tracking)
+    // 11. Dynamic Photo Grid Panels
     // ---------------------------------------------------------------
     var PHOTO_GRID_MARGIN = 16;
     var PANEL_PADDING = 16;
     var THUMB_SIZE = 120;
 
-    function getFeatureCoords(props) {
-        if (!state.allPhotos) return null;
-        var features = state.allPhotos.features || [];
-        for (var i = 0; i < features.length; i++) {
-            var f = features[i];
-            if (f.properties && f.properties.id === props.id) {
-                return f.geometry.coordinates;
-            }
+    function normalizePhotoProperties(properties) {
+        var props = properties || {};
+        if (typeof props.tags === 'string') {
+            try { props.tags = JSON.parse(props.tags); } catch (err) { props.tags = []; }
         }
-        return null;
+        return props;
     }
 
-    function openPhotoGrid(props, clickLngLat) {
-        if (!props) return;
-
-        var coords = clickLngLat ? [clickLngLat.lng, clickLngLat.lat] : getFeatureCoords(props);
-        if (!coords) coords = [0, 0];
-
-        var allFeatures = (state.allPhotos && state.allPhotos.features) || [];
-        if (allFeatures.length === 0) return;
-
-        var PROXIMITY_THRESHOLD = 0.05;
-        var nearbyFeatures = [];
-        for (var i = 0; i < allFeatures.length; i++) {
-            var f = allFeatures[i];
-            if (!f.geometry || !f.geometry.coordinates) continue;
-            var dLng = Math.abs(f.geometry.coordinates[0] - coords[0]);
-            var dLat = Math.abs(f.geometry.coordinates[1] - coords[1]);
-            if (dLng < PROXIMITY_THRESHOLD && dLat < PROXIMITY_THRESHOLD) {
-                nearbyFeatures.push(f);
+    function renderVisibleEntities(nextEntities) {
+        state.photoPanels.forEach(function(panel, key) {
+            if (!nextEntities.has(key)) {
+                panel.element.remove();
+                state.photoPanels.delete(key);
             }
-        }
+        });
 
-        var displayPhotos;
-        if (nearbyFeatures.length === 0) {
-            for (var i = 0; i < allFeatures.length; i++) {
-                if (allFeatures[i].properties && allFeatures[i].properties.id === props.id) {
-                    displayPhotos = [allFeatures[i]];
-                    break;
+        nextEntities.forEach(function(entity, key) {
+            var panel = state.photoPanels.get(key);
+            if (!panel) {
+                panel = createPhotoPanel(entity);
+                state.photoPanels.set(key, panel);
+            } else {
+                panel.entity = entity;
+            }
+        });
+        state.visibleEntities = nextEntities;
+        positionAllPhotoPanels();
+        if (!state.isMobile && nextEntities.size > 0) openSidebar();
+    }
+
+    function createPhotoPanel(entity) {
+        var element = document.createElement('div');
+        element.className = 'photo-grid-panel glass-panel active';
+        element.setAttribute('role', 'dialog');
+        element.setAttribute('aria-modal', 'false');
+        element.setAttribute('aria-label', entity.photos.length > 1 ? 'Photo cluster' : 'Photo');
+
+        var close = document.createElement('button');
+        close.className = 'panel-close-btn';
+        close.setAttribute('aria-label', 'Close photo grid');
+        close.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+        var title = document.createElement('div');
+        title.className = 'photo-grid-title';
+        title.textContent = entity.photos.length > 1 ? '聚合（' + entity.photos.length + ' 张）' : '';
+
+        var container = document.createElement('div');
+        container.className = 'photo-grid-container';
+        var cols = Math.max(1, Math.min(entity.photos.length, 3));
+        element.style.width = (cols * THUMB_SIZE + (cols - 1) * 10 + PANEL_PADDING * 2) + 'px';
+        container.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+
+        entity.photos.forEach(function(feature) {
+            var props = normalizePhotoProperties(feature.properties || feature);
+            var item = document.createElement('div');
+            item.className = 'photo-grid-item';
+            var imgUrl = props.thumbnail || props.fullImage || '';
+            item.innerHTML = (imgUrl
+                ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(props.title) + '" loading="lazy">'
+                : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:0.75rem;">无图</div>')
+                + '<div class="photo-item-overlay">' + escapeHtml(props.title) + '</div>';
+            item.addEventListener('click', function(event) {
+                event.stopPropagation();
+                closeAllPhotoPanels();
+                if (state.isMobile) {
+                    openDetailPanel(props);
+                } else {
+                    openSidebar();
+                    openPhotographArticle(props.id, props);
                 }
-            }
-            if (!displayPhotos) return;
-        } else {
-            displayPhotos = nearbyFeatures;
-        }
-
-        if (displayPhotos.length > 6) displayPhotos = displayPhotos.slice(0, 6);
-
-        state.openClusterIds = [];
-        renderPhotoGrid(displayPhotos, coords);
-    }
-
-    function renderPhotoGrid(photos, coords) {
-        dom.photoGridTitle.textContent = ''; // no title (just clean)
-        dom.photoGridContainer.innerHTML = '';
-        dom.photoGridPanel.classList.remove('active');
-
-        var count = photos.length;
-        var cols = Math.min(count, 3);
-        var rows = Math.ceil(count / cols);
-
-        var panelW = cols * THUMB_SIZE + (cols - 1) * 10 + PANEL_PADDING * 2;
-        var panelH = rows * THUMB_SIZE + (rows - 1) * 10 + PANEL_PADDING * 2 + 8; // no title, minimal top padding
-        dom.photoGridPanel.style.width = panelW + 'px';
-        dom.photoGridContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-
-        if (photos.length === 0) {
-            dom.photoGridContainer.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px;">暂无照片</div>';
-        } else {
-            photos.forEach(function(feature) {
-                var item = document.createElement('div');
-                item.className = 'photo-grid-item';
-                var p = feature.properties || feature;
-                var imgUrl = p.thumbnail || p.fullImage || (feature.properties ? feature.properties.thumbnail || feature.properties.fullImage : '');
-
-                item.innerHTML = ''
-                    + (imgUrl ? '<img src="' + imgUrl + '" alt="' + escapeHtml(p.title) + '" loading="lazy">' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:0.75rem;">无图</div>')
-                    + '<div class="photo-item-overlay">' + escapeHtml(p.title) + '</div>';
-
-                item.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    closePhotoGrid();
-                    if (state.isMobile) {
-                        openDetailPanel(p);
-                    } else {
-                        openSidebar();
-                        openPhotographArticle(p.id, p);
-                    }
-                });
-
-                dom.photoGridContainer.appendChild(item);
             });
-        }
+            container.appendChild(item);
+        });
 
-        // Track and position near marker
-        state.trackedMarkerCoords = coords;
-        updatePhotoGridPosition(coords);
-
-        if (!state.isMobile) openSidebar();
-
-        dom.photoGridPanel.classList.add('active');
-        state.photoGridOpen = true;
+        close.addEventListener('click', function(event) {
+            event.stopPropagation();
+            entity.ids.forEach(function(id) { state.openPhotoIds.delete(id); });
+            reconcileOpenPhotoPanels();
+        });
+        element.addEventListener('click', function(event) { event.stopPropagation(); });
+        element.appendChild(close);
+        element.appendChild(title);
+        element.appendChild(container);
+        dom.photoPanels.appendChild(element);
+        return { element: element, entity: entity };
     }
 
-    function updatePhotoGridPosition(coords) {
-        if (!state.map || !coords) return;
-        var panelW = parseInt(dom.photoGridPanel.style.width) || 200;
-        var panelH = dom.photoGridPanel.offsetHeight;
-        if (panelH === 0) panelH = 200;
+    function positionAllPhotoPanels() {
+        var index = 0;
+        state.photoPanels.forEach(function(panel) {
+            positionPhotoPanel(panel.element, panel.entity.coords, index++);
+        });
+    }
 
+    function positionPhotoPanel(panel, coords, index) {
+        if (!state.map || !coords) return;
+        var panelW = panel.offsetWidth || parseInt(panel.style.width, 10) || 200;
+        var panelH = panel.offsetHeight || 200;
         var screenPoint = state.map.project(new maplibregl.LngLat(coords[0], coords[1]));
         var left = screenPoint.x + PHOTO_GRID_MARGIN;
-        var top = screenPoint.y - panelH / 2;
-
-        if (top < 20) top = 20;
-        if (top + panelH > window.innerHeight - 40) top = window.innerHeight - panelH - 40;
-        if (left + panelW > window.innerWidth - 20) {
-            left = screenPoint.x - panelW - PHOTO_GRID_MARGIN;
-        }
-        if (left < 20) left = 20;
-
-        dom.photoGridPanel.style.left = left + 'px';
-        dom.photoGridPanel.style.top = top + 'px';
-        dom.photoGridPanel.style.right = 'auto';
-        dom.photoGridPanel.style.transform = 'none';
+        var top = screenPoint.y - panelH / 2 + (index % 3) * 18;
+        if (left + panelW > window.innerWidth - 20) left = screenPoint.x - panelW - PHOTO_GRID_MARGIN;
+        left = Math.max(12, Math.min(left, window.innerWidth - panelW - 12));
+        top = Math.max(12, Math.min(top, window.innerHeight - panelH - 12));
+        panel.style.left = left + 'px';
+        panel.style.top = top + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
     }
 
-    function closePhotoGrid() {
-        dom.photoGridPanel.classList.remove('active');
-        state.photoGridOpen = false;
-        state.trackedMarkerCoords = null;
-        state.openClusterIds = [];
+    function hasOpenPhotoPanels() {
+        return state.photoPanels.size > 0;
+    }
+
+    function clearRenderedPhotoPanels() {
+        state.photoPanels.forEach(function(panel) { panel.element.remove(); });
+        state.photoPanels.clear();
+        state.visibleEntities.clear();
+    }
+
+    function closeAllPhotoPanels() {
+        state.reconcileToken++;
+        state.openPhotoIds.clear();
+        clearRenderedPhotoPanels();
     }
 
     // ---------------------------------------------------------------
     // 12. Photograph Article Panel
     // ---------------------------------------------------------------
     async function openPhotographArticle(photoId, props) {
-        closePhotoGrid();
+        closeAllPhotoPanels();
         dom.articleTitle.textContent = props.title || 'Photograph';
         dom.articleMeta.innerHTML = props.cameraInfo
             ? '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/></svg>' + escapeHtml(props.cameraInfo) + '</span>'
@@ -826,14 +810,13 @@
         dom.sidebarExpand.addEventListener('click', function(e) { e.stopPropagation(); openSidebar(); });
         dom.sidebarSearch.addEventListener('input', debounce(function() { filterSidebarPosts(this.value); }, 300));
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
-        dom.photoGridClose.addEventListener('click', function(e) { e.stopPropagation(); closePhotoGrid(); });
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
         dom.aboutTrigger.addEventListener('click', function(e) { toggleAboutCard(e); });
         dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' || e.key === 'Esc') {
-                closePhotoGrid();
+                closeAllPhotoPanels();
                 dom.articlePanel.classList.remove('active');
                 state.articleOpen = false;
                 dom.detailSheet.classList.remove('active');
@@ -843,7 +826,6 @@
         });
 
         dom.articlePanel.addEventListener('click', function(e) { e.stopPropagation(); });
-        dom.photoGridPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         dom.detailSheet.addEventListener('click', function(e) { e.stopPropagation(); });
     }
 
