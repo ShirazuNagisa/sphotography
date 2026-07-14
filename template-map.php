@@ -25,9 +25,21 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
 <body <?php body_class( 'map-template-body' ); ?>>
 <?php wp_body_open(); ?>
 
-    <!-- Loading Overlay -->
+    <!-- Loading Overlay — 品牌化光圈加载体验 -->
     <div id="loading-overlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
+        <div class="loading-aperture">
+            <!-- SVG 光圈环 -->
+            <svg class="loading-aperture-ring" viewBox="0 0 88 88">
+                <circle class="ring-outer" cx="44" cy="44" r="38"/>
+                <circle class="ring-inner" cx="44" cy="44" r="28"/>
+            </svg>
+            <!-- 呼吸核心圆点 -->
+            <div class="loading-aperture-core"></div>
+        </div>
+        <!-- 站点名称 -->
+        <span class="loading-site-name"><?php echo esc_html( $site_name ); ?></span>
+        <!-- 底部进度条 -->
+        <div class="loading-progress"></div>
     </div>
 
     <!-- Fullscreen Map Container -->
