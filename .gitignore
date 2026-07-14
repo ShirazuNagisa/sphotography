@@ -27,3 +27,6 @@ yarn.lock
 
 # Logs
 *.log
+
+# Documentation
+/organization.md
