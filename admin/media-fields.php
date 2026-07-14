@@ -6,7 +6,7 @@
  * to the WordPress media attachment edit dialog.
  *
  * @package Sphotography
- * @version 1.1.3
+ * @version 1.1.6
  */
 
 // ============================================

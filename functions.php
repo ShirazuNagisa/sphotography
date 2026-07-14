@@ -3,7 +3,7 @@
  * Sphotography Theme Functions
  *
  * @package Sphotography
- * @version 1.1.3
+ * @version 1.1.6
  */
 
 // ============================================
@@ -734,12 +734,13 @@ add_action( 'admin_enqueue_scripts', 'sphotography_admin_enqueue_settings' );
 // ============================================
 // 10. Remove admin bar margin for map template
 // ============================================
-function sphotography_remove_admin_bar_margin() {
+function sphotography_hide_admin_bar_on_map() {
     if ( is_page_template( 'template-map.php' ) ) {
-        echo '<style>html{margin-top:0!important}* html body{margin-top:0!important}</style>';
+        add_filter( 'show_admin_bar', '__return_false' );
+        echo '<style>html{margin-top:0!important}#wpadminbar{display:none!important}</style>';
     }
 }
-add_action( 'wp_head', 'sphotography_remove_admin_bar_margin' );
+add_action( 'init', 'sphotography_hide_admin_bar_on_map' );
 
 // ============================================
 // 11. AJAX: Update theme from GitHub branch

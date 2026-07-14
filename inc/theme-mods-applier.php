@@ -3,7 +3,7 @@
  * Sphotography - Apply Theme Mods to Frontend
  *
  * @package Sphotography
- * @version 1.1.3
+ * @version 1.1.6
  */
 
 // ============================================

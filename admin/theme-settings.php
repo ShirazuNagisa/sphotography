@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.1.3
+ * @version 1.1.6
  */
 
 // Prevent direct access
