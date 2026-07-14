@@ -63,6 +63,10 @@
         visibleEntities: new Map(),
         photoPanels: new Map(),
         reconcileToken: 0,
+        // 需求1: 文章面板位置追踪
+        openedPostId: null,
+        // 需求3: 照片网格互斥（同时只允许一个展开）
+        activePhotoPanelKey: null,
     };
 
     // ---------------------------------------------------------------
@@ -464,12 +468,34 @@
     // ---------------------------------------------------------------
     // 10. Article Panel
     // ---------------------------------------------------------------
+    // 需求1: 获取边栏文章卡片的实时屏幕位置
+    function getPostCardRect(postId) {
+        var card = dom.sidebarPosts.querySelector('[data-post-id="' + postId + '"]');
+        if (!card) return null;
+        var rect = card.getBoundingClientRect();
+        return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+    }
+
     async function openArticle(postId) {
         closeAllPhotoPanels();
+
+        // 需求1: 记录源卡片位置，用于FLIP动画
+        state.openedPostId = postId;
+        var sourceRect = getPostCardRect(postId);
 
         dom.articleTitle.textContent = '加载中...';
         dom.articleMeta.textContent = '';
         dom.articleContent.innerHTML = '';
+
+        // 需求1: 设置初始位置（从边栏卡片位置出发）
+        if (sourceRect && !state.isMobile) {
+            var panel = dom.articlePanel;
+            panel.style.transformOrigin = sourceRect.left + 'px ' + sourceRect.top + 'px';
+            panel.classList.add('article-panel--opening');
+            // 强制重排以应用初始状态
+            void panel.offsetHeight;
+        }
+
         dom.articlePanel.classList.add('active');
         state.articleOpen = true;
 
@@ -505,8 +531,33 @@
     }
 
     function closeArticlePanel() {
-        dom.articlePanel.classList.remove('active');
+        // 需求1: 收起时追踪实时卡片位置，FLIP回弹
+        var targetRect = state.openedPostId ? getPostCardRect(state.openedPostId) : null;
+        var panel = dom.articlePanel;
+
+        if (targetRect && !state.isMobile && state.articleOpen) {
+            // 设置收起点为当前卡片位置
+            panel.style.transformOrigin = targetRect.left + 'px ' + targetRect.top + 'px';
+            panel.classList.add('article-panel--closing');
+            // 强制重排
+            void panel.offsetHeight;
+
+            // 移除 active 触发 CSS 收起过渡
+            panel.classList.remove('active');
+
+            // 过渡结束后清理
+            setTimeout(function() {
+                panel.classList.remove('article-panel--closing', 'article-panel--opening');
+                panel.style.transformOrigin = '';
+            }, 520); // 匹配 CSS duration-slow
+        } else {
+            panel.classList.remove('active');
+            panel.classList.remove('article-panel--opening', 'article-panel--closing');
+            panel.style.transformOrigin = '';
+        }
+
         state.articleOpen = false;
+        state.openedPostId = null;
         if (state.isMobile && !hasOpenPhotoPanels()) openSidebar();
     }
 
@@ -525,31 +576,69 @@
         return props;
     }
 
+    // 需求3: 丝滑关闭面板（带过渡动画后移除）
+    function dismissPhotoPanelWithAnim(key) {
+        var panel = state.photoPanels.get(key);
+        if (!panel) return;
+        var el = panel.element;
+        el.classList.add('photo-grid-panel--dismiss');
+        el.classList.remove('active');
+        setTimeout(function() {
+            el.remove();
+            state.photoPanels.delete(key);
+        }, 400); // 匹配 CSS 过渡时长
+    }
+
     function renderVisibleEntities(nextEntities) {
+        var prevActiveKey = state.activePhotoPanelKey;
+
+        // 需求3: 互斥逻辑 — 若有多个实体，只保留一个展开
+        var keys = Array.from(nextEntities.keys());
+        var newActiveKey = null;
+
+        if (keys.length > 0) {
+            // 优先保留之前活跃的 key，否则取第一个
+            newActiveKey = nextEntities.has(prevActiveKey) ? prevActiveKey : keys[0];
+        }
+        state.activePhotoPanelKey = newActiveKey;
+
+        // 关闭不在新列表中的旧面板（带动画）
         state.photoPanels.forEach(function(panel, key) {
             if (!nextEntities.has(key)) {
-                panel.element.remove();
-                state.photoPanels.delete(key);
+                dismissPhotoPanelWithAnim(key);
             }
         });
 
+        // 创建/更新面板
         nextEntities.forEach(function(entity, key) {
             var panel = state.photoPanels.get(key);
             if (!panel) {
-                panel = createPhotoPanel(entity);
+                // 需求3: 只有 active key 的面板默认展开，其余收起
+                var isActive = (key === newActiveKey);
+                panel = createPhotoPanel(entity, isActive);
                 state.photoPanels.set(key, panel);
             } else {
                 panel.entity = entity;
             }
         });
+
         state.visibleEntities = nextEntities;
         positionAllPhotoPanels();
         if (!state.isMobile && nextEntities.size > 0) openSidebar();
+
+        // 需求2: 聚合/散开时触发位置平滑过渡
+        requestAnimationFrame(function() {
+            state.photoPanels.forEach(function(panel) {
+                panel.element.classList.add('photo-grid-panel--positioned');
+            });
+        });
     }
 
-    function createPhotoPanel(entity) {
+    function createPhotoPanel(entity, isActive) {
+        if (typeof isActive === 'undefined') isActive = true;
         var element = document.createElement('div');
-        element.className = 'photo-grid-panel glass-panel active';
+        // 需求3: 根据 isActive 决定初始状态
+        element.className = 'photo-grid-panel glass-panel' + (isActive ? ' active' : '');
         element.setAttribute('role', 'dialog');
         element.setAttribute('aria-modal', 'false');
         element.setAttribute('aria-label', entity.photos.length > 1 ? 'Photo cluster' : 'Photo');
