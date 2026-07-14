@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.1.4
+Version: 1.2.0-beta
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -12,21 +12,75 @@ Text Domain: sphotography
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap');
 
 /* ============================================
-   1. CSS Variables & Reset
+   1. Design Tokens & CSS Variables (统一设计令牌)
    ============================================ */
 :root {
+    /* === Layout === */
     --sidebar-width: 300px;
     --panel-radius: var(--sphotography-card-radius, 16px);
-    --panel-shadow: var(--sphotography-card-shadow, 0 1px 3px rgba(0,0,0,0.06));
-    --panel-bg: rgba(20, 20, 20, 0.50);
-    --panel-blur: blur(24px);
-    --panel-border: 1px solid rgba(255, 255, 255, 0.08);
+
+    /* === Animation Tokens (动效令牌) === */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out-sine: cubic-bezier(0.37, 0, 0.63, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-draw: cubic-bezier(0.64, 0.04, 0.35, 1);
+
+    --duration-instant: 100ms;
+    --duration-fast: 200ms;
+    --duration-normal: 300ms;
+    --duration-slow: 500ms;
+    --duration-cinematic: 800ms;
+
+    /* === Button Size Tokens (按键尺寸令牌) === */
+    --btn-s: 36px;   /* 次要操作：关闭、折叠 */
+    --btn-m: 44px;   /* 主要操作：展开、关于 */
+    --btn-l: 52px;   /* 强调操作 */
+
+    /* === Shadow Depth System (阴影深度系统) === */
+    --shadow-elevated: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2);
+    --shadow-floating: 0 4px 16px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.15);
+    --shadow-subtle: 0 2px 8px rgba(0,0,0,0.15);
+
+    /* === Glass Morphism Levels (毛玻璃分层) === */
+    --glass-elevated-bg: rgba(15, 15, 15, 0.75);
+    --glass-elevated-blur: blur(24px) saturate(1.2);
+    --glass-floating-bg: rgba(15, 15, 15, 0.55);
+    --glass-floating-blur: blur(16px) saturate(1.1);
+    --glass-sidebar-bg: rgba(10, 10, 10, 0.65);
+    --glass-sidebar-blur: blur(20px) saturate(1.15);
+
+    /* === Color Semantics (色彩语义化) === */
     --text-primary: #ffffff;
     --text-secondary: #aaaaaa;
     --text-muted: #666666;
     --primary: var(--sphotography-primary-color, #e67e22);
     --bg: var(--sphotography-bg, #0b0b0b);
-    --transition-speed: 0.35s;
+
+    --color-surface: rgba(255,255,255,0.06);
+    --color-surface-hover: rgba(255,255,255,0.10);
+    --color-border: rgba(255, 255, 255, 0.08);
+    --color-border-hover: rgba(255, 255, 255, 0.14);
+
+    /* === Typography (字体层级) === */
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.5rem;
+    --text-2xl: 2rem;
+
+    --leading-tight: 1.2;
+    --leading-normal: 1.6;
+    --leading-relaxed: 1.75;
+
+    /* === Legacy compat === */
+    --panel-shadow: var(--shadow-floating);
+    --panel-bg: var(--glass-sidebar-bg);
+    --panel-blur: var(--glass-sidebar-blur);
+    --panel-border: 1px solid var(--color-border);
 }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -34,7 +88,7 @@ Text Domain: sphotography
 html, body {
     height: 100%;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-body);
     background: var(--bg);
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
@@ -42,9 +96,20 @@ html, body {
 
 img { display:block; max-width:100%; }
 
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
 /* ============================================
    2. Glass Panel Base + Light Mode
    ============================================ */
+
+/* Base glass panel — 统一过渡 */
 .glass-panel {
     background: var(--panel-bg);
     backdrop-filter: var(--panel-blur);
@@ -52,8 +117,11 @@ img { display:block; max-width:100%; }
     border: var(--panel-border);
     border-radius: var(--panel-radius);
     box-shadow: var(--panel-shadow);
-    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
-                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        transform var(--duration-normal) var(--ease-out-expo),
+        opacity var(--duration-normal) var(--ease-out-expo),
+        box-shadow var(--duration-fast) ease,
+        background var(--duration-fast) ease;
 }
 
 /* Opaque override */
@@ -65,25 +133,47 @@ body.opaque-panels .glass-panel {
 
 /* Light mode overrides */
 body.sphotography-night-force-light {
-    --panel-bg: rgba(240, 240, 240, 0.65);
-    --panel-border: 1px solid rgba(0, 0, 0, 0.08);
+    --glass-elevated-bg: rgba(245, 245, 245, 0.78);
+    --glass-floating-bg: rgba(245, 245, 245, 0.60);
+    --glass-sidebar-bg: rgba(240, 240, 240, 0.65);
+    --color-border: rgba(0, 0, 0, 0.08);
+    --color-border-hover: rgba(0, 0, 0, 0.14);
+    --color-surface: rgba(0,0,0,0.04);
+    --color-surface-hover: rgba(0,0,0,0.08);
     --text-primary: #1a1a1a;
     --text-secondary: #555555;
     --text-muted: #888888;
+    --shadow-elevated: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+    --shadow-floating: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+    --shadow-subtle: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 @media (prefers-color-scheme: light) {
     body.sphotography-night-system {
-        --panel-bg: rgba(240, 240, 240, 0.65);
-        --panel-border: 1px solid rgba(0, 0, 0, 0.08);
+        --glass-elevated-bg: rgba(245, 245, 245, 0.78);
+        --glass-floating-bg: rgba(245, 245, 245, 0.60);
+        --glass-sidebar-bg: rgba(240, 240, 240, 0.65);
+        --color-border: rgba(0, 0, 0, 0.08);
+        --color-border-hover: rgba(0, 0, 0, 0.14);
+        --color-surface: rgba(0,0,0,0.04);
+        --color-surface-hover: rgba(0,0,0,0.08);
         --text-primary: #1a1a1a;
         --text-secondary: #555555;
         --text-muted: #888888;
+        --shadow-elevated: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+        --shadow-floating: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+        --shadow-subtle: 0 2px 8px rgba(0,0,0,0.06);
     }
 }
 
+/* Dark mode transition */
+body {
+    transition: filter var(--duration-slow) var(--ease-in-out-sine),
+                background-color var(--duration-slow) var(--ease-in-out-sine);
+}
+
 /* ============================================
-   3. Map (always fullscreen, sidebar overlays)
+   3. Map (always fullscreen)
    ============================================ */
 #map {
     position: fixed;
@@ -95,7 +185,7 @@ body.sphotography-night-force-light {
 }
 
 /* ============================================
-   4. Sidebar (overlays map, no push)
+   4. Sidebar (overlays map)
    ============================================ */
 .sidebar {
     position: fixed;
@@ -107,10 +197,14 @@ body.sphotography-night-force-light {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: var(--glass-sidebar-bg);
+    backdrop-filter: var(--glass-sidebar-blur);
+    -webkit-backdrop-filter: var(--glass-sidebar-blur);
     transform: translateX(0);
     opacity: 1;
-    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
-                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        transform var(--duration-slow) cubic-bezier(0.32, 0.72, 0, 1),
+        opacity var(--duration-normal) var(--ease-out-expo);
 }
 
 body.sidebar-collapsed .sidebar {
@@ -119,7 +213,7 @@ body.sidebar-collapsed .sidebar {
     pointer-events: none;
 }
 
-/* Search */
+/* Search — 带宽度展开动效 */
 .sidebar-search {
     position: relative;
     padding: 14px 16px 8px;
@@ -130,16 +224,22 @@ body.sidebar-collapsed .sidebar {
     width: 100%;
     padding: 10px 36px 10px 14px;
     border-radius: 10px;
-    border: 1px solid rgba(128,128,128,0.2);
-    background: rgba(128,128,128,0.08);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
     color: var(--text-primary);
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     outline: none;
-    transition: border-color 0.2s;
+    transition:
+        border-color var(--duration-fast) var(--ease-out-expo),
+        background var(--duration-fast) var(--ease-out-expo),
+        width var(--duration-normal) var(--ease-out-expo);
 }
 
 .sidebar-search input:focus {
     border-color: var(--primary);
+    background: var(--color-surface-hover);
+    width: 105%; /* 微妙展开效果 */
+    margin-left: -2.5%;
 }
 
 .sidebar-search input::placeholder {
@@ -153,9 +253,17 @@ body.sidebar-collapsed .sidebar {
     transform: translateY(-50%);
     color: var(--text-muted);
     pointer-events: none;
+    transition:
+        transform var(--duration-fast) var(--ease-spring),
+        color var(--duration-fast) ease;
 }
 
-/* Post list (scrollable) */
+.sidebar-search input:focus ~ .sidebar-search-icon {
+    transform: translateY(-50%) translateX(-12px);
+    color: var(--primary);
+}
+
+/* Post list (scrollable) with scroll shadows */
 .sidebar-posts {
     flex: 1;
     overflow-y: auto;
@@ -163,28 +271,47 @@ body.sidebar-collapsed .sidebar {
     display: flex;
     flex-direction: column;
     gap: 8px;
+
+    /* Scroll shadow indicators */
+    background:
+        linear-gradient(var(--glass-sidebar-bg) 30%, transparent),
+        linear-gradient(transparent, var(--glass-sidebar-bg) 70%) 0 100%,
+        radial-gradient(farthest-side at 50% 0, rgba(0,0,0,0.15), transparent),
+        radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,0.15), transparent) 0 100%;
+    background-repeat: no-repeat;
+    background-size: 100% 40px, 100% 40px, 100% 14px, 100% 14px;
+    background-attachment: local, local, scroll, scroll;
 }
 
 .sidebar-posts::-webkit-scrollbar { width: 3px; }
 .sidebar-posts::-webkit-scrollbar-track { background: transparent; }
 .sidebar-posts::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
 
-/* Post card inside sidebar */
+/* Post card inside sidebar — 左侧竖条 hover 效果 */
 .post-card {
     display: flex;
     gap: 12px;
     padding: 10px 14px;
     border-radius: calc(var(--panel-radius) * 0.7);
     cursor: pointer;
-    transition: background 0.2s;
-    background: rgba(255,255,255,0.03);
+    background: var(--color-surface);
     border: 1px solid transparent;
+    border-left: 3px solid transparent;
     flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    transition:
+        background var(--duration-fast) ease,
+        border-color var(--duration-fast) var(--ease-out-expo),
+        transform var(--duration-fast) var(--ease-spring),
+        border-left-color var(--duration-fast) var(--ease-out-expo);
 }
 
 .post-card:hover {
-    background: rgba(255,255,255,0.07);
-    border-color: rgba(255,255,255,0.06);
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-hover);
+    border-left-color: var(--primary);
+    transform: translateX(3px);
 }
 
 .post-card-thumb {
@@ -194,6 +321,11 @@ body.sidebar-collapsed .sidebar {
     object-fit: cover;
     flex-shrink: 0;
     background: #1a1a1a;
+    transition: transform var(--duration-normal) var(--ease-out-expo);
+}
+
+.post-card:hover .post-card-thumb {
+    transform: scale(1.05);
 }
 
 .post-card-body {
@@ -206,18 +338,23 @@ body.sidebar-collapsed .sidebar {
 }
 
 .post-card-title {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text-primary);
-    line-height: 1.3;
+    line-height: var(--leading-tight);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    transition: color var(--duration-fast) ease;
+}
+
+.post-card:hover .post-card-title {
+    color: var(--text-primary);
 }
 
 .post-card-date {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     display: flex;
     align-items: center;
@@ -233,24 +370,40 @@ body.sidebar-collapsed .sidebar {
     gap: 6px;
 }
 
+/* 统一 Icon Button 样式 — Sidebar Toggle (btn-s) */
 .sidebar-toggle-mini {
-    width: 44px;
-    height: 44px;
-    display: flex;
+    width: var(--btn-s);
+    height: var(--btn-s);
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.04);
+    border-radius: calc(var(--panel-radius) * 0.65);
+    border: 1px solid var(--color-border);
+    background: var(--glass-floating-bg);
+    backdrop-filter: var(--glass-floating-blur);
+    -webkit-backdrop-filter: var(--glass-floating-blur);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s;
     flex-shrink: 0;
+    box-shadow: var(--shadow-subtle);
+    transition:
+        background var(--duration-fast) var(--ease-out-expo),
+        transform var(--duration-instant) var(--ease-spring),
+        box-shadow var(--duration-fast) ease,
+        color var(--duration-fast) ease,
+        border-color var(--duration-fast) ease;
 }
 
 .sidebar-toggle-mini:hover {
-    background: rgba(255,255,255,0.08);
+    background: var(--color-surface-hover);
     color: var(--text-primary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-floating);
+    border-color: var(--color-border-hover);
+}
+
+.sidebar-toggle-mini:active {
+    transform: translateY(0) scale(0.96);
 }
 
 .sidebar-brand {
@@ -261,59 +414,83 @@ body.sidebar-collapsed .sidebar {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-family: 'Playfair Display', serif;
+    font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: 0.03em;
 }
 
+/* 统一 Icon Button 样式 — GitHub Link (btn-m) */
 .sidebar-github-link {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: var(--btn-m);
+    height: var(--btn-m);
     color: var(--text-secondary);
-    transition: all 0.2s;
-    flex-shrink: 0;
-    border-radius: 10px;
+    border-radius: calc(var(--panel-radius) * 0.65);
+    border: 1px solid transparent;
+    transition:
+        color var(--duration-fast) ease,
+        background var(--duration-fast) var(--ease-out-expo),
+        transform var(--duration-instant) var(--ease-spring);
 }
 
 .sidebar-github-link:hover {
     color: var(--text-primary);
-    background: rgba(255,255,255,0.08);
+    background: var(--color-surface-hover);
+    transform: translateY(-1px);
 }
 
-/* Sidebar expand button (shown when collapsed, bottom-left) */
+/* 统一 Icon Button 样式 — Expand Button (btn-m) */
 .sidebar-expand-btn {
     position: fixed;
     left: 16px;
     bottom: 24px;
     z-index: 95;
-    width: 44px;
-    height: 44px;
+    width: var(--btn-m);
+    height: var(--btn-m);
     display: none;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     border: var(--panel-border);
-    background: var(--panel-bg);
-    backdrop-filter: var(--panel-blur);
+    background: var(--glass-floating-bg);
+    backdrop-filter: var(--glass-floating-blur);
+    -webkit-backdrop-filter: var(--glass-floating-blur);
     color: var(--text-secondary);
-    transition: all 0.2s;
     border-radius: 50%;
+    box-shadow: var(--shadow-floating);
+    transition:
+        background var(--duration-fast) var(--ease-out-expo),
+        color var(--duration-fast) ease,
+        transform var(--duration-instant) var(--ease-spring),
+        box-shadow var(--duration-fast) ease;
 }
 
 .sidebar-expand-btn:hover {
     color: var(--text-primary);
     background: rgba(40,40,40,0.85);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-elevated);
+}
+
+.sidebar-expand-btn:active {
+    transform: translateY(0) scale(0.96);
 }
 
 body.sidebar-collapsed .sidebar-expand-btn {
-    display: flex;
+    display: inline-flex;
+    animation: expandBtnPop var(--duration-normal) var(--ease-spring);
+}
+
+@keyframes expandBtnPop {
+    0% { transform: scale(0.5); opacity: 0; }
+    60% { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
 }
 
 /* ============================================
-   5. Article Panel (overlay, not pushed)
+   5. Article Panel (overlay) — cascade 入场
    ============================================ */
 .article-panel {
     position: fixed;
@@ -324,15 +501,22 @@ body.sidebar-collapsed .sidebar-expand-btn {
     z-index: 110;
     padding: 24px 28px;
     overflow-y: auto;
-    transform: translateX(20px);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--shadow-elevated);
+    transform: translateX(20px) scale(0.98);
     opacity: 0;
     pointer-events: none;
-    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
-                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo);
 }
 
 .article-panel.active {
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
     opacity: 1;
     pointer-events: auto;
 }
@@ -340,13 +524,24 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .article-panel-header {
     margin-bottom: 20px;
     padding-right: 32px;
+    /* Cascade entrance: header slides up last */
+    transform: translateY(12px);
+    opacity: 0;
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo) 80ms,
+        opacity var(--duration-normal) var(--ease-out-expo) 80ms;
+}
+
+.article-panel.active .article-panel-header {
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .article-panel-header h3 {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.5rem;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
     font-weight: 700;
-    line-height: 1.3;
+    line-height: var(--leading-tight);
     margin-bottom: 8px;
 }
 
@@ -360,13 +555,24 @@ body.sidebar-collapsed .sidebar-expand-btn {
 
 .article-content {
     font-size: 0.9375rem;
-    line-height: 1.75;
+    line-height: var(--leading-relaxed);
     color: var(--text-secondary);
+    /* Cascade entrance: content fades in after header */
+    transform: translateY(16px);
+    opacity: 0;
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo) 160ms,
+        opacity var(--duration-slow) var(--ease-out-expo) 160ms;
+}
+
+.article-panel.active .article-content {
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .article-content p { margin-bottom: 1.2em; }
 .article-content h1, .article-content h2, .article-content h3, .article-content h4 {
-    font-family: 'Playfair Display', serif;
+    font-family: var(--font-display);
     color: var(--text-primary);
     margin: 1.5em 0 0.6em;
 }
@@ -386,7 +592,10 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .article-content a {
     color: var(--primary);
     text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: opacity var(--duration-fast) ease;
 }
+.article-content a:hover { opacity: 0.8; }
 .article-content ul, .article-content ol {
     padding-left: 20px;
     margin-bottom: 1.2em;
@@ -405,7 +614,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
 }
 
 /* ============================================
-   6. Dynamic Photo Grid Panels
+   6. Dynamic Photo Grid Panels — 瀑布流入场
    ============================================ */
 .photo-panels {
     position: fixed;
@@ -424,23 +633,41 @@ body.sidebar-collapsed .sidebar-expand-btn {
     flex-direction: column;
     max-height: 80vh;
     overflow: hidden;
-    transform: scale(0.92);
-    transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-                transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: scale(0.92) translateY(10px);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--shadow-elevated);
+    transition:
+        opacity var(--duration-slow) var(--ease-out-expo),
+        transform var(--duration-slow) var(--ease-out-expo);
 }
 
 .photo-grid-panel.active {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1) translateY(0);
     pointer-events: auto;
 }
 
 .photo-grid-title {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.1rem;
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
     font-weight: 600;
     margin-bottom: 12px;
     padding-right: 32px;
+    /* Staggered entrance */
+    transform: translateY(8px);
+    opacity: 0;
+    transition:
+        transform var(--duration-normal) var(--ease-out-expo) 60ms,
+        opacity var(--duration-normal) var(--ease-out-expo) 60ms;
+}
+
+.photo-grid-panel.active .photo-grid-title {
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .photo-grid-container {
@@ -455,6 +682,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .photo-grid-container::-webkit-scrollbar { width: 3px; }
 .photo-grid-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
 
+/* Photo grid items — staggered reveal */
 .photo-grid-item {
     aspect-ratio: 1;
     border-radius: 10px;
@@ -462,17 +690,45 @@ body.sidebar-collapsed .sidebar-expand-btn {
     cursor: pointer;
     background: #1a1a1a;
     position: relative;
-    transition: transform 0.2s;
+    opacity: 0;
+    transform: scale(0.85);
+    transition:
+        transform var(--duration-fast) var(--ease-spring),
+        opacity var(--duration-normal) var(--ease-out-expo),
+        box-shadow var(--duration-fast) ease;
 }
 
+.photo-grid-panel.active .photo-grid-item {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Stagger delay via nth-child */
+.photo-grid-panel.active .photo-grid-item:nth-child(1) { transition-delay: 80ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(2) { transition-delay: 120ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(3) { transition-delay: 160ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(4) { transition-delay: 200ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(5) { transition-delay: 240ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(6) { transition-delay: 280ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(7) { transition-delay: 320ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(8) { transition-delay: 360ms; }
+.photo-grid-panel.active .photo-grid-item:nth-child(9) { transition-delay: 400ms; }
+
 .photo-grid-item:hover {
-    transform: scale(1.03);
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    z-index: 2;
 }
 
 .photo-grid-item img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform var(--duration-slow) var(--ease-out-expo);
+}
+
+.photo-grid-item:hover img {
+    transform: scale(1.08);
 }
 
 .photo-grid-item .photo-item-overlay {
@@ -482,49 +738,66 @@ body.sidebar-collapsed .sidebar-expand-btn {
     right: 0;
     padding: 20px 8px 6px;
     background: linear-gradient(transparent, rgba(0,0,0,0.7));
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--text-primary);
     opacity: 0;
-    transition: opacity 0.2s;
+    transform: translateY(4px);
+    transition:
+        opacity var(--duration-normal) var(--ease-out-expo),
+        transform var(--duration-normal) var(--ease-out-expo);
 }
 
 .photo-grid-item:hover .photo-item-overlay {
     opacity: 1;
+    transform: translateY(0);
 }
 
 /* ============================================
-   7. Panel Close Button (unified)
+   7. Panel Close Button (统一 btn-s 尺寸)
    ============================================ */
 .panel-close-btn {
     position: absolute;
     top: 12px;
     right: 12px;
-    width: 32px;
-    height: 32px;
+    width: var(--btn-s);
+    height: var(--btn-s);
     border-radius: 50%;
-    border: none;
-    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--color-border);
+    background: var(--glass-floating-bg);
+    backdrop-filter: var(--glass-floating-blur);
+    -webkit-backdrop-filter: var(--glass-floating-blur);
     color: var(--text-secondary);
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     z-index: 10;
-    transition: all 0.2s;
+    box-shadow: var(--shadow-subtle);
+    transition:
+        background var(--duration-fast) var(--ease-out-expo),
+        color var(--duration-fast) ease,
+        transform var(--duration-instant) var(--ease-spring),
+        border-color var(--duration-fast) ease;
 }
 
 .panel-close-btn:hover {
-    background: rgba(0,0,0,0.65);
-    color: var(--text-primary);
+    background: rgba(180, 60, 50, 0.25); /* 红调提示关闭 */
+    color: #e74c3c;
+    border-color: rgba(231, 76, 60, 0.3);
+    transform: rotate(90deg) scale(1.05);
+}
+
+.panel-close-btn:active {
+    transform: rotate(90deg) scale(0.95);
 }
 
 .panel-close-btn.small {
-    width: 26px;
-    height: 26px;
+    width: calc(var(--btn-s) - 10px);
+    height: calc(var(--btn-s) - 10px);
 }
 
 /* ============================================
-   8. Detail Sheet (for mobile use)
+   8. Detail Sheet — 圆角变化动效
    ============================================ */
 .detail-sheet {
     position: fixed;
@@ -535,62 +808,135 @@ body.sidebar-collapsed .sidebar-expand-btn {
     width: 100%;
     max-height: 70vh;
     z-index: 110;
-    border-radius: var(--panel-radius) var(--panel-radius) 0 0;
+    border-radius: 24px 24px 0 0; /* 初始胶囊形 */
     border-top: var(--panel-border);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    box-shadow: 0 -4px 32px rgba(0,0,0,0.35);
     transform: translateY(100%);
     opacity: 0;
     overflow-y: auto;
-    transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
-                opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo),
+        border-radius var(--duration-slow) var(--ease-out-expo);
 }
 
 .detail-sheet.active {
     transform: translateY(0);
     opacity: 1;
+    border-radius: var(--panel-radius) var(--panel-radius) 0 0; /* 展开为卡片形 */
 }
 
 .detail-content { padding: 16px 20px 24px; }
+
 .drag-handle {
     width: 36px; height: 4px;
     background: rgba(255,255,255,0.2);
     border-radius: 2px;
     margin: 6px auto 12px;
+    /* 弹性拉伸指示 */
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        background var(--duration-fast) ease;
+    transform-origin: center;
 }
-.detail-img { width:100%; height:200px; object-fit:cover; border-radius:12px; margin-bottom:14px; background:#1a1a1a; }
-.detail-title { font-family:'Playfair Display',serif; font-size:1.25rem; font-weight:700; margin-bottom:10px; }
-.detail-meta { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:0.78125rem; color:var(--text-secondary); margin-bottom:12px; }
+
+.detail-sheet.active .drag-handle {
+    animation: dragHandlePulse 1.2s var(--ease-spring);
+}
+
+@keyframes dragHandlePulse {
+    0% { transform: scaleX(0.6); }
+    50% { transform: scaleX(1.15); background: rgba(255,255,255,0.35); }
+    100% { transform: scaleX(1); }
+}
+
+.detail-img {
+    width:100%; height:200px; object-fit:cover;
+    border-radius:12px; margin-bottom:14px;
+    background:#1a1a1a;
+    /* 图片模糊渐显加载态 */
+    animation: imageReveal var(--duration-slow) var(--ease-out-expo);
+}
+
+@keyframes imageReveal {
+    from { filter: blur(12px); opacity: 0.6; }
+    to { filter: blur(0); opacity: 1; }
+}
+
+.detail-title {
+    font-family:var(--font-display); font-size:1.25rem;
+    font-weight:700; margin-bottom:10px;
+}
+
+.detail-meta {
+    display:flex; flex-wrap:wrap; gap:6px 14px;
+    font-size:0.78125rem; color:var(--text-secondary);
+    margin-bottom:12px;
+}
+
 .detail-meta-item { display:flex; align-items:center; gap:4px; }
 .detail-meta-item svg { width:13px; height:13px; opacity:0.5; }
 .detail-desc { font-size:0.875rem; line-height:1.7; color:#c0c0c0; margin-bottom:12px; }
 .detail-tags { display:flex; flex-wrap:wrap; gap:6px; }
+
 .detail-tag {
     padding:3px 10px; font-size:0.7rem;
     background:rgba(230,126,34,0.12); color:var(--primary);
     border:1px solid rgba(230,126,34,0.2); border-radius:10px;
+    transition:
+        transform var(--duration-instant) var(--ease-spring),
+        background var(--duration-fast) ease,
+        border-color var(--duration-fast) ease;
+}
+
+.detail-tag:hover {
+    transform: scale(1.06);
+    background: rgba(230,126,34,0.2);
+    border-color: rgba(230,126,34,0.35);
 }
 
 /* ============================================
-   9. About Trigger & Card (moved up-right to avoid MapLibre credits)
+   9. About Trigger & Card — 气泡弹出
    ============================================ */
+
+/* 统一 Icon Button 样式 — About Trigger (btn-m) */
 .about-trigger {
     position: fixed;
     right: 20px;
     bottom: 52px;
     z-index: 35;
-    width: 40px;
-    height: 40px;
-    display: flex;
+    width: var(--btn-m);
+    height: var(--btn-m);
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     color: var(--text-secondary);
     border: var(--panel-border);
-    transition: all 0.2s;
+    border-radius: 50%;
+    background: var(--glass-floating-bg);
+    backdrop-filter: var(--glass-floating-blur);
+    -webkit-backdrop-filter: var(--glass-floating-blur);
+    box-shadow: var(--shadow-floating);
+    transition:
+        color var(--duration-fast) ease,
+        background var(--duration-fast) var(--ease-out-expo),
+        transform var(--duration-instant) var(--ease-spring),
+        box-shadow var(--duration-fast) ease;
 }
 
 .about-trigger:hover {
     color: var(--text-primary);
     background: rgba(40,40,40,0.85);
+    transform: translateY(-2px) scale(1.06);
+    box-shadow: var(--shadow-elevated);
+}
+
+.about-trigger:active {
+    transform: translateY(0) scale(0.95);
 }
 
 .about-card {
@@ -600,23 +946,48 @@ body.sidebar-collapsed .sidebar-expand-btn {
     z-index: 35;
     max-width: 280px;
     padding: 18px 20px;
-    transition: opacity 0.3s, transform 0.3s;
+    background: var(--glass-floating-bg);
+    backdrop-filter: var(--glass-floating-blur);
+    -webkit-backdrop-filter: var(--glass-floating-blur);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--shadow-floating);
     transform-origin: bottom right;
+    transition:
+        opacity var(--duration-normal) var(--ease-out-expo),
+        transform var(--duration-normal) var(--ease-out-expo);
 }
 
 .about-card.hidden {
     opacity: 0;
     pointer-events: none;
-    transform: scale(0.95);
+    transform: scale(0.5) translateY(8px);
+}
+
+.about-card:not(.hidden) {
+    animation: aboutCardPop var(--duration-normal) var(--ease-spring);
+}
+
+@keyframes aboutCardPop {
+    0% { transform: scale(0.5) translateY(8px); opacity: 0; }
+    70% { transform: scale(1.03) translateY(-2px); }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 .about-avatar {
     width: 56px; height: 56px; border-radius: 50%;
     object-fit: cover; margin-bottom: 10px;
+    /* 头像旋转进入 */
+    animation: avatarSpinIn var(--duration-slow) var(--ease-out-expo) both;
+}
+
+@keyframes avatarSpinIn {
+    from { transform: rotate(-10deg) scale(0.9); opacity: 0; }
+    to { transform: rotate(0) scale(1); opacity: 1; }
 }
 
 .about-card h4 {
-    font-family: 'Playfair Display', serif;
+    font-family: var(--font-display);
     font-size: 1rem;
     margin-bottom: 6px;
 }
@@ -624,13 +995,13 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .about-card p {
     font-size: 0.8125rem;
     color: var(--text-secondary);
-    line-height: 1.6;
+    line-height: var(--leading-normal);
 }
 
 .about-hitokoto {
     margin-top: 10px;
     padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--color-border);
     font-size: 0.78125rem;
     color: var(--text-muted);
     font-style: italic;
@@ -653,6 +1024,15 @@ body.sidebar-collapsed .sidebar-expand-btn {
     max-width: 80vw;
     overflow: hidden;
     text-overflow: ellipsis;
+    background: var(--glass-floating-bg);
+    backdrop-filter: var(--glass-floating-blur);
+    -webkit-backdrop-filter: var(--glass-floating-blur);
+    border: var(--panel-border);
+    border-radius: 999px; /* 胶囊形页脚 */
+    box-shadow: var(--shadow-subtle);
+    transition:
+        opacity var(--duration-normal) var(--ease-out-expo),
+        transform var(--duration-normal) var(--ease-out-expo);
 }
 
 /* Mobile: footer above about trigger */
@@ -666,23 +1046,148 @@ body.sidebar-collapsed .sidebar-expand-btn {
 }
 
 /* ============================================
-   11. Loading Overlay
+   11. Loading Overlay — 高级品牌化加载体验
    ============================================ */
 .loading-overlay {
-    position: fixed; inset: 0; z-index: 999;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--bg);
-    transition: opacity 0.6s;
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    /* 径向渐变背景 — 主题色微光 */
+    background:
+        radial-gradient(
+            ellipse at 50% 50%,
+            color-mix(in srgb, var(--primary) 6%, transparent) 0%,
+            var(--bg) 70%
+        );
+    transition:
+        opacity var(--duration-cinematic) var(--ease-in-out-sine),
+        visibility var(--duration-cinematic);
 }
-.loading-overlay.fade-out { opacity:0; pointer-events:none; }
+
+.loading-overlay.fade-out {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* 光圈动画容器 */
+.loading-aperture {
+    position: relative;
+    width: 88px;
+    height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 外圈旋转光圈环 — SVG 绘制 */
+.loading-aperture-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    animation: apertureRotate 8s linear infinite;
+}
+
+.loading-aperture-ring circle {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+}
+
+.loading-aperture-ring .ring-outer {
+    stroke: rgba(255,255,255,0.12);
+    stroke-dasharray: 220 60;
+    animation: ringDash 3s var(--ease-in-out-sine) infinite;
+}
+
+.loading-aperture-ring .ring-inner {
+    stroke: var(--primary);
+    stroke-dasharray: 140 80;
+    opacity: 0.6;
+    animation: ringDashInner 2.5s var(--ease-in-out-sine) infinite reverse;
+}
+
+/* 内圈呼吸圆点 */
+.loading-aperture-core {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 20px var(--primary), 0 0 40px color-mix(in srgb, var(--primary) 40%, transparent);
+    animation: apertureBreathe 2s var(--ease-in-out-sine) infinite;
+}
+
+/* 站点名称优雅淡入 */
+.loading-site-name {
+    margin-top: 28px;
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    opacity: 0;
+    animation: siteNameFadeIn var(--duration-slow) var(--ease-out-expo) 0.6s forwards;
+}
+
+/* 进度条（底部极细） */
+.loading-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    width: 0%;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    animation: progressExpand 2.5s var(--ease-in-out-sine) infinite;
+    transition: opacity var(--duration-fast) ease;
+}
+
+.loading-overlay.fade-out .loading-progress {
+    animation: progressComplete 0.5s var(--ease-out-expo) forwards;
+}
+
+/* === Loading Keyframes === */
+@keyframes apertureRotate {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes ringDash {
+    0% { stroke-dashoffset: 0; }
+    50% { stroke-dashoffset: -80; }
+    100% { stroke-dashoffset: -280; }
+}
+
+@keyframes ringDashInner {
+    0% { stroke-dashoffset: 0; }
+    50% { stroke-dashoffset: 60; }
+    100% { stroke-dashoffset: -220; }
+}
+
+@keyframes apertureBreathe {
+    0%, 100% { transform: scale(1); opacity: 0.7; }
+    50% { transform: scale(1.4); opacity: 1; }
+}
+
+@keyframes siteNameFadeIn {
+    from { opacity: 0; transform: translateY(8px); letter-spacing: 0.5em; }
+    to { opacity: 1; transform: translateY(0); letter-spacing: 0.3em; }
+}
+
+@keyframes progressExpand {
+    0% { width: 0%; opacity: 0; left: 0; }
+    10% { opacity: 0.6; }
+    90% { opacity: 0.6; }
+    100% { width: 70%; opacity: 0; left: 30%; }
+}
+
+@keyframes progressComplete {
+    to { width: 100%; opacity: 0; }
+}
+
+/* 兼容旧 spinner（降级） */
 .loading-spinner {
-    width:36px; height:36px;
-    border:3px solid rgba(255,255,255,0.06);
-    border-top-color:var(--primary);
-    border-radius:50%;
-    animation:spin 0.8s linear infinite;
+    display: none; /* 被新的光圈动画替代 */
 }
-@keyframes spin { to { transform:rotate(360deg); } }
 
 /* ============================================
    12. Responsive: Tablet
@@ -723,7 +1228,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
 
     .sidebar-expand-btn {
         left: 8px;
-        width: 36px;
+        width: var(--btn-s);
         height: 56px;
         z-index: 115;
         border-radius: 10px;
@@ -762,8 +1267,8 @@ body.sidebar-collapsed .sidebar-expand-btn {
     }
 
     .panel-close-btn {
-        width: 36px;
-        height: 36px;
+        width: var(--btn-s);
+        height: var(--btn-s);
     }
 }
 
@@ -773,7 +1278,9 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .animate-on-scroll {
     opacity: 0;
     transform: translateY(16px);
-    transition: opacity 0.5s ease, transform 0.5s ease;
+    transition:
+        opacity var(--duration-slow) var(--ease-out-expo),
+        transform var(--duration-slow) var(--ease-out-expo);
 }
 .animate-on-scroll.animated {
     opacity: 1;
@@ -790,7 +1297,22 @@ body.sidebar-collapsed .sidebar-expand-btn {
     border: 1px solid rgba(255,255,255,0.06) !important;
     border-radius: 10px !important;
     overflow: hidden;
+    box-shadow: var(--shadow-subtle);
 }
-.maplibregl-ctrl-group button { background:transparent !important; border-color:rgba(255,255,255,0.06) !important; }
+.maplibregl-ctrl-group button {
+    background:transparent !important;
+    border-color:rgba(255,255,255,0.06) !important;
+    transition: background var(--duration-fast) ease;
+}
 .maplibregl-ctrl-group button:hover { background:rgba(255,255,255,0.08) !important; }
 .maplibregl-ctrl-group button span { filter:invert(1); }
+
+/* Marker hover enhancement — 地图标记交互增强 */
+.maplibregl-marker {
+    transition: transform var(--duration-fast) var(--ease-spring);
+    cursor: pointer;
+}
+.maplibregl-marker:hover {
+    transform: scale(1.15) translateY(-2px);
+    z-index: 10;
+}
