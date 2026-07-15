@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.1.7
+Version: 1.2.0
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -53,7 +53,7 @@ Text Domain: sphotography
     --text-primary: #ffffff;
     --text-secondary: #aaaaaa;
     --text-muted: #666666;
-    --primary: var(--sphotography-primary-color, #e67e22);
+    --primary: var(--sphotography-primary-color, #1abc9c);
     --bg: var(--sphotography-bg, #0b0b0b);
 
     --color-surface: rgba(255,255,255,0.06);
@@ -222,7 +222,7 @@ body.sidebar-collapsed .sidebar {
 
 .sidebar-search input {
     width: 100%;
-    padding: 10px 36px 10px 14px;
+    padding: 10px 58px 10px 38px;
     border-radius: 10px;
     border: 1px solid var(--color-border);
     background: var(--color-surface);
@@ -231,15 +231,12 @@ body.sidebar-collapsed .sidebar {
     outline: none;
     transition:
         border-color var(--duration-fast) var(--ease-out-expo),
-        background var(--duration-fast) var(--ease-out-expo),
-        width var(--duration-normal) var(--ease-out-expo);
+        background var(--duration-fast) var(--ease-out-expo);
 }
 
 .sidebar-search input:focus {
     border-color: var(--primary);
     background: var(--color-surface-hover);
-    width: 105%; /* 微妙展开效果 */
-    margin-left: -2.5%;
 }
 
 .sidebar-search input::placeholder {
@@ -248,39 +245,76 @@ body.sidebar-collapsed .sidebar {
 
 .sidebar-search-icon {
     position: absolute;
-    right: 24px;
+    left: 26px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-muted);
     pointer-events: none;
-    transition:
-        transform var(--duration-fast) var(--ease-spring),
-        color var(--duration-fast) ease;
+    transition: color var(--duration-fast) ease;
 }
 
 .sidebar-search input:focus ~ .sidebar-search-icon {
-    transform: translateY(-50%) translateX(-12px);
     color: var(--primary);
 }
 
-/* Post list (scrollable) with scroll shadows */
+/* Ctrl/⌘ + K shortcut hint */
+.sidebar-search-kbd {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-out-expo);
+}
+
+.sidebar-search-kbd kbd {
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    line-height: 1;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    padding: 3px 5px;
+    min-width: 16px;
+    text-align: center;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Hide the hint once the field is focused or contains a query. */
+.sidebar-search input:focus ~ .sidebar-search-kbd,
+.sidebar-search input:not(:placeholder-shown) ~ .sidebar-search-kbd {
+    opacity: 0;
+}
+
+/* Post list (scrollable) — soft fade at the top/bottom edges instead of a
+   hard divider line. The mask fades cards to transparent as they approach
+   the boundaries, so content dissolves smoothly into the sidebar. */
 .sidebar-posts {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 12px;
+    padding: 14px 12px 18px;
     display: flex;
     flex-direction: column;
     gap: 8px;
 
-    /* Scroll shadow indicators */
-    background:
-        linear-gradient(var(--glass-sidebar-bg) 30%, transparent),
-        linear-gradient(transparent, var(--glass-sidebar-bg) 70%) 0 100%,
-        radial-gradient(farthest-side at 50% 0, rgba(0,0,0,0.15), transparent),
-        radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,0.15), transparent) 0 100%;
-    background-repeat: no-repeat;
-    background-size: 100% 40px, 100% 40px, 100% 14px, 100% 14px;
-    background-attachment: local, local, scroll, scroll;
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 22px,
+        #000 calc(100% - 26px),
+        transparent 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 22px,
+        #000 calc(100% - 26px),
+        transparent 100%
+    );
 }
 
 .sidebar-posts::-webkit-scrollbar { width: 3px; }
@@ -458,7 +492,7 @@ body.sidebar-collapsed .sidebar {
     backdrop-filter: var(--glass-floating-blur);
     -webkit-backdrop-filter: var(--glass-floating-blur);
     color: var(--text-secondary);
-    border-radius: 50%;
+    border-radius: calc(var(--panel-radius) * 0.65);
     box-shadow: var(--shadow-floating);
     transition:
         background var(--duration-fast) var(--ease-out-expo),
@@ -617,7 +651,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .article-content ins { text-decoration: none; border-bottom: 1px dashed var(--primary); }
 .article-content sub, .article-content sup { font-size: 0.7em; line-height: 0; }
 .article-content mark {
-    background: rgba(230, 126, 34, 0.28);
+    background: rgba(26, 188, 156, 0.28);
     color: var(--text-primary);
     padding: 0.05em 0.25em;
     border-radius: 3px;
@@ -1186,8 +1220,8 @@ body.sidebar-collapsed .sidebar-expand-btn {
 
 .detail-tag {
     padding:3px 10px; font-size:0.7rem;
-    background:rgba(230,126,34,0.12); color:var(--primary);
-    border:1px solid rgba(230,126,34,0.2); border-radius:10px;
+    background:rgba(26,188,156,0.12); color:var(--primary);
+    border:1px solid rgba(26,188,156,0.2); border-radius:10px;
     transition:
         transform var(--duration-instant) var(--ease-spring),
         background var(--duration-fast) ease,
@@ -1196,9 +1230,46 @@ body.sidebar-collapsed .sidebar-expand-btn {
 
 .detail-tag:hover {
     transform: scale(1.06);
-    background: rgba(230,126,34,0.2);
-    border-color: rgba(230,126,34,0.35);
+    background: rgba(26,188,156,0.2);
+    border-color: rgba(26,188,156,0.35);
 }
+
+/* "View article" action — links a photo marker back to its parent post.
+   Margin lives on the button so a hidden button leaves no empty gap. */
+.detail-actions { display: flex; }
+
+.detail-view-article-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+    padding: 9px 16px;
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--primary);
+    border: none;
+    border-radius: calc(var(--panel-radius) * 0.55);
+    cursor: pointer;
+    box-shadow: var(--shadow-subtle);
+    transition:
+        transform var(--duration-fast) var(--ease-out-expo),
+        box-shadow var(--duration-fast) var(--ease-out-expo),
+        filter var(--duration-fast) ease;
+}
+
+.detail-view-article-btn svg { flex-shrink: 0; }
+
+.detail-view-article-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+    box-shadow: var(--shadow-floating);
+}
+
+.detail-view-article-btn:active { transform: translateY(0); }
+
+.detail-view-article-btn[hidden] { display: none; }
 
 /* ============================================
    9. About Trigger & Card — 气泡弹出
@@ -1218,7 +1289,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
     cursor: pointer;
     color: var(--text-secondary);
     border: var(--panel-border);
-    border-radius: 50%;
+    border-radius: calc(var(--panel-radius) * 0.65);
     background: var(--glass-floating-bg);
     backdrop-filter: var(--glass-floating-blur);
     -webkit-backdrop-filter: var(--glass-floating-blur);
@@ -1662,6 +1733,76 @@ body.sidebar-collapsed .sidebar-expand-btn {
 .maplibregl-marker:hover {
     transform: scale(1.15) translateY(-2px);
     z-index: 10;
+}
+
+/* ---------------------------------------------------------------
+   Water-droplet (gooey / metaball) cluster markers.
+   The WebGL circle layers stay in the map (invisible) for hit-testing;
+   these HTML droplets are the visible markers and animate merge/split.
+   --------------------------------------------------------------- */
+.droplet-goo-defs { position: absolute; }
+
+.droplet-goo-layer,
+.droplet-label-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* The gooey blend is only needed while droplets are close (merging /
+   splitting); enabled just for the transition to keep it cheap. */
+.droplet-goo-layer.goo-active {
+    -webkit-filter: url(#droplet-goo);
+    filter: url(#droplet-goo);
+}
+
+.droplet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    /* Solid, single colour so neighbouring blobs fuse cleanly. A soft
+       radial highlight gives a water-like sheen. */
+    background:
+        radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55), rgba(255,255,255,0) 45%),
+        var(--primary);
+    will-change: transform, opacity;
+    transform: translate3d(-100px, -100px, 0) translate(-50%, -50%) scale(1);
+}
+
+/* Transition class is applied only to merging / splitting droplets so
+   panning (which repositions every frame) never rubber-bands. */
+.droplet--transit {
+    transition:
+        transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.droplet-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    pointer-events: none;
+    will-change: transform, opacity;
+    transform: translate3d(-100px, -100px, 0) translate(-50%, -50%);
+}
+
+.droplet-label--transit {
+    transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .droplet--transit,
+    .droplet-label--transit { transition: none; }
 }
 
 /* ---------------------------------------------------------------

@@ -15,60 +15,21 @@ if ( ! defined( 'SPHOTOGRAPHY_VERSION' ) ) {
 }
 
 require_once get_template_directory() . '/admin/theme-settings.php';
+require_once get_template_directory() . '/admin/admin-style.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
 
 // ============================================
-// 1. Register Custom Post Type: photograph
+// 1. (removed) Custom Post Type "photograph"
 // ============================================
-function sphotography_register_photograph_cpt() {
-    $labels = array(
-        'name'                  => _x( 'Photographs', 'Post Type General Name', 'sphotography' ),
-        'singular_name'         => _x( 'Photograph', 'Post Type Singular Name', 'sphotography' ),
-        'menu_name'             => __( 'Photographs', 'sphotography' ),
-        'name_admin_bar'        => __( 'Photograph', 'sphotography' ),
-        'archives'              => __( 'Photograph Archives', 'sphotography' ),
-        'attributes'            => __( 'Photograph Attributes', 'sphotography' ),
-        'all_items'             => __( 'All Photographs', 'sphotography' ),
-        'add_new_item'          => __( 'Add New Photograph', 'sphotography' ),
-        'add_new'               => __( 'Add New', 'sphotography' ),
-        'new_item'              => __( 'New Photograph', 'sphotography' ),
-        'edit_item'             => __( 'Edit Photograph', 'sphotography' ),
-        'update_item'           => __( 'Update Photograph', 'sphotography' ),
-        'view_item'             => __( 'View Photograph', 'sphotography' ),
-        'view_items'            => __( 'View Photographs', 'sphotography' ),
-        'search_items'          => __( 'Search Photograph', 'sphotography' ),
-        'not_found'             => __( 'Not found', 'sphotography' ),
-        'not_found_in_trash'    => __( 'Not found in Trash', 'sphotography' ),
-    );
-    $args = array(
-        'label'                 => __( 'Photograph', 'sphotography' ),
-        'description'           => __( 'Photographs for the map display', 'sphotography' ),
-        'labels'                => $labels,
-        'supports'              => array( 'title', 'editor', 'thumbnail', 'custom-fields' ),
-        'taxonomies'            => array( 'region_tag' ),
-        'hierarchical'          => false,
-        'public'                => true,
-        'show_ui'               => true,
-        'show_in_menu'          => true,
-        'menu_position'         => 20,
-        'menu_icon'             => 'dashicons-camera',
-        'show_in_admin_bar'     => true,
-        'show_in_nav_menus'     => false,
-        'can_export'            => true,
-        'has_archive'           => true,
-        'exclude_from_search'   => true,
-        'publicly_queryable'    => true,
-        'capability_type'       => 'post',
-        'show_in_rest'          => true,
-        'rest_base'             => 'photograph',
-        'rest_controller_class' => 'WP_REST_Posts_Controller',
-    );
-    register_post_type( 'photograph', $args );
-}
-add_action( 'init', 'sphotography_register_photograph_cpt' );
+// Sphotography now uses native WordPress posts exclusively. Articles are
+// authored as ordinary posts; any image inside a post that carries
+// latitude/longitude (set in the media library or auto-read from EXIF) is
+// plotted on the map as a marker linking back to its parent post. The old
+// "photograph" post type has been retired — see the sphotography/v1/photos
+// REST route below for how markers are now derived.
 
 // ============================================
-// 2. Register Custom Taxonomy: region_tag
+// 2. Register Custom Taxonomy: region_tag (attached to native posts)
 // ============================================
 function sphotography_register_region_tag_taxonomy() {
     $labels = array(
@@ -105,7 +66,7 @@ function sphotography_register_region_tag_taxonomy() {
         'rest_base'                  => 'region_tag',
         'rest_controller_class'      => 'WP_REST_Terms_Controller',
     );
-    register_taxonomy( 'region_tag', array( 'photograph' ), $args );
+    register_taxonomy( 'region_tag', array( 'post' ), $args );
 }
 add_action( 'init', 'sphotography_register_region_tag_taxonomy' );
 
@@ -137,14 +98,7 @@ function sphotography_register_photograph_meta() {
     );
 
     foreach ( $meta_fields as $key => $args ) {
-        // Register for photograph CPT
-        register_post_meta( 'photograph', $key, array(
-            'show_in_rest'  => true, 'single' => true,
-            'type' => $args['type'], 'description' => $args['description'],
-            'default' => $args['default'],
-            'auth_callback' => function() { return current_user_can( 'edit_posts' ); },
-        ) );
-        // Register for standard posts too
+        // Register for standard posts (used for post-level coordinates if any)
         register_post_meta( 'post', $key, array(
             'show_in_rest'  => true, 'single' => true,
             'type' => $args['type'], 'description' => $args['description'],
@@ -475,89 +429,84 @@ function sphotography_exif_frac_to_float( $frac ) {
 }
 
 // ============================================
-// 4. Add Featured Image URLs to REST API
+// 4. Map markers REST endpoint: sphotography/v1/photos
+//
+// Markers are derived from native posts. For every published post we gather
+// the images it uses — featured image, media attached to the post, and any
+// image inserted into the body (matched by the wp-image-<id> class) — and
+// emit one marker per image that carries latitude/longitude. Each marker
+// links back to its parent post so the frontend can open the article.
 // ============================================
-function sphotography_register_featured_image_rest_field() {
-    register_rest_field(
-        'photograph',
-        'featured_image_src',
-        array(
-            'get_callback'    => 'sphotography_get_featured_image_src',
-            'update_callback' => null,
-            'schema'          => array(
-                'description' => 'Featured image URLs in various sizes',
-                'type'        => 'object',
-                'properties'  => array(
-                    'medium' => array( 'type' => 'string' ),
-                    'full'   => array( 'type' => 'string' ),
-                ),
+function sphotography_register_marker_route() {
+    register_rest_route( 'sphotography/v1', '/photos', array(
+        'methods'             => WP_REST_Server::READABLE,
+        'callback'            => 'sphotography_get_photo_markers',
+        'permission_callback' => '__return_true',
+        'args'                => array(
+            'region_tag' => array(
+                'type'              => 'string',
+                'required'          => false,
+                'sanitize_callback' => 'sanitize_text_field',
             ),
-        )
-    );
+        ),
+    ) );
 }
-add_action( 'rest_api_init', 'sphotography_register_featured_image_rest_field' );
+add_action( 'rest_api_init', 'sphotography_register_marker_route' );
 
-function sphotography_get_featured_image_src( $object ) {
-    $post_id = $object['id'];
+/**
+ * Collect the unique image attachment IDs used by a post.
+ *
+ * @param WP_Post $post
+ * @return int[]
+ */
+function sphotography_collect_post_image_ids( $post ) {
+    $ids = array();
 
-    if ( ! has_post_thumbnail( $post_id ) ) {
-        return array(
-            'medium' => '',
-            'full'   => '',
-        );
+    // Featured image.
+    if ( has_post_thumbnail( $post ) ) {
+        $ids[] = (int) get_post_thumbnail_id( $post );
     }
 
-    $medium = wp_get_attachment_image_src(
-        get_post_thumbnail_id( $post_id ),
-        'medium'
-    );
-
-    $full = wp_get_attachment_image_src(
-        get_post_thumbnail_id( $post_id ),
-        'full'
-    );
-
-    return array(
-        'medium' => $medium ? $medium[0] : '',
-        'full'   => $full ? $full[0] : '',
-    );
-}
-
-// ============================================
-// 5. Increase REST API per_page limit to 500
-// ============================================
-function sphotography_increase_rest_per_page( $args, $request ) {
-    $per_page = $request->get_param( 'per_page' );
-    if ( $per_page !== null ) {
-        $args['posts_per_page'] = min( (int) $per_page, 500 );
-    } else {
-        $args['posts_per_page'] = 500;
+    // Images attached to the post (uploaded while editing it).
+    $attached = get_posts( array(
+        'post_parent'    => $post->ID,
+        'post_type'      => 'attachment',
+        'post_mime_type' => 'image',
+        'numberposts'    => -1,
+        'fields'         => 'ids',
+    ) );
+    if ( ! empty( $attached ) ) {
+        $ids = array_merge( $ids, array_map( 'intval', $attached ) );
     }
-    return $args;
-}
-add_filter( 'rest_photograph_query', 'sphotography_increase_rest_per_page', 10, 2 );
 
-function sphotography_increase_rest_per_page_max( $query_params ) {
-    if ( isset( $query_params['per_page'] ) ) {
-        $query_params['per_page']['maximum'] = 500;
+    // Images inserted into the body — WordPress tags them with wp-image-<id>.
+    if ( preg_match_all( '/wp-image-(\d+)/', (string) $post->post_content, $m ) ) {
+        $ids = array_merge( $ids, array_map( 'intval', $m[1] ) );
     }
-    return $query_params;
-}
-add_filter( 'rest_photograph_collection_params', 'sphotography_increase_rest_per_page_max' );
 
-// ============================================
-// 6. Support region_tag filtering via REST API
-// ============================================
-function sphotography_rest_region_tag_filter( $args, $request ) {
-    $region_tag = $request->get_param( 'region_tag' );
+    return array_values( array_unique( array_filter( $ids ) ) );
+}
+
+/**
+ * Build the flat list of geolocated image markers for all published posts.
+ * Shared by the REST route and the inline-data path so both emit the same
+ * shape.
+ *
+ * @param string $region_tag Optional comma-separated region_tag slugs to filter by.
+ * @return array[]
+ */
+function sphotography_collect_all_markers( $region_tag = '' ) {
+    $query_args = array(
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'no_found_rows'  => true,
+    );
 
     if ( ! empty( $region_tag ) ) {
-        $slugs = explode( ',', $region_tag );
-        $slugs = array_map( 'sanitize_title', $slugs );
-        $slugs = array_filter( $slugs );
-
+        $slugs = array_filter( array_map( 'sanitize_title', explode( ',', $region_tag ) ) );
         if ( ! empty( $slugs ) ) {
-            $tax_query = array(
+            $query_args['tax_query'] = array(
                 array(
                     'taxonomy' => 'region_tag',
                     'field'    => 'slug',
@@ -565,18 +514,71 @@ function sphotography_rest_region_tag_filter( $args, $request ) {
                     'operator' => 'IN',
                 ),
             );
-
-            if ( isset( $args['tax_query'] ) && is_array( $args['tax_query'] ) ) {
-                $args['tax_query'][] = $tax_query[0];
-            } else {
-                $args['tax_query'] = $tax_query;
-            }
         }
     }
 
-    return $args;
+    $posts   = get_posts( $query_args );
+    $markers = array();
+
+    foreach ( $posts as $post ) {
+        // Region tags of the parent post, shared by all its markers.
+        $tag_data = array();
+        $terms    = wp_get_post_terms( $post->ID, 'region_tag' );
+        if ( ! is_wp_error( $terms ) ) {
+            foreach ( $terms as $t ) {
+                $tag_data[] = array( 'id' => $t->term_id, 'name' => $t->name, 'slug' => $t->slug );
+            }
+        }
+
+        $post_title = get_the_title( $post );
+
+        foreach ( sphotography_collect_post_image_ids( $post ) as $img_id ) {
+            $lat = get_post_meta( $img_id, 'latitude', true );
+            $lng = get_post_meta( $img_id, 'longitude', true );
+            if ( $lat === '' || $lng === '' ) {
+                continue;
+            }
+            $lat = (float) $lat;
+            $lng = (float) $lng;
+            if ( 0.0 === $lat && 0.0 === $lng ) {
+                continue;
+            }
+
+            $medium = wp_get_attachment_image_src( $img_id, 'medium' );
+            $full   = wp_get_attachment_image_src( $img_id, 'full' );
+            $att    = get_post( $img_id );
+            $caption = $att ? wp_strip_all_tags( $att->post_excerpt ? $att->post_excerpt : $att->post_content ) : '';
+
+            $markers[] = array(
+                'id'          => $img_id,
+                'post_id'     => (int) $post->ID,
+                'post_title'  => $post_title,
+                'title'       => ( $att && $att->post_title ) ? $att->post_title : $post_title,
+                'latitude'    => $lat,
+                'longitude'   => $lng,
+                'thumbnail'   => $medium ? $medium[0] : '',
+                'full_image'  => $full ? $full[0] : '',
+                'camera_info' => (string) get_post_meta( $img_id, 'camera_info', true ),
+                'taken_at'    => (string) get_post_meta( $img_id, 'taken_at', true ),
+                'description' => $caption,
+                'tags'        => $tag_data,
+            );
+        }
+    }
+
+    return $markers;
 }
-add_filter( 'rest_photograph_query', 'sphotography_rest_region_tag_filter', 20, 2 );
+
+/**
+ * REST callback wrapping the shared marker builder.
+ *
+ * @param WP_REST_Request $request
+ * @return WP_REST_Response
+ */
+function sphotography_get_photo_markers( $request ) {
+    $region_tag = $request ? (string) $request->get_param( 'region_tag' ) : '';
+    return rest_ensure_response( sphotography_collect_all_markers( $region_tag ) );
+}
 
 // ============================================
 // 7. Load Frontend Assets
@@ -669,8 +671,7 @@ add_action( 'wp_enqueue_scripts', 'sphotography_enqueue_scripts' );
 // 8. Theme Activation: Auto-create map page & set as front
 // ============================================
 function sphotography_theme_activation() {
-    // Register post types and taxonomies first
-    sphotography_register_photograph_cpt();
+    // Register taxonomies first so rewrite rules flush cleanly.
     sphotography_register_region_tag_taxonomy();
 
     // Check if the map page already exists

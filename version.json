@@ -1,6 +1,6 @@
 {
-  "version": "1.1.7",
-  "changelog": "- 文章展开/收起改为 Windows 原生窗口最小化/恢复动画（DWM 风格）：整页作为刚性矩形缩放+位移，内容清晰无扭曲\n- 动效基于 FLIP，仅动 transform/opacity，60fps 无重排；transform-origin 随目标卡片动态计算\n- 卡片滚出边栏时收缩到边栏上/下边缘之外，不再突然消失\n- 全站默认字体改为优雅衬线（思源宋体 Noto Serif SC）\n- 文章展开页全面兼容 WordPress 经典/古腾堡格式：标题、列表、引用、表格、代码、图库、嵌入、按钮、分栏、对齐、封面等\n- 隐藏文章展开页滚动条（保留滚动功能）\n- 桌面端与移动端初始访问时边栏默认收起",
+  "version": "1.2.0",
+  "changelog": "重要：本次移除了 Photographs 自定义文章类型，改用 WordPress 原生文章。升级后请重新激活主题；原 Photographs 内容需迁移为普通文章。\n\n【后端数据模型】\n- 彻底移除 Photographs（photograph）自定义文章类型，完全采用原生「文章」流程\n- 地图标记改由文章内带地理坐标的图片生成：扫描文章特色图、附件与正文内嵌图片，凡带经纬度（媒体库或 EXIF）者即成标记，并链接回所属文章\n- 新增 REST 接口 sphotography/v1/photos，内联数据同源统一\n- region_tag 分类改挂载到原生文章\n- 点击标记先弹出大图详情，详情内提供「查看文章」按钮跳转所属文章\n\n【后台外观】\n- 主题全局配置页重做为 Sphotography 风格：优雅衬线字体、主题主色调，深/浅色跟随「夜间模式」设置，按键特效简洁\n- 新增「全局后台 Sphotography 风格」开关（默认关闭）：开启后整个 WordPress 后台统一为衬线字体与主题配色，深/浅色跟随夜间模式设置\n\n【前端交互】\n- 地图聚合标记改为水滴（gooey/metaball）样式：缩放时液态融合/分裂\n- 新增 Ctrl+K / ⌘+K 聚焦搜索框及快捷键提示；Esc 优先清空搜索\n- 边栏展开瀑布流入场；文章间切换交接式过渡\n- 边栏文章列表边缘柔和遮罩渐隐；展开/关于按钮统一为圆角矩形",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
   "check_url": "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
 }

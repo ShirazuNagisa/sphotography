@@ -17,11 +17,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 function sphotography_get_default_settings() {
     return array(
         // ① Global Theme
-        'primary_color'       => '#e67e22',
+        'primary_color'       => '#1abc9c',
         'allow_custom_color'  => false,
         'immersive_color'     => false,
         'night_mode'          => 'system',
         'dark_scheme'         => 'default',
+        'admin_global_style'  => true,
         // ② Card Style
         'card_radius'         => 16,
         'card_shadow'         => 'light',
@@ -51,7 +52,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'enable_hitokoto', 'entry_animation', 'pjax_animation' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'enable_hitokoto', 'entry_animation', 'pjax_animation' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -67,6 +68,7 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['night_mode'] = in_array( $input['night_mode'], $allowed_night, true ) ? $input['night_mode'] : $defaults['night_mode'];
     $allowed_dark = array( 'default', 'blue', 'purple' );
     $sanitized['dark_scheme'] = in_array( $input['dark_scheme'], $allowed_dark, true ) ? $input['dark_scheme'] : $defaults['dark_scheme'];
+    $sanitized['admin_global_style'] = ! empty( $input['admin_global_style'] ) ? 1 : 0;
 
     // ② Card Style
     $sanitized['card_radius'] = min( max( (int) $input['card_radius'], 0 ), 40 );
@@ -198,7 +200,7 @@ function sphotography_render_settings_page() {
                                    class="sphotography-color-picker"
                                    name="sphotography[primary_color]"
                                    value="<?php echo esc_attr( $values['primary_color'] ); ?>"
-                                   data-default-color="#e67e22">
+                                   data-default-color="#1abc9c">
                             <div class="sphotography-preset-colors">
                                 <?php
                                 $preset_colors = array(
@@ -270,6 +272,18 @@ function sphotography_render_settings_page() {
                             <option value="blue" <?php selected( $values['dark_scheme'], 'blue' ); ?>><?php _e( '深海暗色（#0a1628）', 'sphotography' ); ?></option>
                             <option value="purple" <?php selected( $values['dark_scheme'], 'purple' ); ?>><?php _e( '暗夜紫（#1a0a1e）', 'sphotography' ); ?></option>
                         </select>
+                    </div>
+
+                    <!-- Global admin style toggle -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[admin_global_style]"
+                                   value="1"
+                                   <?php checked( $values['admin_global_style'], 1 ); ?>>
+                            <?php _e( '启用全局后台 Sphotography 风格', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，整个 WordPress 后台将统一为 Sphotography 风格：优雅衬线字体、主题主色调，并跟随上方“深色模式”设置在深/浅色间切换。默认关闭，保持 WordPress 原生外观。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
@@ -526,7 +540,7 @@ function sphotography_render_settings_page() {
                                 <span class="dashicons dashicons-search" style="font-size:16px;width:16px;height:16px;"></span>
                                 <?php _e( '检查更新', 'sphotography' ); ?>
                             </button>
-                            <button type="button" id="sphotography-do-update" class="button button-primary" style="display:inline-flex;align-items:center;gap:4px;background:#e67e22;border-color:#d35400;">
+                            <button type="button" id="sphotography-do-update" class="button button-primary" style="display:inline-flex;align-items:center;gap:4px;background:#1abc9c;border-color:#16a085;">
                                 <span class="dashicons dashicons-download" style="font-size:16px;width:16px;height:16px;"></span>
                                 <?php _e( '从 master 分支更新主题', 'sphotography' ); ?>
                             </button>
@@ -578,50 +592,91 @@ function sphotography_admin_enqueue_settings( $hook ) {
     wp_enqueue_style( 'wp-color-picker' );
     wp_enqueue_script( 'wp-color-picker' );
 
-    // Admin custom styles
-    wp_add_inline_style( 'wp-color-picker', '
+    // Admin custom styles — Sphotography look: serif type, theme primary as
+    // accent, light/dark following the night_mode setting (the scheme body
+    // class is added in admin/admin-style.php). Effects are kept subtle.
+    $sp_primary = sphotography_admin_primary_color();
+    $sp_serif   = "'Noto Serif SC', Georgia, 'Times New Roman', 'Songti SC', serif";
+
+    $sp_light = "
+        --sp-bg: #f4f1ec;
+        --sp-surface: #ffffff;
+        --sp-surface-2: #faf8f4;
+        --sp-text: #2b2622;
+        --sp-text-muted: #6b6259;
+        --sp-border: #e6e0d8;
+        --sp-accent: {$sp_primary};
+        --sp-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+        color-scheme: light;
+    ";
+    $sp_dark = "
+        --sp-bg: #121212;
+        --sp-surface: #1c1c1c;
+        --sp-surface-2: #242424;
+        --sp-text: #ececec;
+        --sp-text-muted: #9a9a9a;
+        --sp-border: rgba(255,255,255,0.10);
+        --sp-accent: {$sp_primary};
+        --sp-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        color-scheme: dark;
+    ";
+
+    $settings_css = "
+        /* Scheme variables — self-contained so the settings page is themed
+           whether or not the global admin style is enabled. */
+        .sphotography-settings-wrap { {$sp_light} }
+        body.sphotography-admin-scheme-dark .sphotography-settings-wrap { {$sp_dark} }
+        @media (prefers-color-scheme: dark) {
+            body.sphotography-admin-scheme-system .sphotography-settings-wrap { {$sp_dark} }
+        }
+
         .sphotography-settings-wrap {
             max-width: 960px;
             margin: 20px auto;
-            background: #e0f2f1;
+            background: var(--sp-bg);
+            color: var(--sp-text);
             padding: 30px 40px;
             border-radius: 16px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: {$sp_serif};
         }
         .sphotography-settings-title {
-            font-size: 1.75rem;
+            font-size: 1.9rem;
             font-weight: 700;
             margin: 0 0 4px 0;
-            color: #1a1a1a;
+            color: var(--sp-text);
+            font-family: {$sp_serif};
+            letter-spacing: 0.01em;
         }
         .sphotography-settings-subtitle {
-            color: #555;
+            color: var(--sp-text-muted);
             margin: 0 0 28px 0;
             font-size: 0.9375rem;
         }
         .sphotography-module {
-            background: #ffffff;
+            background: var(--sp-surface);
+            border: 1px solid var(--sp-border);
             border-radius: 14px;
             margin-bottom: 20px;
             overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            box-shadow: var(--sp-shadow);
         }
         .sphotography-module-header {
             display: flex;
             align-items: center;
             gap: 10px;
             padding: 16px 24px;
-            background: #fafffe;
-            border-bottom: 1px solid #e0f2f1;
+            background: var(--sp-surface-2);
+            border-bottom: 1px solid var(--sp-border);
         }
         .sphotography-module-header h2 {
             margin: 0;
-            font-size: 1.1rem;
+            font-size: 1.15rem;
             font-weight: 600;
-            color: #1a1a1a;
+            color: var(--sp-text);
+            font-family: {$sp_serif};
         }
         .sphotography-module-icon {
-            color: #00a896;
+            color: var(--sp-accent);
             font-size: 1.3rem;
             width: auto;
             height: auto;
@@ -632,7 +687,7 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-field {
             margin-bottom: 20px;
             padding-bottom: 20px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid var(--sp-border);
         }
         .sphotography-field:last-child {
             margin-bottom: 0;
@@ -642,7 +697,7 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-label {
             display: block;
             font-weight: 600;
-            color: #2d3748;
+            color: var(--sp-text);
             margin-bottom: 8px;
             font-size: 0.9375rem;
         }
@@ -652,14 +707,14 @@ function sphotography_admin_enqueue_settings( $hook ) {
             gap: 8px;
             font-weight: 500;
         }
-        .sphotography-field-checkbox input[type="checkbox"] {
+        .sphotography-field-checkbox input[type=\"checkbox\"] {
             margin: 0;
         }
         .sphotography-desc {
-            color: #718096;
+            color: var(--sp-text-muted);
             font-size: 0.8125rem;
             margin: 6px 0 0 0;
-            line-height: 1.5;
+            line-height: 1.6;
         }
         .sphotography-color-group {
             display: flex;
@@ -677,16 +732,16 @@ function sphotography_admin_enqueue_settings( $hook ) {
             border-radius: 50%;
             border: 2px solid transparent;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: transform 180ms cubic-bezier(0.16,1,0.3,1);
             padding: 0;
             outline: none;
         }
         .sphotography-preset-btn:hover {
-            transform: scale(1.15);
+            transform: scale(1.12);
         }
         .sphotography-preset-btn.active {
-            border-color: #1a1a1a;
-            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1a1a1a;
+            border-color: var(--sp-accent);
+            box-shadow: 0 0 0 2px var(--sp-surface), 0 0 0 4px var(--sp-accent);
         }
         .sphotography-radio-group {
             display: flex;
@@ -715,33 +770,44 @@ function sphotography_admin_enqueue_settings( $hook ) {
             padding: 8px 24px;
             font-size: 0.9375rem;
             border-radius: 8px;
+            font-family: {$sp_serif};
         }
         .sphotography-actions .button-primary {
-            background: #00a896;
-            border-color: #00897b;
+            background: var(--sp-accent);
+            border-color: var(--sp-accent);
+            box-shadow: none;
+            text-shadow: none;
+            transition: transform 160ms cubic-bezier(0.16,1,0.3,1), filter 160ms ease;
         }
         .sphotography-actions .button-primary:hover {
-            background: #00897b;
+            filter: brightness(1.07);
+            transform: translateY(-1px);
         }
+        .sphotography-actions .button-primary:active { transform: translateY(0); }
         #sphotography-reset-btn {
-            color: #e53e3e;
-            border-color: #e53e3e;
+            color: #e05a4d;
+            border-color: #e05a4d;
+            background: transparent;
+            transition: background 160ms ease, color 160ms ease;
         }
         #sphotography-reset-btn:hover {
-            background: #e53e3e;
+            background: #e05a4d;
             color: #fff;
         }
-        .sphotography-field input[type="text"],
-        .sphotography-field input[type="url"],
-        .sphotography-field input[type="number"],
+        .sphotography-field input[type=\"text\"],
+        .sphotography-field input[type=\"url\"],
+        .sphotography-field input[type=\"number\"],
         .sphotography-field select,
         .sphotography-field textarea {
             width: 100%;
             max-width: 420px;
             border-radius: 8px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--sp-border);
+            background: var(--sp-surface-2);
+            color: var(--sp-text);
             padding: 8px 12px;
             font-size: 0.9375rem;
+            font-family: {$sp_serif};
         }
         .sphotography-field textarea {
             max-width: 520px;
@@ -749,9 +815,24 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-field input:focus,
         .sphotography-field select:focus,
         .sphotography-field textarea:focus {
-            border-color: #00a896;
-            box-shadow: 0 0 0 1px #00a896;
+            border-color: var(--sp-accent);
+            box-shadow: 0 0 0 1px var(--sp-accent);
             outline: none;
+        }
+        /* Keep native form controls readable in dark mode. Without explicit
+           backgrounds, browsers/WordPress render select options and hovered
+           inputs with a black surface that swallows the dark-mode text. */
+        .sphotography-field select option {
+            background: var(--sp-surface);
+            color: var(--sp-text);
+        }
+        .sphotography-field input[type=\"text\"]:hover,
+        .sphotography-field input[type=\"url\"]:hover,
+        .sphotography-field input[type=\"number\"]:hover,
+        .sphotography-field select:hover,
+        .sphotography-field textarea:hover {
+            background: var(--sp-surface-2);
+            color: var(--sp-text);
         }
         .sphotography-custom-date-field {
             margin-top: 12px;
@@ -759,10 +840,12 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-module-header .sphotography-module-icon {
             margin-right: 4px;
         }
-        .notice {
+        .sphotography-settings-wrap .notice {
             border-radius: 10px;
         }
-    ' );
+    ";
+
+    wp_add_inline_style( 'wp-color-picker', $settings_css );
 
     wp_enqueue_script(
         'sphotography-admin-settings',
