@@ -54,7 +54,7 @@
         allPhotos: null,
         recentPosts: [],
         allPosts: [],
-        sidebarOpen: true,
+        sidebarOpen: false,
         articleOpen: false,
         detailOpen: false,
         isMobile: window.innerWidth < 768,
@@ -65,6 +65,8 @@
         reconcileToken: 0,
         openedPostId: null,
         activePhotoPanelKey: null,
+        articleMotion: null,
+        motionCard: null,
     };
 
     // ---------------------------------------------------------------
@@ -471,9 +473,31 @@
     }
 
     // ---------------------------------------------------------------
-    // 10. Article Panel — Windows Native Scale Motion
+    // 10. Article Panel — Windows Native Minimize / Restore Motion
+    //
+    // The article page grows out of / shrinks into its sidebar card the
+    // way Windows DWM animates a window between full size and the taskbar:
+    // a full-resolution snapshot of the window is scaled + translated as a
+    // single rigid rectangle. We reproduce that with FLIP — a clone laid
+    // out at the FULL article geometry (so content stays crisp) is mapped
+    // onto the live card rect via a compositor-only transform. Only
+    // transform / opacity animate, so there is no reflow and no warp.
     // ---------------------------------------------------------------
+    var ARTICLE_MOTION = {
+        openDuration: 260,
+        closeDuration: 240,
+        // Fast start, smooth middle, soft settle, no bounce (monotonic curve).
+        easing: 'cubic-bezier(0.18, 0.85, 0.28, 1)'
+    };
+
+    function prefersReducedMotion() {
+        return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    // Live geometry of a sidebar card + its scroll container, recomputed on
+    // every animation so we never rely on cached or hard-coded coordinates.
     function getPostCardGeometry(postId) {
+        if (postId == null) return null;
         var card = dom.sidebarPosts.querySelector('[data-post-id="' + postId + '"]');
         if (!card) return null;
         var rect = card.getBoundingClientRect();
@@ -481,124 +505,168 @@
         return {
             rect: rect,
             listRect: listRect,
-            centerX: rect.left + rect.width / 2,
-            centerY: rect.top + rect.height / 2,
-            visible: rect.bottom > listRect.top && rect.top < listRect.bottom,
-            direction: rect.top < listRect.top ? 'up' : (rect.bottom > listRect.bottom ? 'down' : 'visible')
+            direction: rect.bottom <= listRect.top ? 'up' : (rect.top >= listRect.bottom ? 'down' : 'visible')
         };
     }
 
-    function getArticleChrome() {
-        return dom.articlePanel.innerHTML;
+    // The article panel carries a transform while inactive, so its live
+    // bounding box is offset. Read the true, untransformed layout rect.
+    function measurePanelRect() {
+        var panel = dom.articlePanel;
+        var prevTransform = panel.style.transform;
+        panel.classList.add('article-panel--instant');
+        panel.style.transform = 'none';
+        // Force layout so the neutralized transform is reflected in the rect.
+        var rect = panel.getBoundingClientRect();
+        panel.style.transform = prevTransform;
+        panel.classList.remove('article-panel--instant');
+        return rect;
     }
 
-    function createMotionLayer() {
+    // Rectangle the clone collapses into. Visible cards use their real rect;
+    // cards scrolled out of the sidebar tuck just beyond the nearest edge so
+    // the window slides into the edge instead of vanishing.
+    function computeCollapseTarget(geom) {
+        var rect = geom.rect, listRect = geom.listRect;
+        if (geom.direction === 'up') {
+            return { left: rect.left, top: listRect.top - rect.height, width: rect.width, height: rect.height };
+        }
+        if (geom.direction === 'down') {
+            return { left: rect.left, top: listRect.bottom, width: rect.width, height: rect.height };
+        }
+        return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    }
+
+    // FLIP transform mapping the full panel box onto the target rect,
+    // with transform-origin at the top-left corner. The effective centre
+    // therefore tracks the target card automatically — no magic numbers.
+    function collapseTransform(target, panelRect) {
+        var sx = target.width / Math.max(1, panelRect.width);
+        var sy = target.height / Math.max(1, panelRect.height);
+        var tx = target.left - panelRect.left;
+        var ty = target.top - panelRect.top;
+        return 'translate(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px) scale(' + sx.toFixed(5) + ',' + sy.toFixed(5) + ')';
+    }
+
+    function readRadius(el) {
+        var r = window.getComputedStyle(el).borderTopLeftRadius;
+        return r || '16px';
+    }
+
+    function createMotionCard(panelRect) {
         var layer = document.getElementById('motion-layer');
-        if (layer) return layer;
-        layer = document.createElement('div');
-        layer.id = 'motion-layer';
-        layer.className = 'motion-layer';
-        document.body.appendChild(layer);
-        return layer;
-    }
-
-    function createMotionCard() {
-        var layer = createMotionLayer();
+        if (!layer) {
+            layer = document.createElement('div');
+            layer.id = 'motion-layer';
+            layer.className = 'motion-layer';
+            document.body.appendChild(layer);
+        }
         var card = document.createElement('div');
-        card.id = 'motion-card';
         card.className = 'motion-card';
-        card.innerHTML = '<div class="motion-card-surface"><div class="motion-card-content"></div></div>';
+        card.style.left = panelRect.left + 'px';
+        card.style.top = panelRect.top + 'px';
+        card.style.width = panelRect.width + 'px';
+        card.style.height = panelRect.height + 'px';
+        card.innerHTML = '<div class="motion-card-content">' + dom.articlePanel.innerHTML + '</div>';
         layer.appendChild(card);
         return card;
     }
 
-    function ensureMotionState() {
-        if (!dom.motionLayer) dom.motionLayer = createMotionLayer();
-        if (!dom.motionCard || !dom.motionCard.isConnected) {
-            dom.motionCard = createMotionCard();
-            dom.motionSurface = dom.motionCard.querySelector('.motion-card-surface');
-            dom.motionContent = dom.motionCard.querySelector('.motion-card-content');
+    function clearMotion() {
+        if (state.articleMotion) {
+            state.articleMotion.cancel();
+            state.articleMotion = null;
+        }
+        if (state.motionCard) {
+            state.motionCard.remove();
+            state.motionCard = null;
         }
     }
 
-    function setMotionContentFromArticle() {
-        ensureMotionState();
-        dom.motionContent.innerHTML = dom.articlePanel.innerHTML;
+    // Snap the real panel into its active/hidden state with no transition,
+    // so the handoff to/from the clone is invisible (no second animation).
+    function setPanelInstant(active) {
+        dom.articlePanel.classList.add('article-panel--instant');
+        dom.articlePanel.classList.toggle('active', active);
+        // Force reflow so the transition-less change commits this frame.
+        void dom.articlePanel.offsetHeight;
+        requestAnimationFrame(function () {
+            dom.articlePanel.classList.remove('article-panel--instant');
+        });
     }
 
-    function animateWindowsOpen(postId, articleHtml) {
+    function animateWindowsOpen(postId) {
+        clearMotion();
         var geom = getPostCardGeometry(postId);
-        if (!geom) {
+        if (!geom || state.isMobile || prefersReducedMotion()) {
             dom.articlePanel.classList.add('active');
             return;
         }
-        ensureMotionState();
-        dom.motionContent.innerHTML = articleHtml;
-        dom.motionCard.style.left = geom.rect.left + 'px';
-        dom.motionCard.style.top = geom.rect.top + 'px';
-        dom.motionCard.style.width = geom.rect.width + 'px';
-        dom.motionCard.style.height = geom.rect.height + 'px';
-        dom.motionCard.style.opacity = '1';
-        dom.motionCard.classList.add('motion-card--visible');
-        var targetRect = dom.articlePanel.getBoundingClientRect();
-        var sx = targetRect.width / Math.max(1, geom.rect.width);
-        var sy = targetRect.height / Math.max(1, geom.rect.height);
-        var dx = targetRect.left - geom.rect.left;
-        var dy = targetRect.top - geom.rect.top;
-        dom.motionCard.animate([
-            { transform: 'translate3d(0,0,0) scale(1)', borderRadius: '18px', filter: 'blur(0px)' },
-            { transform: 'translate3d(' + (dx * 0.24).toFixed(2) + 'px,' + (dy * 0.24).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.24).toFixed(4) + ',' + (1 + (sy - 1) * 0.24).toFixed(4) + ')', borderRadius: '16px', offset: 0.25 },
-            { transform: 'translate3d(' + (dx * 0.64).toFixed(2) + 'px,' + (dy * 0.64).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.64).toFixed(4) + ',' + (1 + (sy - 1) * 0.64).toFixed(4) + ')', borderRadius: '14px', offset: 0.7 },
-            { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '12px', filter: 'blur(0px)' }
-        ], { duration: 520, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' }).onfinish = function () {
-            dom.articlePanel.classList.add('active');
-            dom.articlePanel.style.willChange = '';
-            dom.motionCard.classList.remove('motion-card--visible');
-            dom.motionCard.remove();
-            dom.motionCard = null;
-            dom.motionSurface = null;
-            dom.motionContent = null;
-            dom.motionLayer = document.getElementById('motion-layer');
+        var panelRect = measurePanelRect();
+        var target = computeCollapseTarget(geom);
+        var card = createMotionCard(panelRect);
+        state.motionCard = card;
+        // Hide the real panel instantly so no stale content shows behind the
+        // clone (e.g. when switching directly from another open article).
+        setPanelInstant(false);
+
+        var panelRadius = readRadius(dom.articlePanel);
+        var srcCard = dom.sidebarPosts.querySelector('[data-post-id="' + postId + '"]');
+        var cardRadius = readRadius(srcCard || dom.articlePanel);
+
+        var anim = card.animate([
+            { transform: collapseTransform(target, panelRect), opacity: 0, borderRadius: cardRadius },
+            { opacity: 1, offset: 0.12 },
+            { transform: 'translate(0,0) scale(1,1)', opacity: 1, borderRadius: panelRadius }
+        ], { duration: ARTICLE_MOTION.openDuration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        state.articleMotion = anim;
+        anim.onfinish = function () {
+            if (state.articleMotion !== anim) return;
+            setPanelInstant(true);
+            clearMotion();
         };
     }
 
-    function animateWindowsClose(postId) {
+    function animateWindowsClose(postId, onDone) {
+        clearMotion();
         var geom = getPostCardGeometry(postId);
-        if (!geom || !dom.motionCard) {
+        if (!geom || state.isMobile || prefersReducedMotion()) {
             dom.articlePanel.classList.remove('active');
+            if (onDone) onDone();
             return;
         }
-        var articleRect = dom.articlePanel.getBoundingClientRect();
-        var sx = Math.max(0.2, geom.rect.width / Math.max(1, articleRect.width));
-        var sy = Math.max(0.2, geom.rect.height / Math.max(1, articleRect.height));
-        var dx = geom.rect.left - articleRect.left;
-        var dy = geom.rect.top - articleRect.top;
-        dom.motionCard.animate([
-            { transform: 'translate3d(0,0,0) scale(1)', borderRadius: '12px', opacity: 1 },
-            { transform: 'translate3d(' + (dx * 0.24).toFixed(2) + 'px,' + (dy * 0.24).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.24).toFixed(4) + ',' + (1 + (sy - 1) * 0.24).toFixed(4) + ')', borderRadius: '14px', offset: 0.25 },
-            { transform: 'translate3d(' + (dx * 0.68).toFixed(2) + 'px,' + (dy * 0.68).toFixed(2) + 'px,0) scale(' + (1 + (sx - 1) * 0.68).toFixed(4) + ',' + (1 + (sy - 1) * 0.68).toFixed(4) + ')', borderRadius: '16px', offset: 0.7 },
-            { transform: 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')', borderRadius: '18px', opacity: 0.18 }
-        ], { duration: 420, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }).onfinish = function () {
-            dom.articlePanel.classList.remove('active');
-            dom.motionCard.remove();
-            dom.motionCard = null;
-            dom.motionSurface = null;
-            dom.motionContent = null;
+        var panelRect = measurePanelRect();
+        var target = computeCollapseTarget(geom);
+        var card = createMotionCard(panelRect);
+        state.motionCard = card;
+        // Hide the real panel instantly so only the clone plays the motion.
+        setPanelInstant(false);
+
+        var panelRadius = readRadius(dom.articlePanel);
+        var srcCard = dom.sidebarPosts.querySelector('[data-post-id="' + postId + '"]');
+        var cardRadius = readRadius(srcCard || dom.articlePanel);
+
+        var anim = card.animate([
+            { transform: 'translate(0,0) scale(1,1)', opacity: 1, borderRadius: panelRadius },
+            { opacity: 1, offset: 0.82 },
+            { transform: collapseTransform(target, panelRect), opacity: 0, borderRadius: cardRadius }
+        ], { duration: ARTICLE_MOTION.closeDuration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        state.articleMotion = anim;
+        anim.onfinish = function () {
+            if (state.articleMotion !== anim) return;
+            clearMotion();
+            if (onDone) onDone();
         };
     }
 
     function openArticle(postId) {
         var requestPostId = postId;
         closeAllPhotoPanels();
-        if (state.articleOpen && state.openedPostId && state.openedPostId !== requestPostId) {
-            animateWindowsClose(state.openedPostId);
-        }
         state.openedPostId = requestPostId;
         state.articleOpen = true;
         dom.articleTitle.textContent = '加载中...';
         dom.articleMeta.textContent = '';
         dom.articleContent.innerHTML = '';
-        dom.articlePanel.style.willChange = 'transform, opacity';
         if (state.isMobile) closeSidebar(true);
         fetchFromRest(CONFIG.postsEndpoint + '/' + requestPostId, { _embed: '1' }).then(function(post) {
             if (state.openedPostId !== requestPostId) return;
@@ -618,7 +686,7 @@
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
-            animateWindowsOpen(requestPostId, articleHtml);
+            animateWindowsOpen(requestPostId);
         });
     }
 
@@ -627,7 +695,12 @@
         var targetPostId = state.openedPostId;
         state.articleOpen = false;
         state.openedPostId = null;
-        if (!targetPostId) return;
+        // Photograph articles have no source card — fall back to a plain fade.
+        if (targetPostId == null || !getPostCardGeometry(targetPostId)) {
+            clearMotion();
+            dom.articlePanel.classList.remove('active');
+            return;
+        }
         animateWindowsClose(targetPostId);
     }
     // ---------------------------------------------------------------
@@ -799,9 +872,7 @@
     // ---------------------------------------------------------------
     function openPhotographArticle(photoId, props) {
         closeAllPhotoPanels();
-        if (state.articleOpen) {
-            dom.articlePanel.getAnimations().forEach(function(animation) { animation.cancel(); });
-        }
+        clearMotion();
         state.openedPostId = null;
         dom.articleTitle.textContent = props.title || 'Photograph';
         dom.articleMeta.innerHTML = props.cameraInfo
@@ -1010,7 +1081,8 @@
             initHitokoto();
             initEntryAnimation();
             bindUIEvents();
-            openSidebar();
+            // Sidebar starts collapsed on both desktop and mobile.
+            closeSidebar(true);
         } catch (err) {
             console.error('Init error:', err);
             hideLoading();

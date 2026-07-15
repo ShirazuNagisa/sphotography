@@ -4,12 +4,12 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.1.6
+Version: 1.1.7
 License: GPL v2 or later
 Text Domain: sphotography
 */
 
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
 /* ============================================
    1. Design Tokens & CSS Variables (统一设计令牌)
@@ -62,8 +62,8 @@ Text Domain: sphotography
     --color-border-hover: rgba(255, 255, 255, 0.14);
 
     /* === Typography (字体层级) === */
-    --font-display: 'Playfair Display', Georgia, serif;
-    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-display: 'Playfair Display', 'Noto Serif SC', Georgia, serif;
+    --font-body: 'Noto Serif SC', 'Songti SC', 'STSong', Georgia, 'Times New Roman', serif;
 
     --text-xs: 0.75rem;
     --text-sm: 0.875rem;
@@ -501,6 +501,10 @@ body.sidebar-collapsed .sidebar-expand-btn {
     z-index: 110;
     padding: 24px 28px;
     overflow-y: auto;
+    overflow-x: hidden;
+    /* Hide the scrollbar visually while keeping scroll functional. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     background: var(--glass-elevated-bg);
     backdrop-filter: var(--glass-elevated-blur);
     -webkit-backdrop-filter: var(--glass-elevated-blur);
@@ -514,6 +518,10 @@ body.sidebar-collapsed .sidebar-expand-btn {
         transform var(--duration-slow) var(--ease-out-expo),
         opacity var(--duration-slow) var(--ease-out-expo);
 }
+
+.article-panel::-webkit-scrollbar { width: 0; height: 0; }
+.article-panel::-webkit-scrollbar-thumb,
+.article-panel::-webkit-scrollbar-track { background: transparent; }
 
 .article-panel.active {
     transform: translateX(0) scale(1);
@@ -570,47 +578,341 @@ body.sidebar-collapsed .sidebar-expand-btn {
     opacity: 1;
 }
 
-.article-content p { margin-bottom: 1.2em; }
-.article-content h1, .article-content h2, .article-content h3, .article-content h4 {
+/* ---------------------------------------------------------------
+   WordPress content compatibility.
+   Covers both the classic editor and Gutenberg (wp-block-*) output:
+   headings, text formatting, lists, quotes, tables, code, media,
+   galleries, embeds, buttons, columns, alignments and more, so any
+   post renders correctly inside the article panel.
+   --------------------------------------------------------------- */
+.article-content > *:first-child { margin-top: 0; }
+.article-content > *:last-child { margin-bottom: 0; }
+
+/* Headings */
+.article-content h1,
+.article-content h2,
+.article-content h3,
+.article-content h4,
+.article-content h5,
+.article-content h6 {
     font-family: var(--font-display);
     color: var(--text-primary);
+    line-height: var(--leading-tight);
     margin: 1.5em 0 0.6em;
+    font-weight: 700;
 }
+.article-content h1 { font-size: 1.7rem; }
 .article-content h2 { font-size: 1.4rem; }
 .article-content h3 { font-size: 1.2rem; }
-.article-content img {
-    border-radius: 12px;
-    margin: 1.5em 0;
+.article-content h4 { font-size: 1.05rem; }
+.article-content h5 { font-size: 0.95rem; }
+.article-content h6 { font-size: 0.85rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+
+/* Paragraphs & inline text */
+.article-content p { margin-bottom: 1.2em; }
+.article-content strong, .article-content b { color: var(--text-primary); font-weight: 700; }
+.article-content em, .article-content i { font-style: italic; }
+.article-content small { font-size: 0.8125rem; color: var(--text-muted); }
+.article-content del, .article-content s { text-decoration: line-through; opacity: 0.7; }
+.article-content ins { text-decoration: none; border-bottom: 1px dashed var(--primary); }
+.article-content sub, .article-content sup { font-size: 0.7em; line-height: 0; }
+.article-content mark {
+    background: rgba(230, 126, 34, 0.28);
+    color: var(--text-primary);
+    padding: 0.05em 0.25em;
+    border-radius: 3px;
 }
-.article-content blockquote {
-    border-left: 3px solid var(--primary);
-    padding-left: 16px;
-    margin: 1.2em 0;
-    color: var(--text-secondary);
-    font-style: italic;
+.article-content abbr[title] { text-decoration: underline dotted; cursor: help; }
+.article-content kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8em;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
 }
+
+/* Links */
 .article-content a {
     color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 2px;
+    word-break: break-word;
     transition: opacity var(--duration-fast) ease;
 }
 .article-content a:hover { opacity: 0.8; }
+
+/* Lists */
 .article-content ul, .article-content ol {
-    padding-left: 20px;
+    padding-left: 1.4em;
     margin-bottom: 1.2em;
 }
 .article-content li { margin-bottom: 0.4em; }
+.article-content li > ul, .article-content li > ol { margin: 0.4em 0 0.4em; }
+.article-content dl { margin-bottom: 1.2em; }
+.article-content dt { font-weight: 700; color: var(--text-primary); }
+.article-content dd { margin: 0 0 0.6em 1.2em; }
+
+/* Quotes & pullquotes */
+.article-content blockquote,
+.article-content .wp-block-quote {
+    border-left: 3px solid var(--primary);
+    padding-left: 16px;
+    margin: 1.4em 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.article-content blockquote p:last-child { margin-bottom: 0.4em; }
+.article-content cite,
+.article-content .wp-block-quote cite {
+    display: block;
+    font-size: 0.8125rem;
+    font-style: normal;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+.article-content .wp-block-pullquote {
+    border: none;
+    border-top: 2px solid var(--primary);
+    border-bottom: 2px solid var(--primary);
+    padding: 1.2em 0;
+    margin: 1.6em 0;
+    text-align: center;
+    font-style: italic;
+    font-size: 1.15rem;
+}
+
+/* Media: images, figures, captions */
+.article-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 12px;
+}
+.article-content p > img,
 .article-content figure { margin: 1.5em 0; }
-.article-content figcaption {
+.article-content figure { max-width: 100%; }
+.article-content figcaption,
+.article-content .wp-caption-text {
     text-align: center;
     font-size: 0.8125rem;
     color: var(--text-muted);
     margin-top: 6px;
+    font-style: italic;
 }
-.article-content iframe {
+.article-content .wp-caption { max-width: 100%; }
+
+/* Video, audio, iframes & embeds — responsive */
+.article-content iframe,
+.article-content video,
+.article-content audio,
+.article-content embed,
+.article-content object {
     max-width: 100%;
     border-radius: 12px;
+}
+.article-content video, .article-content iframe { height: auto; }
+.article-content audio { width: 100%; }
+.article-content .wp-block-embed { margin: 1.5em 0; }
+.article-content .wp-block-embed__wrapper { position: relative; }
+.article-content .wp-has-aspect-ratio .wp-block-embed__wrapper { padding-top: 56.25%; }
+.article-content .wp-has-aspect-ratio .wp-block-embed__wrapper iframe {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+}
+.article-content .wp-embed-aspect-4-3 .wp-block-embed__wrapper { padding-top: 75%; }
+
+/* Galleries */
+.article-content .wp-block-gallery,
+.article-content .blocks-gallery-grid,
+.article-content .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin: 1.5em 0;
+    padding: 0;
+    list-style: none;
+}
+.article-content .wp-block-gallery.columns-2,
+.article-content .gallery-columns-2 { grid-template-columns: repeat(2, 1fr); }
+.article-content .wp-block-gallery.columns-3,
+.article-content .gallery-columns-3 { grid-template-columns: repeat(3, 1fr); }
+.article-content .wp-block-image,
+.article-content .blocks-gallery-item,
+.article-content .gallery-item {
+    margin: 0;
+    list-style: none;
+}
+.article-content .wp-block-gallery figure,
+.article-content .gallery-item figure { margin: 0; }
+.article-content .wp-block-gallery img,
+.article-content .gallery img { width: 100%; object-fit: cover; }
+
+/* Tables */
+.article-content table,
+.article-content .wp-block-table table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    font-size: 0.875rem;
+}
+.article-content .wp-block-table { overflow-x: auto; margin: 1.5em 0; }
+.article-content th, .article-content td {
+    border: 1px solid var(--color-border);
+    padding: 8px 12px;
+    text-align: left;
+}
+.article-content th { background: var(--color-surface); color: var(--text-primary); font-weight: 700; }
+.article-content tbody tr:nth-child(even),
+.article-content tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.article-content .wp-block-table figcaption { margin-top: 8px; }
+
+/* Code & preformatted */
+.article-content code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: rgba(255,255,255,0.08);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    word-break: break-word;
+}
+.article-content pre,
+.article-content .wp-block-code,
+.article-content .wp-block-preformatted {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 1.4em 0;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+.article-content pre code,
+.article-content .wp-block-code code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+}
+.article-content .wp-block-verse {
+    font-family: var(--font-display);
+    white-space: pre-wrap;
+    margin: 1.4em 0;
+}
+
+/* Separators */
+.article-content hr,
+.article-content .wp-block-separator {
+    border: none;
+    height: 1px;
+    background: var(--color-border);
+    margin: 2em 0;
+}
+.article-content .wp-block-separator.is-style-dots {
+    background: none;
+    text-align: center;
+}
+.article-content .wp-block-separator.is-style-wide { margin: 2.4em 0; }
+
+/* Buttons */
+.article-content .wp-block-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 1.5em 0;
+}
+.article-content .wp-block-button__link,
+.article-content .wp-block-button a {
+    display: inline-block;
+    background: var(--primary);
+    color: #fff;
+    padding: 10px 22px;
+    border-radius: 999px;
+    text-decoration: none;
+    font-size: 0.875rem;
+    transition: opacity var(--duration-fast) ease;
+}
+.article-content .wp-block-button.is-style-outline .wp-block-button__link {
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+}
+.article-content .wp-block-button__link:hover { opacity: 0.85; }
+
+/* Columns & groups */
+.article-content .wp-block-columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 1.5em 0;
+}
+.article-content .wp-block-column { flex: 1 1 0; min-width: 140px; }
+.article-content .wp-block-group { margin: 1.5em 0; }
+.article-content .wp-block-media-text {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: center;
+    margin: 1.5em 0;
+}
+.article-content .wp-block-media-text img { width: 100%; }
+
+/* Cover block */
+.article-content .wp-block-cover {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    padding: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 1.5em 0;
+    color: #fff;
+    text-align: center;
+}
+.article-content .wp-block-cover img,
+.article-content .wp-block-cover video {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; margin: 0;
+}
+.article-content .wp-block-cover__inner-container { position: relative; z-index: 1; }
+
+/* File block */
+.article-content .wp-block-file {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 1.4em 0;
+}
+
+/* Alignments */
+.article-content .aligncenter { display: block; margin-left: auto; margin-right: auto; text-align: center; }
+.article-content .alignleft {
+    float: left; margin: 0.4em 1.2em 1em 0; max-width: 50%;
+}
+.article-content .alignright {
+    float: right; margin: 0.4em 0 1em 1.2em; max-width: 50%;
+}
+.article-content .alignwide {
+    margin-left: -14px; margin-right: -14px; max-width: calc(100% + 28px); width: calc(100% + 28px);
+}
+.article-content .alignfull {
+    margin-left: -28px; margin-right: -28px; max-width: calc(100% + 56px); width: calc(100% + 56px); border-radius: 0;
+}
+.article-content .alignfull img { border-radius: 0; }
+.article-content .has-text-align-center { text-align: center; }
+.article-content .has-text-align-right { text-align: right; }
+.article-content .has-text-align-left { text-align: left; }
+.article-content::after { content: ""; display: table; clear: both; }
+
+/* Screen-reader text (WP core utility) */
+.article-content .screen-reader-text {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 /* ============================================
@@ -1362,106 +1664,64 @@ body.sidebar-collapsed .sidebar-expand-btn {
     z-index: 10;
 }
 
-.motion-layer {
-    position: fixed;
-    inset: 0;
-    z-index: 140;
-    pointer-events: none;
-    overflow: hidden;
-}
-
-.motion-panel {
-    position: absolute;
-    left: 0;
-    top: 0;
-    transform-origin: top left;
-    border-radius: 18px;
-    background: var(--glass-elevated-bg);
-    box-shadow: var(--shadow-elevated);
-    border: var(--panel-border);
-    overflow: hidden;
-    opacity: 0;
-    contain: layout paint size;
-    will-change: transform, left, top, width, height, opacity;
-}
-
-.motion-panel--open {
-    opacity: 1;
-}
-
-.motion-panel--expand {
-    opacity: 1;
-}
-
-.motion-panel--hidden {
-    opacity: 0;
-}
-
-.motion-panel-surface {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-}
-
-.motion-panel-frame {
-    width: 100%;
-    height: 100%;
-    padding: 28px;
-    box-sizing: border-box;
-    overflow: auto;
-    color: var(--text-primary);
-    font-size: 0.95rem;
-    line-height: 1.7;
-}
-
-.motion-panel-frame img {
-    max-width: 100%;
-    border-radius: 12px;
-}
-
-
+/* ---------------------------------------------------------------
+   Windows-style article minimize / restore motion.
+   The .motion-card is a full-resolution clone of the article panel
+   that scales + translates as one rigid rectangle (origin top-left).
+   Only transform / opacity animate, so there is no reflow or warp.
+   --------------------------------------------------------------- */
 .motion-layer {
     position: fixed;
     inset: 0;
     z-index: 145;
     pointer-events: none;
+    overflow: hidden;
 }
 
 .motion-card {
     position: fixed;
     left: 0;
     top: 0;
-    overflow: hidden;
-    border-radius: 18px;
+    /* Mirror .article-panel so the clone is visually identical. */
     background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
     border: var(--panel-border);
     box-shadow: var(--shadow-elevated);
-    transform-origin: top left;
-    will-change: transform, opacity, left, top, width, height;
-    contain: layout paint size;
-    opacity: 0;
-}
-
-.motion-card--visible {
-    opacity: 1;
-}
-
-.motion-card-surface {
-    width: 100%;
-    height: 100%;
+    border-radius: var(--panel-radius);
     overflow: hidden;
+    transform-origin: top left;
+    will-change: transform, opacity;
+    contain: layout paint;
 }
 
 .motion-card-content {
     width: 100%;
     height: 100%;
-    padding: 24px;
+    padding: 24px 28px;
     box-sizing: border-box;
-    overflow: auto;
+    overflow: hidden;
     color: var(--text-primary);
 }
 
 .motion-card-content img {
     max-width: 100%;
     border-radius: 12px;
+}
+
+/* The clone reuses the panel's markup; force its cascade elements into
+   their visible resting state (the .article-panel.active rules don't
+   apply to the clone root). */
+.motion-card .article-panel-header,
+.motion-card .article-content {
+    transform: none;
+    opacity: 1;
+    transition: none;
+}
+
+/* Instant, transition-less handoff between the clone and the real panel. */
+.article-panel--instant,
+.article-panel--instant .article-panel-header,
+.article-panel--instant .article-content {
+    transition: none !important;
 }
