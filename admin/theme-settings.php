@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.1.6
+ * @version 1.2.3
  */
 
 // Prevent direct access
@@ -22,6 +22,7 @@ function sphotography_get_default_settings() {
         'immersive_color'     => false,
         'night_mode'          => 'system',
         'dark_scheme'         => 'default',
+        'frontend_font'       => 'serif',
         'admin_global_style'  => true,
         // ② Card Style
         'card_radius'         => 16,
@@ -31,6 +32,8 @@ function sphotography_get_default_settings() {
         'custom_date_format'  => '',
         // ④ Sidebar Info
         'site_title'          => '',
+        'sidebar_default_open' => false,
+        'article_card_size'   => 'small',
         'enable_hitokoto'     => false,
         'author_nickname'     => '',
         'avatar_url'          => '',
@@ -52,7 +55,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'enable_hitokoto', 'entry_animation', 'pjax_animation' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -68,6 +71,8 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['night_mode'] = in_array( $input['night_mode'], $allowed_night, true ) ? $input['night_mode'] : $defaults['night_mode'];
     $allowed_dark = array( 'default', 'blue', 'purple' );
     $sanitized['dark_scheme'] = in_array( $input['dark_scheme'], $allowed_dark, true ) ? $input['dark_scheme'] : $defaults['dark_scheme'];
+    $allowed_font = array( 'serif', 'wordpress' );
+    $sanitized['frontend_font'] = in_array( $input['frontend_font'], $allowed_font, true ) ? $input['frontend_font'] : $defaults['frontend_font'];
     $sanitized['admin_global_style'] = ! empty( $input['admin_global_style'] ) ? 1 : 0;
 
     // ② Card Style
@@ -80,6 +85,9 @@ function sphotography_sanitize_settings( $input ) {
 
     // ④ Sidebar Info
     $sanitized['site_title'] = sanitize_text_field( $input['site_title'] );
+    $sanitized['sidebar_default_open'] = ! empty( $input['sidebar_default_open'] ) ? 1 : 0;
+    $allowed_card_size = array( 'small', 'large' );
+    $sanitized['article_card_size'] = in_array( $input['article_card_size'], $allowed_card_size, true ) ? $input['article_card_size'] : $defaults['article_card_size'];
     $sanitized['enable_hitokoto'] = ! empty( $input['enable_hitokoto'] ) ? 1 : 0;
     $sanitized['author_nickname'] = sanitize_text_field( $input['author_nickname'] );
     $sanitized['avatar_url'] = esc_url_raw( $input['avatar_url'] );
@@ -178,14 +186,15 @@ function sphotography_render_settings_page() {
             </div>
         <?php endif; ?>
 
-        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <div class="sphotography-settings-layout">
+        <form id="sphotography-settings-form" class="sphotography-settings-main" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="sphotography_save_settings">
             <?php wp_nonce_field( 'sphotography_save_settings', 'sphotography_save_nonce' ); ?>
 
             <!-- ============================================ -->
             <!-- Module 1: 全局主题 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-theme">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-art"></span>
                     <h2><?php _e( '全局主题', 'sphotography' ); ?></h2>
@@ -274,6 +283,16 @@ function sphotography_render_settings_page() {
                         </select>
                     </div>
 
+                    <!-- Frontend font -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-frontend-font"><?php _e( '前端字体', 'sphotography' ); ?></label>
+                        <select id="sphotography-frontend-font" name="sphotography[frontend_font]">
+                            <option value="serif" <?php selected( $values['frontend_font'], 'serif' ); ?>><?php _e( '衬线字体（Noto Serif SC，默认）', 'sphotography' ); ?></option>
+                            <option value="wordpress" <?php selected( $values['frontend_font'], 'wordpress' ); ?>><?php _e( 'WordPress 默认字体（系统无衬线）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择前端全局字体。衬线字体呈现更优雅的排版；WordPress 默认字体使用系统无衬线字体栈，观感更现代。全局生效，默认衬线字体。', 'sphotography' ); ?></p>
+                    </div>
+
                     <!-- Global admin style toggle -->
                     <div class="sphotography-field sphotography-field-checkbox">
                         <label class="sphotography-label">
@@ -291,7 +310,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 2: 卡片样式 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-card">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-screenoptions"></span>
                     <h2><?php _e( '卡片样式', 'sphotography' ); ?></h2>
@@ -335,7 +354,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 3: 日期格式 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-date">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-calendar-alt"></span>
                     <h2><?php _e( '日期格式', 'sphotography' ); ?></h2>
@@ -374,7 +393,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 4: 左侧栏信息 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-sidebar">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-info"></span>
                     <h2><?php _e( '左侧栏信息', 'sphotography' ); ?></h2>
@@ -389,6 +408,26 @@ function sphotography_render_settings_page() {
                                value="<?php echo esc_attr( $values['site_title'] ); ?>"
                                placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
                         <p class="sphotography-desc"><?php _e( '留空则自动读取 WordPress 站点标题。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[sidebar_default_open]"
+                                   value="1"
+                                   <?php checked( $values['sidebar_default_open'], 1 ); ?>>
+                            <?php _e( '默认展开边栏', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，首次进入站点时左侧文章栏将默认展开；关闭则默认收起，仅显示全屏地图。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-article-card-size"><?php _e( '文章卡片尺寸', 'sphotography' ); ?></label>
+                        <select id="sphotography-article-card-size" name="sphotography[article_card_size]">
+                            <option value="small" <?php selected( $values['article_card_size'], 'small' ); ?>><?php _e( '小尺寸（仅标题，默认）', 'sphotography' ); ?></option>
+                            <option value="large" <?php selected( $values['article_card_size'], 'large' ); ?>><?php _e( '大尺寸（标题 + 全文简介，纵向为小尺寸两倍）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择左侧栏文章列表卡片的尺寸。小尺寸仅展示标题与日期；大尺寸额外展示文章简介，卡片纵向高度约为小尺寸的两倍。默认小尺寸。', 'sphotography' ); ?></p>
                     </div>
 
                     <div class="sphotography-field sphotography-field-checkbox">
@@ -436,7 +475,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 5: 动画设置 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-animation">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-update"></span>
                     <h2><?php _e( '动画设置', 'sphotography' ); ?></h2>
@@ -480,7 +519,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 6: 页脚设置 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-footer">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-editor-paragraph"></span>
                     <h2><?php _e( '页脚设置', 'sphotography' ); ?></h2>
@@ -501,7 +540,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 8: CDN 来源配置 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-cdn">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-networking"></span>
                     <h2><?php _e( 'CDN 来源', 'sphotography' ); ?></h2>
@@ -522,7 +561,7 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Module 9: 版本与更新 -->
             <!-- ============================================ -->
-            <div class="sphotography-module">
+            <div class="sphotography-module" id="sp-mod-version">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-update"></span>
                     <h2><?php _e( '版本与更新', 'sphotography' ); ?></h2>
@@ -570,6 +609,37 @@ function sphotography_render_settings_page() {
                 </button>
             </div>
         </form>
+
+        <!-- ============================================ -->
+        <!-- Right-side index (TOC) — quick jump + save -->
+        <!-- ============================================ -->
+        <aside class="sphotography-toc" aria-label="<?php esc_attr_e( '配置索引', 'sphotography' ); ?>">
+            <div class="sphotography-toc-inner">
+                <p class="sphotography-toc-heading"><?php _e( '配置索引', 'sphotography' ); ?></p>
+                <nav class="sphotography-toc-nav">
+                    <?php
+                    $toc_items = array(
+                        'sp-mod-theme'     => __( '全局主题', 'sphotography' ),
+                        'sp-mod-card'      => __( '卡片样式', 'sphotography' ),
+                        'sp-mod-date'      => __( '日期格式', 'sphotography' ),
+                        'sp-mod-sidebar'   => __( '左侧栏信息', 'sphotography' ),
+                        'sp-mod-animation' => __( '动画设置', 'sphotography' ),
+                        'sp-mod-footer'    => __( '页脚设置', 'sphotography' ),
+                        'sp-mod-cdn'       => __( 'CDN 来源', 'sphotography' ),
+                        'sp-mod-version'   => __( '版本与更新', 'sphotography' ),
+                    );
+                    foreach ( $toc_items as $anchor => $label ) :
+                    ?>
+                        <a class="sphotography-toc-link" href="#<?php echo esc_attr( $anchor ); ?>" data-target="<?php echo esc_attr( $anchor ); ?>"><?php echo esc_html( $label ); ?></a>
+                    <?php endforeach; ?>
+                </nav>
+                <button type="submit" form="sphotography-settings-form" class="button button-primary sphotography-toc-save">
+                    <span class="dashicons dashicons-yes"></span>
+                    <?php _e( '保存设置', 'sphotography' ); ?>
+                </button>
+            </div>
+        </aside>
+        </div><!-- /.sphotography-settings-layout -->
 
         <!-- Reset form (submitted via JS) -->
         <form id="sphotography-reset-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:none;">
@@ -631,13 +701,96 @@ function sphotography_admin_enqueue_settings( $hook ) {
         }
 
         .sphotography-settings-wrap {
-            max-width: 960px;
+            max-width: 1180px;
             margin: 20px auto;
             background: var(--sp-bg);
             color: var(--sp-text);
             padding: 30px 40px;
             border-radius: 16px;
             font-family: {$sp_serif};
+        }
+        /* Two-column layout: settings on the left, sticky index on the right. */
+        .sphotography-settings-layout {
+            display: flex;
+            align-items: flex-start;
+            gap: 28px;
+        }
+        .sphotography-settings-main {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .sphotography-toc {
+            flex: 0 0 210px;
+            position: sticky;
+            top: 46px;
+            align-self: flex-start;
+        }
+        .sphotography-toc-inner {
+            background: var(--sp-surface);
+            border: 1px solid var(--sp-border);
+            border-radius: 14px;
+            box-shadow: var(--sp-shadow);
+            padding: 16px 14px;
+        }
+        .sphotography-toc-heading {
+            margin: 0 0 10px 0;
+            padding: 0 6px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: var(--sp-text-muted);
+            text-transform: uppercase;
+        }
+        .sphotography-toc-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .sphotography-toc-link {
+            display: block;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--sp-text-muted);
+            text-decoration: none;
+            border-left: 2px solid transparent;
+            transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+        }
+        .sphotography-toc-link:hover {
+            background: var(--sp-surface-2);
+            color: var(--sp-accent);
+        }
+        .sphotography-toc-link.active {
+            background: var(--sp-surface-2);
+            color: var(--sp-accent);
+            border-left-color: var(--sp-accent);
+            font-weight: 600;
+        }
+        .sphotography-toc-save {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            margin-top: 14px;
+            padding: 9px 12px !important;
+            height: auto !important;
+            border-radius: 8px !important;
+            font-family: {$sp_serif};
+            background: var(--sp-accent) !important;
+            border-color: var(--sp-accent) !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+            transition: transform 160ms cubic-bezier(0.16,1,0.3,1), filter 160ms ease;
+        }
+        .sphotography-toc-save:hover {
+            filter: brightness(1.07);
+            transform: translateY(-1px);
+        }
+        .sphotography-toc-save:active { transform: translateY(0); }
+        @media (max-width: 960px) {
+            .sphotography-settings-layout { display: block; }
+            .sphotography-toc { display: none; }
         }
         .sphotography-settings-title {
             font-size: 1.9rem;
@@ -820,16 +973,36 @@ function sphotography_admin_enqueue_settings( $hook ) {
             outline: none;
         }
         /* Keep native form controls readable in dark mode. Without explicit
-           backgrounds, browsers/WordPress render select options and hovered
-           inputs with a black surface that swallows the dark-mode text. */
+           colours on every state, browsers (and WordPress core form.css) fall
+           back to a dark/black text colour on the select control and its
+           option list — both when hovered and at rest — which becomes
+           unreadable on the dark surface. We pin colour + background on the
+           control, the option list, and the hovered/checked option, and use
+           !important so core rules cannot override them. */
+        .sphotography-field select {
+            color: var(--sp-text) !important;
+            background-color: var(--sp-surface-2) !important;
+        }
+        .sphotography-field select:hover,
+        .sphotography-field select:focus,
+        .sphotography-field select:active {
+            color: var(--sp-text) !important;
+            background-color: var(--sp-surface-2) !important;
+        }
         .sphotography-field select option {
-            background: var(--sp-surface);
-            color: var(--sp-text);
+            color: var(--sp-text) !important;
+            background-color: var(--sp-surface) !important;
+        }
+        .sphotography-field select option:hover,
+        .sphotography-field select option:focus,
+        .sphotography-field select option:checked,
+        .sphotography-field select option:active {
+            color: #ffffff !important;
+            background-color: var(--sp-accent) !important;
         }
         .sphotography-field input[type=\"text\"]:hover,
         .sphotography-field input[type=\"url\"]:hover,
         .sphotography-field input[type=\"number\"]:hover,
-        .sphotography-field select:hover,
         .sphotography-field textarea:hover {
             background: var(--sp-surface-2);
             color: var(--sp-text);

@@ -38,6 +38,53 @@
             $('.sphotography-custom-date-field').toggle($(this).val() === 'custom');
         });
 
+        // ----- Right-side index (TOC): smooth scroll + scrollspy -----
+        var $tocLinks = $('.sphotography-toc-link');
+        if ($tocLinks.length) {
+            var sections = [];
+            $tocLinks.each(function () {
+                var id = $(this).data('target');
+                var el = document.getElementById(id);
+                if (el) { sections.push({ id: id, el: el }); }
+            });
+
+            $tocLinks.on('click', function (e) {
+                var id = $(this).data('target');
+                var el = document.getElementById(id);
+                if (!el) { return; }
+                e.preventDefault();
+                var top = el.getBoundingClientRect().top + window.pageYOffset - 46;
+                window.scrollTo({ top: top, behavior: 'smooth' });
+            });
+
+            var setActive = function (id) {
+                $tocLinks.removeClass('active');
+                $tocLinks.filter('[data-target="' + id + '"]').addClass('active');
+            };
+
+            var onScroll = function () {
+                var probe = window.pageYOffset + 120;
+                var current = sections.length ? sections[0].id : null;
+                for (var i = 0; i < sections.length; i++) {
+                    if (sections[i].el.offsetTop <= probe) {
+                        current = sections[i].id;
+                    }
+                }
+                if (current) { setActive(current); }
+            };
+
+            var scrollScheduled = false;
+            $(window).on('scroll', function () {
+                if (scrollScheduled) { return; }
+                scrollScheduled = true;
+                window.requestAnimationFrame(function () {
+                    scrollScheduled = false;
+                    onScroll();
+                });
+            });
+            onScroll();
+        }
+
         $('#sphotography-reset-btn').on('click', function () {
             if (window.confirm(config.resetConfirm || 'Reset all settings?')) {
                 $('#sphotography-reset-form').trigger('submit');

@@ -15,7 +15,7 @@
  * here.
  *
  * @package Sphotography
- * @version 1.1.8
+ * @version 1.2.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -234,11 +234,31 @@ function sphotography_admin_global_css() {
         outline: none;
     }
     /* Keep native form controls readable in dark mode. Without explicit
-       backgrounds, browsers/WordPress render select options and hovered
-       inputs with a black surface that swallows the dark-mode text. */
+       colours on every state, browsers (and WordPress core form.css) fall back
+       to a dark/black text colour on the select control and its option list —
+       both when hovered and at rest — which becomes unreadable on the dark
+       surface. Pin colour + background on the control, the option list, and the
+       hovered/checked option, with !important so core rules cannot override. */
+    body.sphotography-admin-global select {
+        color: var(--sp-text) !important;
+        background-color: var(--sp-surface-2) !important;
+    }
+    body.sphotography-admin-global select:hover,
+    body.sphotography-admin-global select:focus,
+    body.sphotography-admin-global select:active {
+        color: var(--sp-text) !important;
+        background-color: var(--sp-surface-2) !important;
+    }
     body.sphotography-admin-global select option {
-        background: var(--sp-surface);
-        color: var(--sp-text);
+        color: var(--sp-text) !important;
+        background-color: var(--sp-surface) !important;
+    }
+    body.sphotography-admin-global select option:hover,
+    body.sphotography-admin-global select option:focus,
+    body.sphotography-admin-global select option:checked,
+    body.sphotography-admin-global select option:active {
+        color: #ffffff !important;
+        background-color: var(--sp-accent) !important;
     }
     body.sphotography-admin-global input[type=text]:hover,
     body.sphotography-admin-global input[type=search]:hover,
@@ -246,7 +266,6 @@ function sphotography_admin_global_css() {
     body.sphotography-admin-global input[type=url]:hover,
     body.sphotography-admin-global input[type=password]:hover,
     body.sphotography-admin-global input[type=number]:hover,
-    body.sphotography-admin-global select:hover,
     body.sphotography-admin-global textarea:hover {
         background: var(--sp-surface-2);
         color: var(--sp-text);
