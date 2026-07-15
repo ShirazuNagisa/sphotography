@@ -1,6 +1,6 @@
 {
-  "version": "1.1.6",
-  "changelog": "- 文章面板 FLIP 动画：从边栏卡片位置展开/收起，实时追踪滚动位置\n- 聚合/散开位置平滑过渡动画（丝滑 left/top 过渡）\n- 照片网格面板互斥逻辑：同时只允许一个展开，其余半透明收起\n- 照片网格关闭丝滑消失动画（scale+opacity）\n- 前端全面优化：动效令牌体系/按键统一/毛玻璃分层/品牌化Loading",
+  "version": "1.1.7",
+  "changelog": "- 文章展开/收起改为 Windows 原生窗口最小化/恢复动画（DWM 风格）：整页作为刚性矩形缩放+位移，内容清晰无扭曲\n- 动效基于 FLIP，仅动 transform/opacity，60fps 无重排；transform-origin 随目标卡片动态计算\n- 卡片滚出边栏时收缩到边栏上/下边缘之外，不再突然消失\n- 全站默认字体改为优雅衬线（思源宋体 Noto Serif SC）\n- 文章展开页全面兼容 WordPress 经典/古腾堡格式：标题、列表、引用、表格、代码、图库、嵌入、按钮、分栏、对齐、封面等\n- 隐藏文章展开页滚动条（保留滚动功能）\n- 桌面端与移动端初始访问时边栏默认收起",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
   "check_url": "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
 }

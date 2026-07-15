@@ -22,7 +22,7 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <link rel="profile" href="https://gmpg.org/xfn/11">
     <?php wp_head(); ?>
 </head>
-<body <?php body_class( 'map-template-body' ); ?>>
+<body <?php body_class( array( 'map-template-body', 'sidebar-collapsed' ) ); ?>>
 <?php wp_body_open(); ?>
 
     <!-- Loading Overlay — 品牌化光圈加载体验 -->
