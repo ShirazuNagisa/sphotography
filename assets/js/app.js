@@ -31,7 +31,7 @@
         minZoom: 2,
         styleUrl: getMapStyle(),
         restBase: (typeof Sphotography !== 'undefined' ? Sphotography.restUrl : '/wp-json').replace(/\/$/, ''),
-        photosEndpoint: 'wp/v2/photograph',
+        markersEndpoint: 'sphotography/v1/photos',
         postsEndpoint: 'wp/v2/posts',
         perPage: 500,
         postsPerPage: 50,
@@ -67,6 +67,9 @@
         activePhotoPanelKey: null,
         articleMotion: null,
         motionCard: null,
+        droplets: new Map(),
+        gooTimer: null,
+        dropletZoom: undefined,
     };
 
     // ---------------------------------------------------------------
@@ -94,6 +97,7 @@
         dom.detailMeta = document.getElementById('detail-meta');
         dom.detailDesc = document.getElementById('detail-desc');
         dom.detailTags = document.getElementById('detail-tags');
+        dom.detailViewArticle = document.getElementById('detail-view-article');
         dom.aboutTrigger = document.getElementById('about-trigger');
         dom.aboutCard = document.getElementById('about-card');
     }
@@ -157,8 +161,8 @@
         } catch (err) { console.error('API error:', err); return null; }
     }
 
-    function fetchPhotos(params) {
-        return fetchFromRest(CONFIG.photosEndpoint, { per_page: CONFIG.perPage, _embed: '1', ...(params||{}) });
+    function fetchMarkers(params) {
+        return fetchFromRest(CONFIG.markersEndpoint, { ...(params||{}) });
     }
 
     function fetchPosts(params) {
@@ -167,41 +171,38 @@
 
     // ---------------------------------------------------------------
     // 6. Photo Data Processing
+    //
+    // Markers come from the sphotography/v1/photos endpoint (or the inline
+    // data mirror): one entry per geolocated image, each carrying the parent
+    // post id so a marker can open its article.
     // ---------------------------------------------------------------
-    function buildGeoJSON(photos) {
+    function buildGeoJSONFromMarkers(markers) {
         var features = [];
-        photos.forEach(function (photo) {
-            var lat = parseFloat(photo.latitude) || parseFloat(photo.meta&&photo.meta.latitude) || 0;
-            var lng = parseFloat(photo.longitude) || parseFloat(photo.meta&&photo.meta.longitude) || 0;
+        (markers || []).forEach(function (m) {
+            var lat = parseFloat(m.latitude) || 0;
+            var lng = parseFloat(m.longitude) || 0;
             if (lat === 0 && lng === 0) return;
 
-            var tags = [];
-            if (photo._embedded && photo._embedded['wp:term']) {
-                photo._embedded['wp:term'].forEach(function(ta){ta.forEach(function(t){if(t.taxonomy==='region_tag')tags.push({id:t.id,name:t.name,slug:t.slug});});});
-            }
-
-            var thumbUrl='', fullUrl='';
-            if (photo.featured_image_src) { thumbUrl=photo.featured_image_src.medium||''; fullUrl=photo.featured_image_src.full||''; }
-            else if (photo._embedded&&photo._embedded['wp:featuredmedia']) {
-                var m=photo._embedded['wp:featuredmedia'][0];
-                if(m){thumbUrl=(m.media_details&&m.media_details.sizes&&m.media_details.sizes.medium&&m.media_details.sizes.medium.source_url)||m.source_url||'';fullUrl=m.source_url||'';}
-            }
-
-            var cameraInfo=photo.camera_info||(photo.meta&&photo.meta.camera_info)||'';
-            var takenAt=photo.taken_at||(photo.meta&&photo.meta.taken_at)||'';
-
+            var tags = Array.isArray(m.tags) ? m.tags : [];
             features.push({
-                type:'Feature',
-                geometry:{type:'Point',coordinates:[lng,lat]},
-                properties:{
-                    id:photo.id, title:(photo.title&&photo.title.rendered)||'Untitled',
-                    description:stripHtml((photo.content&&photo.content.rendered)||(photo.excerpt&&photo.excerpt.rendered)||''),
-                    thumbnail:thumbUrl, fullImage:fullUrl, cameraInfo:cameraInfo, takenAt:takenAt,
-                    tags:tags, tagSlugs:tags.map(function(t){return t.slug;}),
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [lng, lat] },
+                properties: {
+                    id: m.id,
+                    postId: (m.post_id !== undefined ? m.post_id : m.postId) || null,
+                    postTitle: m.post_title || m.postTitle || '',
+                    title: m.title || m.post_title || 'Untitled',
+                    description: m.description || '',
+                    thumbnail: m.thumbnail || '',
+                    fullImage: m.full_image || m.fullImage || '',
+                    cameraInfo: m.camera_info || m.cameraInfo || '',
+                    takenAt: m.taken_at || m.takenAt || '',
+                    tags: tags,
+                    tagSlugs: tags.map(function (t) { return t.slug; }),
                 },
             });
         });
-        return {type:'FeatureCollection',features:features};
+        return { type: 'FeatureCollection', features: features };
     }
 
     // ---------------------------------------------------------------
@@ -226,11 +227,19 @@
 
         state.map.on('move', function() {
             positionAllPhotoPanels();
+            positionDroplets();
         });
 
-        state.map.on('idle', debounce(function() {
+        // Re-evaluate clustering the moment movement stops rather than
+        // waiting for full map 'idle' (which also waits on tile loads) —
+        // keeps merge/split latency well under 200ms. 'idle' stays as a
+        // fallback for changes without movement (e.g. data updates).
+        var scheduleClusterSync = debounce(function() {
             reconcileOpenPhotoPanels();
-        }, 120));
+            syncDroplets();
+        }, 90);
+        state.map.on('moveend', scheduleClusterSync);
+        state.map.on('idle', scheduleClusterSync);
 
         window.addEventListener('resize', debounce(function() {
             if (state.map) state.map.resize();
@@ -244,15 +253,23 @@
         [CONFIG.clusterSourceId, CONFIG.sourceId].forEach(function(id){if(state.map.getSource(id))state.map.removeSource(id);});
         state.map.addSource(CONFIG.clusterSourceId, {
             type:'geojson', data:data, cluster:true,
-            clusterMaxZoom:CONFIG.maxZoom, clusterRadius:40, clusterMinPoints:2
+            // Cluster strictly by physical overlap: an individual droplet is
+            // 18px across (radius 9), so two markers only overlap when their
+            // centres are closer than that diameter. Points farther apart
+            // render without overlap and stay separate.
+            clusterMaxZoom:CONFIG.maxZoom, clusterRadius:18, clusterMinPoints:2
         });
     }
 
     function addPhotoLayers() {
         [CONFIG.clusterCountLayerId, CONFIG.clusterLayerId, CONFIG.layerId].forEach(function(id){if(state.map.getLayer(id))state.map.removeLayer(id);});
-        state.map.addLayer({id:CONFIG.clusterLayerId,type:'circle',source:CONFIG.clusterSourceId,filter:['has','point_count'],paint:{'circle-color':'#e67e22','circle-radius':['step',['get','point_count'],18,10,22,50,28,200,36],'circle-opacity':0.85,'circle-stroke-width':2,'circle-stroke-color':'#ffffff','circle-opacity-transition':{'duration':400}}});
-        state.map.addLayer({id:CONFIG.clusterCountLayerId,type:'symbol',source:CONFIG.clusterSourceId,filter:['has','point_count'],layout:{'text-field':'{point_count_abbreviated}','text-size':12},paint:{'text-color':'#ffffff'}});
-        state.map.addLayer({id:CONFIG.layerId,type:'circle',source:CONFIG.clusterSourceId,filter:['!',['has','point_count']],paint:{'circle-color':CONFIG.markerColor,'circle-radius':CONFIG.markerRadius,'circle-stroke-width':CONFIG.markerBorderWidth,'circle-stroke-color':CONFIG.markerBorderColor,'circle-opacity':0.95,'circle-opacity-transition':{'duration':400}}});
+        // The circle/count layers are kept for hit-testing and cluster
+        // queries but rendered invisible — the HTML water-droplet overlay
+        // is the visible marker. queryRenderedFeatures still returns
+        // opacity-0 features, so clicks and panel reconciliation are intact.
+        state.map.addLayer({id:CONFIG.clusterLayerId,type:'circle',source:CONFIG.clusterSourceId,filter:['has','point_count'],paint:{'circle-color':'#e67e22','circle-radius':['step',['get','point_count'],18,10,22,50,28,200,36],'circle-opacity':0,'circle-stroke-width':2,'circle-stroke-color':'#ffffff','circle-stroke-opacity':0}});
+        state.map.addLayer({id:CONFIG.clusterCountLayerId,type:'symbol',source:CONFIG.clusterSourceId,filter:['has','point_count'],layout:{'text-field':'{point_count_abbreviated}','text-size':12},paint:{'text-color':'#ffffff','text-opacity':0}});
+        state.map.addLayer({id:CONFIG.layerId,type:'circle',source:CONFIG.clusterSourceId,filter:['!',['has','point_count']],paint:{'circle-color':CONFIG.markerColor,'circle-radius':CONFIG.markerRadius,'circle-stroke-width':CONFIG.markerBorderWidth,'circle-stroke-color':CONFIG.markerBorderColor,'circle-opacity':0,'circle-stroke-opacity':0}});
         state.map.on('mouseenter',CONFIG.layerId,function(){state.map.getCanvas().style.cursor='pointer';});
         state.map.on('mouseleave',CONFIG.layerId,function(){state.map.getCanvas().style.cursor='';});
         state.map.on('mouseenter',CONFIG.clusterLayerId,function(){state.map.getCanvas().style.cursor='pointer';});
@@ -395,14 +412,282 @@
     }
 
     // ---------------------------------------------------------------
+    // 8c. Water-droplet (gooey) cluster markers
+    //
+    // The visible markers are HTML "droplets" laid over the map, driven by
+    // the same clustered source. When zoom changes the clustering, droplets
+    // slide toward / away from the cluster centre and a gooey SVG filter
+    // fuses close ones — reading as liquid merging and splitting. The WebGL
+    // circle layers underneath stay invisible but handle all hit-testing.
+    // ---------------------------------------------------------------
+    var DROPLET = {
+        transition: 620,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+    };
+
+    function ensureDropletLayers() {
+        if (dom.dropletGoo && dom.dropletGoo.isConnected) return;
+        var goo = document.createElement('div');
+        goo.className = 'droplet-goo-layer';
+        var labels = document.createElement('div');
+        labels.className = 'droplet-label-layer';
+        document.body.appendChild(goo);
+        document.body.appendChild(labels);
+        dom.dropletGoo = goo;
+        dom.dropletLabels = labels;
+    }
+
+    // Cluster blob diameter by member count — mirrors the old circle-radius
+    // step ramp (18/22/28/36 px radius → diameter).
+    function dropletSize(isCluster, count) {
+        if (!isCluster) return 18;
+        if (count >= 200) return 60;
+        if (count >= 50) return 52;
+        if (count >= 10) return 40;
+        return 34;
+    }
+
+    function projectCoords(coords) {
+        return state.map.project(new maplibregl.LngLat(coords[0], coords[1]));
+    }
+
+    function applyDropletTransform(rec, x, y, scale, opacity) {
+        rec.x = x;
+        rec.y = y;
+        rec.el.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0) translate(-50%,-50%) scale(' + scale + ')';
+        rec.el.style.opacity = opacity;
+        if (rec.label) {
+            rec.label.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0) translate(-50%,-50%) scale(' + scale + ')';
+            rec.label.style.opacity = opacity;
+        }
+    }
+
+    function createDroplet(spec) {
+        var size = dropletSize(spec.isCluster, spec.count);
+        var el = document.createElement('div');
+        el.className = 'droplet';
+        el.style.width = size + 'px';
+        el.style.height = size + 'px';
+        dom.dropletGoo.appendChild(el);
+        var rec = { key: spec.key, isCluster: spec.isCluster, count: spec.count, coords: spec.coords, el: el, label: null, size: size };
+        if (spec.isCluster) {
+            var label = document.createElement('div');
+            label.className = 'droplet-label';
+            label.textContent = spec.count;
+            dom.dropletLabels.appendChild(label);
+            rec.label = label;
+        }
+        return rec;
+    }
+
+    function updateDropletVisual(rec, spec) {
+        rec.coords = spec.coords;
+        if (rec.count !== spec.count) {
+            rec.count = spec.count;
+            var size = dropletSize(spec.isCluster, spec.count);
+            rec.size = size;
+            rec.el.style.width = size + 'px';
+            rec.el.style.height = size + 'px';
+            if (rec.label) rec.label.textContent = spec.count;
+        }
+    }
+
+    function removeDroplet(rec) {
+        if (rec.el) rec.el.remove();
+        if (rec.label) rec.label.remove();
+    }
+
+    function setDropletTransit(rec, on) {
+        rec.el.classList.toggle('droplet--transit', on);
+        if (rec.label) rec.label.classList.toggle('droplet-label--transit', on);
+    }
+
+    function nearestPoint(collection, x, y) {
+        var best = null, bestDist = Infinity;
+        collection.forEach(function (item) {
+            var dx = item.x - x, dy = item.y - y;
+            var d = dx * dx + dy * dy;
+            if (d < bestDist) { bestDist = d; best = item; }
+        });
+        return best;
+    }
+
+    function enableGoo() {
+        if (dom.dropletGoo) dom.dropletGoo.classList.add('goo-active');
+    }
+
+    function scheduleGooDisable() {
+        if (state.gooTimer) clearTimeout(state.gooTimer);
+        state.gooTimer = setTimeout(function () {
+            if (dom.dropletGoo) dom.dropletGoo.classList.remove('goo-active');
+            state.gooTimer = null;
+        }, DROPLET.transition + 80);
+    }
+
+    // Reposition existing droplets to track the map (called on every move).
+    // No transition here so they follow the map rigidly without lag.
+    function positionDroplets() {
+        if (!state.map || !state.droplets || state.droplets.size === 0) return;
+        state.droplets.forEach(function (rec) {
+            // A map move means the user is interacting — track rigidly, so
+            // drop any lingering transition from an in-flight split.
+            if (rec.el.classList.contains('droplet--transit')) setDropletTransit(rec, false);
+            var p = projectCoords(rec.coords);
+            applyDropletTransform(rec, p.x, p.y, 1, 1);
+        });
+    }
+
+    // Rebuild the droplet set from the clustered features and animate the
+    // difference: new droplets spring out of the nearest previous one (split),
+    // vanished droplets are pulled into the nearest surviving one (merge).
+    function syncDroplets() {
+        if (!state.map || !state.map.isStyleLoaded()) return;
+        ensureDropletLayers();
+
+        var feats = state.map.queryRenderedFeatures(undefined, {
+            layers: [CONFIG.clusterLayerId, CONFIG.layerId]
+        });
+        var next = new Map();
+        feats.forEach(function (f) {
+            if (!f.geometry || !f.properties) return;
+            var isCluster = f.properties.cluster_id !== undefined;
+            var key = isCluster ? 'c:' + f.properties.cluster_id : 'p:' + photoId(f.properties);
+            if (!isCluster && key === 'p:') return;
+            if (next.has(key)) return;
+            next.set(key, {
+                key: key,
+                isCluster: isCluster,
+                count: isCluster ? (parseInt(f.properties.point_count, 10) || 2) : 1,
+                coords: f.geometry.coordinates.slice()
+            });
+        });
+
+        var prev = state.droplets;
+        var reduced = prefersReducedMotion();
+        // Clustering only changes with zoom; panning merely reveals/hides
+        // markers. Animate merge/split on zoom change only, so panning
+        // doesn't make markers slide in from unrelated neighbours.
+        var z = state.map.getZoom();
+        var zoomChanged = state.dropletZoom !== undefined && Math.abs(z - state.dropletZoom) > 0.001;
+        state.dropletZoom = z;
+
+        // Screen positions of both sets for the nearest-neighbour heuristic.
+        var prevPts = [];
+        prev.forEach(function (rec) {
+            var p = projectCoords(rec.coords);
+            rec.x = p.x; rec.y = p.y;
+            prevPts.push(rec);
+        });
+        next.forEach(function (spec) {
+            var p = projectCoords(spec.coords);
+            spec.x = p.x; spec.y = p.y;
+        });
+
+        var result = new Map();
+        var animating = false;
+
+        next.forEach(function (spec, key) {
+            if (prev.has(key)) {
+                // Survivor — keep the element, refresh data/position in place.
+                var rec = prev.get(key);
+                updateDropletVisual(rec, spec);
+                setDropletTransit(rec, false);
+                applyDropletTransform(rec, spec.x, spec.y, 1, 1);
+                result.set(key, rec);
+                prev.delete(key);
+            } else {
+                // New droplet — split out of the nearest previous droplet.
+                var rec2 = createDroplet(spec);
+                var origin = (reduced || !zoomChanged) ? null : nearestPoint(prevPts, spec.x, spec.y);
+                if (origin) {
+                    setDropletTransit(rec2, false);
+                    applyDropletTransform(rec2, origin.x, origin.y, 0.25, 0);
+                    enableGoo();
+                    animating = true;
+                    // Next frame: transition to its real position.
+                    (function (r, sx, sy) {
+                        requestAnimationFrame(function () {
+                            requestAnimationFrame(function () {
+                                setDropletTransit(r, true);
+                                applyDropletTransform(r, sx, sy, 1, 1);
+                                // Drop the transition once it has played so
+                                // later map moves track rigidly.
+                                setTimeout(function () { setDropletTransit(r, false); }, DROPLET.transition + 40);
+                            });
+                        });
+                    })(rec2, spec.x, spec.y);
+                } else {
+                    // First render or reduced motion — just place it.
+                    setDropletTransit(rec2, false);
+                    applyDropletTransform(rec2, spec.x, spec.y, 1, 1);
+                }
+                result.set(key, rec2);
+            }
+        });
+
+        // Whatever remains in prev has disappeared → merge into nearest next.
+        prev.forEach(function (rec) {
+            if (reduced || !zoomChanged || result.size === 0) { removeDroplet(rec); return; }
+            var target = nearestPoint(result, rec.x, rec.y);
+            enableGoo();
+            animating = true;
+            setDropletTransit(rec, true);
+            applyDropletTransform(rec, target ? target.x : rec.x, target ? target.y : rec.y, 0.25, 0);
+            (function (r) {
+                setTimeout(function () { removeDroplet(r); }, DROPLET.transition);
+            })(rec);
+        });
+
+        state.droplets = result;
+        if (animating) scheduleGooDisable();
+    }
+
+    // ---------------------------------------------------------------
     // 9. Sidebar
     // ---------------------------------------------------------------
+    // Waterfall entrance: after the sidebar has slid open, the post cards
+    // reveal one after another from top to bottom. Uses the Web Animations
+    // API with a per-card delay and backwards fill, so each card holds its
+    // hidden state until its turn, then settles back to the natural CSS
+    // state on finish (no lingering delay to interfere with hover).
+    var POST_STAGGER = {
+        base: 160,   // wait for the sidebar to settle before cards appear
+        step: 55,    // gap between consecutive cards
+        duration: 440,
+        easing: 'cubic-bezier(0.16, 1, 0.3, 1)'
+    };
+
+    function staggerRevealPosts() {
+        var cards = dom.sidebarPosts.querySelectorAll('.post-card');
+        if (!cards.length) return;
+        var reduced = prefersReducedMotion();
+        for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            // Cancel any in-flight entrance from a previous open.
+            card.getAnimations().forEach(function (a) { a.cancel(); });
+            if (reduced) continue;
+            card.animate([
+                { opacity: 0, transform: 'translateY(16px)' },
+                { opacity: 1, transform: 'translateY(0)' }
+            ], {
+                duration: POST_STAGGER.duration,
+                delay: POST_STAGGER.base + i * POST_STAGGER.step,
+                easing: POST_STAGGER.easing,
+                fill: 'backwards'
+            });
+        }
+    }
+
     function openSidebar() {
+        var wasCollapsed = !state.sidebarOpen;
         if (state.isMobile) {
             dom.sidebar.classList.add('open');
         }
         document.body.classList.remove('sidebar-collapsed');
         state.sidebarOpen = true;
+        // Only run the waterfall when opening from a collapsed state, so
+        // repeated openSidebar() calls (e.g. from marker clicks) don't flash.
+        if (wasCollapsed) staggerRevealPosts();
     }
 
     function closeSidebar(preserveOverlays) {
@@ -486,6 +771,8 @@
     var ARTICLE_MOTION = {
         openDuration: 260,
         closeDuration: 240,
+        // Pause between collapsing the old article and expanding the new one.
+        switchGap: 90,
         // Fast start, smooth middle, soft settle, no bounce (monotonic curve).
         easing: 'cubic-bezier(0.18, 0.85, 0.28, 1)'
     };
@@ -662,16 +949,40 @@
     function openArticle(postId) {
         var requestPostId = postId;
         closeAllPhotoPanels();
+
+        // Switching from an already-open article: collapse the current one
+        // first, then expand the new one after a short gap so the transition
+        // reads as a deliberate hand-off rather than an abrupt swap. The
+        // fetch runs in parallel with the collapse.
+        var switching = state.articleOpen;
+        var previousPostId = state.openedPostId;
+        var collapseWait = 0;
+        if (switching) {
+            animateWindowsClose(previousPostId);
+            collapseWait = ARTICLE_MOTION.closeDuration + ARTICLE_MOTION.switchGap;
+        }
+
         state.openedPostId = requestPostId;
         state.articleOpen = true;
-        dom.articleTitle.textContent = '加载中...';
-        dom.articleMeta.textContent = '';
-        dom.articleContent.innerHTML = '';
+        if (!switching) {
+            dom.articleTitle.textContent = '加载中...';
+            dom.articleMeta.textContent = '';
+            dom.articleContent.innerHTML = '';
+        }
         if (state.isMobile) closeSidebar(true);
-        fetchFromRest(CONFIG.postsEndpoint + '/' + requestPostId, { _embed: '1' }).then(function(post) {
+
+        var fetchPromise = fetchFromRest(CONFIG.postsEndpoint + '/' + requestPostId, { _embed: '1' });
+        var waitPromise = collapseWait
+            ? new Promise(function (resolve) { setTimeout(resolve, collapseWait); })
+            : Promise.resolve();
+
+        Promise.all([fetchPromise, waitPromise]).then(function (results) {
+            var post = results[0];
             if (state.openedPostId !== requestPostId) return;
             if (!post) {
                 dom.articleTitle.textContent = '文章加载失败';
+                dom.articleMeta.textContent = '';
+                dom.articleContent.innerHTML = '';
                 dom.articlePanel.classList.add('active');
                 return;
             }
@@ -804,12 +1115,9 @@
             item.addEventListener('click', function(event) {
                 event.stopPropagation();
                 closeAllPhotoPanels();
-                if (state.isMobile) {
-                    openDetailPanel(props);
-                } else {
-                    openSidebar();
-                    openPhotographArticle(props.id, props);
-                }
+                // Always show the large detail view first; the parent article
+                // is reachable from the "查看文章" button inside it.
+                openDetailPanel(props);
             });
             container.appendChild(item);
         });
@@ -868,40 +1176,6 @@
     }
 
     // ---------------------------------------------------------------
-    // 12. Photograph Article Panel
-    // ---------------------------------------------------------------
-    function openPhotographArticle(photoId, props) {
-        closeAllPhotoPanels();
-        clearMotion();
-        state.openedPostId = null;
-        dom.articleTitle.textContent = props.title || 'Photograph';
-        dom.articleMeta.innerHTML = props.cameraInfo
-            ? '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="2" y="6" width="20" height="14" rx="2"/><circle cx="12" cy="13" r="4"/></svg>' + escapeHtml(props.cameraInfo) + '</span>'
-            : '';
-        if (props.takenAt) {
-            dom.articleMeta.innerHTML += '<span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;vertical-align:middle;margin-right:4px;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + formatDate(props.takenAt) + '</span>';
-        }
-        var contentHtml = '';
-        if (props.fullImage) {
-            contentHtml += '<img src="' + props.fullImage + '" alt="' + escapeHtml(props.title) + '" style="width:100%;border-radius:12px;margin-bottom:20px;">';
-        }
-        if (props.description) {
-            contentHtml += '<p>' + escapeHtml(props.description) + '</p>';
-        }
-        if (props.tags && props.tags.length > 0) {
-            contentHtml += '<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:6px;">';
-            props.tags.forEach(function(tag) {
-                contentHtml += '<span style="padding:4px 12px;font-size:0.75rem;background:rgba(230,126,34,0.12);color:' + PRIMARY_COLOR + ';border:1px solid rgba(230,126,34,0.2);border-radius:12px;">' + escapeHtml(tag.name) + '</span>';
-            });
-            contentHtml += '</div>';
-        }
-        dom.articleContent.innerHTML = contentHtml;
-        dom.articlePanel.classList.add('active');
-        state.articleOpen = true;
-        if (state.isMobile) closeSidebar(true);
-    }
-
-    // ---------------------------------------------------------------
     // 13. Detail Panel
     // ---------------------------------------------------------------
     function openDetailPanel(props) {
@@ -923,6 +1197,24 @@
         var tagsHtml = '';
         (props.tags || []).forEach(function(tag) { tagsHtml += '<span class="detail-tag">' + escapeHtml(tag.name) + '</span>'; });
         dom.detailTags.innerHTML = tagsHtml;
+
+        // Link to the parent post. Hidden when the marker has no article
+        // (e.g. an orphaned attachment with coordinates but no post).
+        var postId = props.postId || props.post_id || null;
+        if (dom.detailViewArticle) {
+            if (postId) {
+                dom.detailViewArticle.hidden = false;
+                dom.detailViewArticle.onclick = function (event) {
+                    event.stopPropagation();
+                    closeDetailPanel();
+                    openSidebar();
+                    openArticle(postId);
+                };
+            } else {
+                dom.detailViewArticle.hidden = true;
+                dom.detailViewArticle.onclick = null;
+            }
+        }
 
         dom.detailSheet.classList.add('active');
         state.detailOpen = true;
@@ -985,28 +1277,7 @@
         var data = SphotographyInlineData;
 
         if (data.photos && data.photos.length > 0) {
-            var features = [];
-            data.photos.forEach(function(photo) {
-                var lat = parseFloat(photo.latitude) || 0;
-                var lng = parseFloat(photo.longitude) || 0;
-                if (lat === 0 && lng === 0) return;
-
-                features.push({
-                    type: 'Feature',
-                    geometry: { type: 'Point', coordinates: [lng, lat] },
-                    properties: {
-                        id: photo.id,
-                        title: photo.title || 'Untitled',
-                        description: photo.description || '',
-                        thumbnail: photo.thumbnail || '',
-                        fullImage: photo.full_image || '',
-                        cameraInfo: photo.camera_info || '',
-                        takenAt: photo.taken_at || '',
-                    },
-                });
-            });
-
-            state.allPhotos = { type: 'FeatureCollection', features: features };
+            state.allPhotos = buildGeoJSONFromMarkers(data.photos);
         }
 
         if (data.posts && data.posts.length > 0) {
@@ -1040,8 +1311,32 @@
         dom.aboutTrigger.addEventListener('click', function(e) { toggleAboutCard(e); });
         dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
 
+        // Show the platform-correct modifier in the search hint (⌘ on Mac).
+        var isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+        if (isMac) {
+            var kbdMod = document.querySelector('#sidebar-search-kbd .kbd-mod');
+            if (kbdMod) kbdMod.textContent = '⌘';
+        }
+
         document.addEventListener('keydown', function(e) {
+            // Ctrl+K / ⌘+K focuses the search field.
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+                e.preventDefault();
+                if (!state.sidebarOpen) openSidebar();
+                requestAnimationFrame(function () {
+                    dom.sidebarSearch.focus();
+                    dom.sidebarSearch.select();
+                });
+                return;
+            }
             if (e.key === 'Escape' || e.key === 'Esc') {
+                // Let Escape clear/blur the search field first.
+                if (document.activeElement === dom.sidebarSearch && dom.sidebarSearch.value) {
+                    dom.sidebarSearch.value = '';
+                    filterSidebarPosts('');
+                    dom.sidebarSearch.blur();
+                    return;
+                }
                 closeAllPhotoPanels();
                 closeArticlePanel();
                 dom.detailSheet.classList.remove('active');
@@ -1064,9 +1359,9 @@
 
         try {
             if (!hasInlineData) {
-                var photosData = await fetchPhotos();
+                var photosData = await fetchMarkers();
                 if (photosData && Array.isArray(photosData) && photosData.length > 0) {
-                    state.allPhotos = buildGeoJSON(photosData);
+                    state.allPhotos = buildGeoJSONFromMarkers(photosData);
                 }
 
                 var postsData = await fetchPosts();

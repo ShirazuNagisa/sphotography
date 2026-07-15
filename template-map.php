@@ -45,6 +45,17 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <!-- Fullscreen Map Container -->
     <div id="map"></div>
 
+    <!-- Gooey (metaball) filter for the water-droplet cluster markers -->
+    <svg class="droplet-goo-defs" width="0" height="0" aria-hidden="true" focusable="false">
+        <defs>
+            <filter id="droplet-goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"></feGaussianBlur>
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="goo"></feColorMatrix>
+                <feBlend in="SourceGraphic" in2="goo"></feBlend>
+            </filter>
+        </defs>
+    </svg>
+
     <!-- ============================================ -->
     <!-- Sidebar (left)                               -->
     <!-- ============================================ -->
@@ -54,6 +65,9 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
             <input type="text" id="sidebar-search-input" placeholder="<?php esc_attr_e( '搜索文章...', 'sphotography' ); ?>" aria-label="<?php esc_attr_e( 'Search articles', 'sphotography' ); ?>">
             <span class="sidebar-search-icon">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <span id="sidebar-search-kbd" class="sidebar-search-kbd" aria-hidden="true">
+                <kbd class="kbd-mod">Ctrl</kbd><kbd>K</kbd>
             </span>
         </div>
 
@@ -118,6 +132,12 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
             <div id="detail-meta" class="detail-meta"></div>
             <div id="detail-desc" class="detail-desc"></div>
             <div id="detail-tags" class="detail-tags"></div>
+            <div id="detail-actions" class="detail-actions">
+                <button id="detail-view-article" type="button" class="detail-view-article-btn" hidden>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    <span><?php esc_html_e( '查看文章', 'sphotography' ); ?></span>
+                </button>
+            </div>
         </div>
     </div>
 
