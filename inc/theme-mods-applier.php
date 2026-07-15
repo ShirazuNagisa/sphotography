@@ -3,7 +3,7 @@
  * Sphotography - Apply Theme Mods to Frontend
  *
  * @package Sphotography
- * @version 1.1.6
+ * @version 1.2.3
  */
 
 // ============================================
@@ -99,6 +99,12 @@ function sphotography_body_classes( $classes ) {
         $classes[] = 'sphotography-scroll-enabled';
     }
 
+    // Frontend font: serif (default) keeps the theme's Noto Serif SC stack;
+    // 'wordpress' switches to the system sans-serif stack globally.
+    if ( sphotography_get_mod( 'frontend_font' ) === 'wordpress' ) {
+        $classes[] = 'sphotography-font-wordpress';
+    }
+
     return $classes;
 }
 add_filter( 'body_class', 'sphotography_body_classes' );
@@ -122,6 +128,9 @@ function sphotography_localize_data() {
         'entryAnimation'   => (bool) sphotography_get_mod( 'entry_animation' ),
         'pjaxAnimation'    => (bool) sphotography_get_mod( 'pjax_animation' ),
         'primaryColor'     => sphotography_get_mod( 'primary_color' ),
+        'frontendFont'     => sphotography_get_mod( 'frontend_font' ),
+        'sidebarDefaultOpen' => (bool) sphotography_get_mod( 'sidebar_default_open' ),
+        'articleCardSize'  => sphotography_get_mod( 'article_card_size' ),
     ) );
 
     // ============================================

@@ -2,13 +2,14 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.1.6
+ * @version 1.2.3
  */
 
 (function () {
     'use strict';
 
     const SETTINGS = typeof SphotographySettings !== 'undefined' ? SphotographySettings : {};
+    const APP = typeof Sphotography !== 'undefined' ? Sphotography : {};
     const PRIMARY_COLOR = SETTINGS.primaryColor || '#e67e22';
 
     const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -33,6 +34,7 @@
         restBase: (typeof Sphotography !== 'undefined' ? Sphotography.restUrl : '/wp-json').replace(/\/$/, ''),
         markersEndpoint: 'sphotography/v1/photos',
         postsEndpoint: 'wp/v2/posts',
+        commentsEndpoint: 'wp/v2/comments',
         perPage: 500,
         postsPerPage: 50,
         sourceId: 'photos',
@@ -70,6 +72,12 @@
         droplets: new Map(),
         gooTimer: null,
         dropletZoom: undefined,
+        tipTimer: null,
+        filterOpen: false,
+        filterMotion: null,
+        selectedCategories: new Set(),
+        searchQuery: '',
+        mapFlyId: 0,
     };
 
     // ---------------------------------------------------------------
@@ -79,16 +87,21 @@
     function cacheDom() {
         dom.map = document.getElementById('map');
         dom.loadingOverlay = document.getElementById('loading-overlay');
+        dom.loadingTip = document.getElementById('loading-tip');
         dom.sidebar = document.getElementById('sidebar');
         dom.sidebarPosts = document.getElementById('sidebar-posts');
         dom.sidebarToggle = document.getElementById('sidebar-toggle');
         dom.sidebarExpand = document.getElementById('sidebar-expand');
         dom.sidebarSearch = document.getElementById('sidebar-search-input');
+        dom.filterBtn = document.getElementById('sidebar-filter-btn');
+        dom.filterPanel = document.getElementById('sidebar-filter-panel');
+        dom.filterChips = document.getElementById('filter-chips');
         dom.articlePanel = document.getElementById('article-panel');
         dom.articleClose = document.getElementById('article-close');
         dom.articleTitle = document.getElementById('article-title');
         dom.articleMeta = document.getElementById('article-meta');
         dom.articleContent = document.getElementById('article-content');
+        dom.articleComments = document.getElementById('article-comments');
         dom.photoPanels = document.getElementById('photo-panels');
         dom.detailSheet = document.getElementById('detail-sheet');
         dom.closeDetail = document.getElementById('close-detail');
@@ -98,7 +111,6 @@
         dom.detailDesc = document.getElementById('detail-desc');
         dom.detailTags = document.getElementById('detail-tags');
         dom.detailViewArticle = document.getElementById('detail-view-article');
-        dom.aboutTrigger = document.getElementById('about-trigger');
         dom.aboutCard = document.getElementById('about-card');
     }
 
@@ -321,7 +333,6 @@
             closeAllPhotoPanels();
             closeArticlePanel();
             if (state.isMobile) { closeSidebar(); }
-            closeAboutCard();
         });
     }
 
@@ -376,7 +387,7 @@
         if (!state.map || !state.map.isStyleLoaded()) return;
         var token = ++state.reconcileToken;
         if (state.openPhotoIds.size === 0) {
-            clearRenderedPhotoPanels();
+            dismissAllPhotoPanels();
             return;
         }
 
@@ -696,6 +707,7 @@
         }
         document.body.classList.add('sidebar-collapsed');
         state.sidebarOpen = false;
+        closeFilterPanel();
         if (preserveOverlays) return;
         closeAllPhotoPanels();
         closeArticlePanel();
@@ -714,9 +726,10 @@
             dom.sidebarPosts.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:0.8125rem;">暂无文章</div>';
             return;
         }
+        var isLarge = SETTINGS.articleCardSize === 'large';
         posts.forEach(function(post) {
             var card = document.createElement('div');
-            card.className = 'post-card';
+            card.className = isLarge ? 'post-card post-card--large' : 'post-card';
             card.dataset.postId = post.id;
 
             var thumbUrl = '';
@@ -727,10 +740,20 @@
 
             var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
 
+            // Large cards add the article excerpt beneath the title.
+            var excerptHtml = '';
+            if (isLarge) {
+                var excerptText = stripHtml((post.excerpt && post.excerpt.rendered) || '').trim();
+                if (excerptText) {
+                    excerptHtml = '<div class="post-card-excerpt">' + escapeHtml(excerptText) + '</div>';
+                }
+            }
+
             card.innerHTML = ''
                 + '<img class="post-card-thumb" src="' + (thumbUrl || '') + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
                 + '<div class="post-card-body">'
                 + '<div class="post-card-title">' + escapeHtml(post.title.rendered || '') + '</div>'
+                + excerptHtml
                 + '<div class="post-card-date"><svg width=12 height=12 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + escapeHtml(dateStr) + '</div>'
                 + '</div>';
 
@@ -747,14 +770,139 @@
         });
     }
 
+    // Categories (WordPress 分类) attached to a post, from either the REST
+    // embed or the inline-data mirror.
+    function getPostCategories(post) {
+        var cats = [];
+        if (post._embedded && post._embedded['wp:term']) {
+            post._embedded['wp:term'].forEach(function (group) {
+                (group || []).forEach(function (t) {
+                    if (t && t.taxonomy === 'category') cats.push({ slug: t.slug, name: t.name });
+                });
+            });
+        }
+        return cats;
+    }
+
     function filterSidebarPosts(query) {
-        var q = query.toLowerCase().trim();
-        if (!q) { renderSidebarPosts(state.allPosts); return; }
-        var filtered = state.allPosts.filter(function(p) {
-            return (p.title.rendered||'').toLowerCase().indexOf(q) !== -1
-                || stripHtml(p.excerpt&&p.excerpt.rendered||'').toLowerCase().indexOf(q) !== -1;
+        state.searchQuery = query || '';
+        applySidebarFilters();
+    }
+
+    // Real-time combined filter: text search AND (any of) the selected
+    // categories. The sidebar shows only the matching posts.
+    function applySidebarFilters() {
+        var q = (state.searchQuery || '').toLowerCase().trim();
+        var selected = state.selectedCategories;
+        var filtered = state.allPosts.filter(function (p) {
+            if (q) {
+                var matchesText = (p.title.rendered || '').toLowerCase().indexOf(q) !== -1
+                    || stripHtml(p.excerpt && p.excerpt.rendered || '').toLowerCase().indexOf(q) !== -1;
+                if (!matchesText) return false;
+            }
+            if (selected && selected.size > 0) {
+                var cats = getPostCategories(p);
+                var hit = cats.some(function (c) { return selected.has(c.slug); });
+                if (!hit) return false;
+            }
+            return true;
         });
         renderSidebarPosts(filtered);
+    }
+
+    // ---------------------------------------------------------------
+    // 9b. Category Filter — real-time, panel expands from the filter button
+    // ---------------------------------------------------------------
+    function buildFilterChips() {
+        if (!dom.filterChips) return;
+        // Unique categories across all loaded posts.
+        var seen = {};
+        var cats = [];
+        (state.allPosts || []).forEach(function (p) {
+            getPostCategories(p).forEach(function (c) {
+                if (c.slug && !seen[c.slug]) { seen[c.slug] = true; cats.push(c); }
+            });
+        });
+        cats.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+        if (cats.length === 0) {
+            dom.filterChips.innerHTML = '<span class="filter-chips-empty">暂无分类可筛选</span>';
+            return;
+        }
+        dom.filterChips.innerHTML = '';
+        cats.forEach(function (c) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'filter-chip' + (state.selectedCategories.has(c.slug) ? ' is-selected' : '');
+            chip.textContent = c.name;
+            chip.dataset.slug = c.slug;
+            chip.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (state.selectedCategories.has(c.slug)) {
+                    state.selectedCategories.delete(c.slug);
+                    chip.classList.remove('is-selected');
+                } else {
+                    state.selectedCategories.add(c.slug);
+                    chip.classList.add('is-selected');
+                }
+                // Reflect whether any filter is active on the button.
+                dom.filterBtn.classList.toggle('is-active', state.selectedCategories.size > 0);
+                applySidebarFilters(); // real-time, no confirm needed
+            });
+            dom.filterChips.appendChild(chip);
+        });
+    }
+
+    // Uses the article panel's window-scale motion: the panel grows out of the
+    // filter button and collapses back into it, recomputed live each time.
+    function openFilterPanel() {
+        if (state.filterOpen || !dom.filterPanel) return;
+        state.filterOpen = true;
+        dom.filterBtn.setAttribute('aria-expanded', 'true');
+        if (state.filterMotion) { state.filterMotion.cancel(); state.filterMotion = null; }
+
+        dom.filterPanel.hidden = false;
+        // Measure resting geometry, then animate from the button rect.
+        var panelRect = dom.filterPanel.getBoundingClientRect();
+        var btnRect = dom.filterBtn.getBoundingClientRect();
+        if (prefersReducedMotion()) return;
+        var from = collapseTransform(btnRect, panelRect);
+        var anim = dom.filterPanel.animate([
+            { transform: from, opacity: 0 },
+            { opacity: 1, offset: 0.15 },
+            { transform: 'translate(0,0) scale(1,1)', opacity: 1 }
+        ], { duration: ARTICLE_MOTION.openDuration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        state.filterMotion = anim;
+        anim.onfinish = function () { if (state.filterMotion === anim) { anim.cancel(); state.filterMotion = null; } };
+    }
+
+    function closeFilterPanel() {
+        if (!state.filterOpen || !dom.filterPanel) return;
+        state.filterOpen = false;
+        dom.filterBtn.setAttribute('aria-expanded', 'false');
+        if (state.filterMotion) { state.filterMotion.cancel(); state.filterMotion = null; }
+
+        if (prefersReducedMotion()) { dom.filterPanel.hidden = true; return; }
+        var panelRect = dom.filterPanel.getBoundingClientRect();
+        var btnRect = dom.filterBtn.getBoundingClientRect();
+        var to = collapseTransform(btnRect, panelRect);
+        var anim = dom.filterPanel.animate([
+            { transform: 'translate(0,0) scale(1,1)', opacity: 1 },
+            { opacity: 1, offset: 0.82 },
+            { transform: to, opacity: 0 }
+        ], { duration: ARTICLE_MOTION.closeDuration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        state.filterMotion = anim;
+        anim.onfinish = function () {
+            if (state.filterMotion !== anim) return;
+            anim.cancel();
+            state.filterMotion = null;
+            dom.filterPanel.hidden = true;
+        };
+    }
+
+    function toggleFilterPanel() {
+        if (state.filterOpen) closeFilterPanel();
+        else openFilterPanel();
     }
 
     // ---------------------------------------------------------------
@@ -946,7 +1094,7 @@
         };
     }
 
-    function openArticle(postId) {
+    function openArticle(postId, options) {
         var requestPostId = postId;
         closeAllPhotoPanels();
 
@@ -997,7 +1145,19 @@
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
+            wireArticleImages();
+            renderComments(requestPostId, post.comment_status);
             animateWindowsOpen(requestPostId);
+            // Desktop (Feature 1): once the window-scale open settles, glide
+            // the panel to the paragraph that holds the clicked photo.
+            if (options && (options.scrollToImageId != null || options.scrollToImageUrl)) {
+                var scrollId = options.scrollToImageId;
+                var scrollUrl = options.scrollToImageUrl;
+                setTimeout(function () {
+                    if (state.openedPostId !== requestPostId) return;
+                    scrollArticleToImage(scrollId, scrollUrl);
+                }, ARTICLE_MOTION.openDuration + 60);
+            }
         });
     }
 
@@ -1014,6 +1174,343 @@
         }
         animateWindowsClose(targetPostId);
     }
+
+    // ---------------------------------------------------------------
+    // 10c. Photo ↔ Map linking (desktop)
+    //
+    // A marker's `id` is the image's attachment id, and WordPress tags body
+    // images with `wp-image-<id>`. That shared id is the reliable join
+    // between an article-content image and its geolocated marker (coords).
+    // ---------------------------------------------------------------
+
+    // Look up a geolocated marker by image attachment id. The same image can
+    // appear in several posts, but every such marker shares the image's
+    // coordinates, so the first match is authoritative for position.
+    function photoGeoById(id) {
+        if (id == null || !state.allPhotos || !state.allPhotos.features) return null;
+        var key = String(id);
+        var feats = state.allPhotos.features;
+        for (var i = 0; i < feats.length; i++) {
+            var f = feats[i];
+            if (f && f.properties && String(f.properties.id) === key && f.geometry && f.geometry.coordinates) {
+                return { coords: f.geometry.coordinates, postId: f.properties.postId };
+            }
+        }
+        return null;
+    }
+
+    // Strip a WordPress size suffix (e.g. "-1024x768") so medium/full/scaled
+    // variants of the same upload compare equal by file stem.
+    function imageStem(url) {
+        if (!url) return '';
+        var base = url.split('/').pop().split('?')[0];
+        return base.replace(/-\d+x\d+(?=\.\w+$)/, '');
+    }
+
+    // Resolve the marker (coords) behind a rendered content image: prefer the
+    // wp-image-<id> class, fall back to matching the file stem against the
+    // marker set. Returns null for non-geolocated images.
+    function photoGeoForImage(img) {
+        var m = /wp-image-(\d+)/.exec(img.className || '');
+        if (m) {
+            var byId = photoGeoById(m[1]);
+            if (byId) return byId;
+        }
+        var src = img.currentSrc || img.getAttribute('src') || '';
+        var stem = imageStem(src);
+        if (!stem) return null;
+        var feats = (state.allPhotos && state.allPhotos.features) || [];
+        for (var i = 0; i < feats.length; i++) {
+            var p = feats[i].properties || {};
+            if ((p.fullImage && imageStem(p.fullImage) === stem) ||
+                (p.thumbnail && imageStem(p.thumbnail) === stem)) {
+                return { coords: feats[i].geometry.coordinates, postId: p.postId };
+            }
+        }
+        return null;
+    }
+
+    // Feature 2: make geolocated content images clickable (desktop only) so a
+    // click flies the background map to that photo's location.
+    function wireArticleImages() {
+        var root = dom.articleContent;
+        if (!root || state.isMobile) return;
+        var imgs = root.querySelectorAll('img');
+        for (var i = 0; i < imgs.length; i++) {
+            (function (img) {
+                var geo = photoGeoForImage(img);
+                if (!geo) return; // non-geo images stay inert
+                img.classList.add('article-geo-img');
+                img.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    flyMapToPhoto(geo.coords);
+                });
+            })(imgs[i]);
+        }
+    }
+
+    // Centre of the visible map area to the right of the (open) article panel.
+    // Read the panel's live rect so it adapts to width / window size.
+    function rightMapAreaCenter() {
+        var W = window.innerWidth, H = window.innerHeight;
+        var panelRight = W * 0.5;
+        if (dom.articlePanel) {
+            var r = dom.articlePanel.getBoundingClientRect();
+            if (r.width) panelRight = r.right;
+        }
+        return { x: (panelRight + W) / 2, y: H / 2 };
+    }
+
+    // ease-in-out sine — the "--ease-in-out-sine" token, as a JS easing fn for
+    // MapLibre's animation options (accel then decel, no overshoot).
+    function easeInOutSine(t) {
+        return -(Math.cos(Math.PI * t) - 1) / 2;
+    }
+
+    // MapLibre zoom that renders `metersPerCm` at the 96dpi CSS reference
+    // (1cm = 96/2.54 CSS px), matching the on-screen ScaleControl. Web Mercator
+    // scale is latitude-dependent, so the target zoom is computed at `lat`.
+    function zoomForScale(metersPerCm, lat) {
+        var CSS_PX_PER_CM = 96 / 2.54; // ≈ 37.795
+        var metersPerPixel = metersPerCm / CSS_PX_PER_CM;
+        var latRad = lat * Math.PI / 180;
+        return Math.log2(156543.03392 * Math.cos(latRad) / metersPerPixel);
+    }
+
+    // Feature 2 motion: pan the map (at current zoom) so the point rests at the
+    // right-map-area centre, brief beat, then zoom about that pixel to 5km/1cm.
+    // Two eased stages read like a hand dragging, then zooming in.
+    function flyMapToPhoto(coords) {
+        if (!state.map || !coords || state.isMobile) return;
+        var lngLat = new maplibregl.LngLat(coords[0], coords[1]);
+        var target = rightMapAreaCenter();
+        var offset = [target.x - window.innerWidth / 2, target.y - window.innerHeight / 2];
+
+        var targetZoom = zoomForScale(5000, coords[1]);
+        targetZoom = Math.max(CONFIG.minZoom, Math.min(CONFIG.maxZoom, targetZoom));
+
+        var flyId = ++state.mapFlyId;
+
+        // Phase 1 — pan at the current zoom until the point hits the target pixel.
+        state.map.easeTo({
+            center: lngLat,
+            offset: offset,
+            duration: 1200,
+            easing: easeInOutSine
+        });
+
+        // Phase 2 — after a short beat, zoom about that same pixel (`around`
+        // pins the point in place while the scale changes).
+        state.map.once('moveend', function () {
+            if (flyId !== state.mapFlyId) return; // superseded by a newer click
+            setTimeout(function () {
+                if (flyId !== state.mapFlyId) return;
+                state.map.easeTo({
+                    zoom: targetZoom,
+                    around: lngLat,
+                    duration: 1600,
+                    easing: easeInOutSine
+                });
+            }, 100);
+        });
+    }
+
+    // Locate a content image by attachment id (wp-image-<id>) or, failing that,
+    // by file stem — the node the article should scroll to.
+    function findContentImage(imgId, imgUrl) {
+        var root = dom.articleContent;
+        if (!root) return null;
+        if (imgId != null) {
+            var byClass = root.querySelector('img.wp-image-' + imgId);
+            if (byClass) return byClass;
+        }
+        var stem = imageStem(imgUrl);
+        if (stem) {
+            var imgs = root.querySelectorAll('img');
+            for (var i = 0; i < imgs.length; i++) {
+                var src = imgs[i].currentSrc || imgs[i].getAttribute('src') || '';
+                if (imageStem(src) === stem) return imgs[i];
+            }
+        }
+        return null;
+    }
+
+    // Eased scrollTop animation on an element (ease-in-out quad).
+    function animateScroll(el, from, to, duration) {
+        if (prefersReducedMotion() || Math.abs(to - from) < 2) { el.scrollTop = to; return; }
+        var start = null;
+        function ease(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+        function step(ts) {
+            if (start === null) start = ts;
+            var p = Math.min(1, (ts - start) / duration);
+            el.scrollTop = from + (to - from) * ease(p);
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    // Feature 1 motion: glide the article panel so the target image rests ~18%
+    // below the panel's top edge. Silent no-op (rest at top) if not found.
+    function scrollArticleToImage(imgId, imgUrl) {
+        var panel = dom.articlePanel;
+        var img = findContentImage(imgId, imgUrl);
+        if (!panel || !img) return;
+        var panelRect = panel.getBoundingClientRect();
+        var imgRect = img.getBoundingClientRect();
+        var current = panel.scrollTop;
+        var target = current + (imgRect.top - panelRect.top) - panelRect.height * 0.18;
+        var max = panel.scrollHeight - panel.clientHeight;
+        target = Math.max(0, Math.min(target, max));
+        animateScroll(panel, current, target, 650);
+    }
+
+    // ---------------------------------------------------------------
+    // 10b. Article Comments (WordPress comment system, inline via REST)
+    // ---------------------------------------------------------------
+    function buildCommentItem(c) {
+        var name = escapeHtml((c.author_name || '匿名').trim() || '匿名');
+        var dateStr = c.date ? formatDate(c.date.split('T')[0]) : '';
+        var avatar = '';
+        if (c.author_avatar_urls) {
+            var url = c.author_avatar_urls['48'] || c.author_avatar_urls['96'] || c.author_avatar_urls['24'];
+            if (url) avatar = '<img class="comment-avatar" src="' + escapeHtml(url) + '" alt="" loading="lazy">';
+        }
+        if (!avatar) {
+            avatar = '<span class="comment-avatar comment-avatar--placeholder">' + name.charAt(0).toUpperCase() + '</span>';
+        }
+        // content.rendered is sanitized HTML from WordPress.
+        var body = (c.content && c.content.rendered) ? c.content.rendered : '';
+        return ''
+            + '<li class="comment-item">'
+            +   avatar
+            +   '<div class="comment-body">'
+            +     '<div class="comment-head"><span class="comment-author">' + name + '</span>'
+            +       (dateStr ? '<span class="comment-date">' + escapeHtml(dateStr) + '</span>' : '')
+            +     '</div>'
+            +     '<div class="comment-text">' + body + '</div>'
+            +   '</div>'
+            + '</li>';
+    }
+
+    function renderComments(postId, commentStatus) {
+        var wrap = dom.articleComments;
+        if (!wrap) return;
+        var isOpen = commentStatus !== 'closed';
+        wrap.innerHTML = ''
+            + '<div class="comments-section">'
+            +   '<h4 class="comments-title"><span class="comments-count-label">评论</span> <span class="comments-count">…</span></h4>'
+            +   '<ul class="comment-list" id="comment-list"></ul>'
+            +   (isOpen ? buildCommentFormHtml() : '<p class="comments-closed">' + escapeHtml(APP.commentsClosedText || '评论已关闭。') + '</p>')
+            + '</div>';
+
+        var listEl = wrap.querySelector('#comment-list');
+        var countEl = wrap.querySelector('.comments-count');
+
+        // Fetch approved comments for this post.
+        fetchFromRest(CONFIG.commentsEndpoint, { post: postId, per_page: 100, order: 'asc', orderby: 'date' })
+            .then(function (comments) {
+                if (state.openedPostId !== postId) return;
+                comments = Array.isArray(comments) ? comments : [];
+                countEl.textContent = comments.length ? '(' + comments.length + ')' : '(0)';
+                if (comments.length === 0) {
+                    listEl.innerHTML = '<li class="comments-empty">还没有评论，来抢沙发吧。</li>';
+                    return;
+                }
+                listEl.innerHTML = comments.map(buildCommentItem).join('');
+            });
+
+        if (isOpen) wireCommentForm(postId, listEl, countEl);
+    }
+
+    function buildCommentFormHtml() {
+        var loggedIn = !!APP.loggedIn;
+        var identityRow = loggedIn
+            ? '<p class="comment-identity">以 <strong>' + escapeHtml(APP.currentUserName || '') + '</strong> 的身份评论</p>'
+            : ''
+                + '<div class="comment-fields">'
+                +   '<input type="text" class="comment-input" id="comment-author" placeholder="昵称 *" autocomplete="name" required>'
+                +   '<input type="email" class="comment-input" id="comment-email" placeholder="邮箱（不公开）*" autocomplete="email" required>'
+                + '</div>';
+        return ''
+            + '<form class="comment-form" id="comment-form" novalidate>'
+            +   identityRow
+            +   '<textarea class="comment-textarea" id="comment-content" rows="3" placeholder="写下你的评论…" required></textarea>'
+            +   '<div class="comment-form-footer">'
+            +     '<span class="comment-feedback" id="comment-feedback"></span>'
+            +     '<button type="submit" class="comment-submit">发表评论</button>'
+            +   '</div>'
+            + '</form>';
+    }
+
+    function wireCommentForm(postId, listEl, countEl) {
+        var form = dom.articleComments.querySelector('#comment-form');
+        if (!form) return;
+        form.addEventListener('click', function (e) { e.stopPropagation(); });
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var feedback = form.querySelector('#comment-feedback');
+            var submitBtn = form.querySelector('.comment-submit');
+            var contentEl = form.querySelector('#comment-content');
+            var content = (contentEl.value || '').trim();
+            feedback.className = 'comment-feedback';
+            if (!content) { feedback.textContent = '请输入评论内容。'; feedback.classList.add('is-error'); return; }
+
+            var payload = { post: postId, content: content };
+            if (!APP.loggedIn) {
+                var authorEl = form.querySelector('#comment-author');
+                var emailEl = form.querySelector('#comment-email');
+                var author = (authorEl.value || '').trim();
+                var email = (emailEl.value || '').trim();
+                if (!author || !email) { feedback.textContent = '请填写昵称与邮箱。'; feedback.classList.add('is-error'); return; }
+                payload.author_name = author;
+                payload.author_email = email;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = '提交中…';
+            feedback.textContent = '';
+
+            fetch(CONFIG.restBase + '/' + CONFIG.commentsEndpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': APP.restNonce || '' },
+                body: JSON.stringify(payload)
+            }).then(function (res) {
+                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+            }).then(function (result) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '发表评论';
+                if (!result.ok) {
+                    var msg = (result.data && result.data.message) ? stripHtml(result.data.message) : '评论提交失败，请稍后再试。';
+                    feedback.textContent = msg;
+                    feedback.classList.add('is-error');
+                    return;
+                }
+                var c = result.data;
+                contentEl.value = '';
+                if (c && c.status && c.status !== 'approved') {
+                    feedback.textContent = '评论已提交，等待审核后显示。';
+                    feedback.classList.add('is-success');
+                    return;
+                }
+                // Append the freshly approved comment and update the count.
+                var empty = listEl.querySelector('.comments-empty');
+                if (empty) listEl.innerHTML = '';
+                listEl.insertAdjacentHTML('beforeend', buildCommentItem(c));
+                var current = parseInt((countEl.textContent || '').replace(/\D/g, ''), 10) || 0;
+                countEl.textContent = '(' + (current + 1) + ')';
+                feedback.textContent = '评论发表成功！';
+                feedback.classList.add('is-success');
+            }).catch(function () {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '发表评论';
+                feedback.textContent = '网络错误，请稍后再试。';
+                feedback.classList.add('is-error');
+            });
+        });
+    }
+
     // ---------------------------------------------------------------
     // 11. Dynamic Photo Grid Panels
     // ---------------------------------------------------------------
@@ -1029,18 +1526,81 @@
         return props;
     }
 
+    // Live screen position of a map coordinate — recomputed at animation time
+    // so the panel always grows from / shrinks into the marker's current spot.
+    function pointRectFor(coords) {
+        if (!state.map || !coords) return null;
+        var p = state.map.project(new maplibregl.LngLat(coords[0], coords[1]));
+        return { left: p.x, top: p.y, width: 1, height: 1 };
+    }
+
+    // Grow the panel out of its map point (same window-scale motion as the
+    // article panel: a FLIP transform with a top-left origin).
+    function animatePhotoPanelOpen(el, coords) {
+        if (!el || state.isMobile || prefersReducedMotion()) return;
+        var target = pointRectFor(coords);
+        var panelRect = el.getBoundingClientRect();
+        if (!target || !panelRect.width || !panelRect.height) return;
+        if (el._photoMotion) { el._photoMotion.cancel(); el._photoMotion = null; }
+        var from = collapseTransform(target, panelRect);
+        var anim = el.animate([
+            { transform: from, opacity: 0 },
+            { opacity: 1, offset: 0.15 },
+            { transform: 'translate(0,0) scale(1,1)', opacity: 1 }
+        ], { duration: ARTICLE_MOTION.openDuration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        el._photoMotion = anim;
+        anim.onfinish = function () { if (el._photoMotion === anim) { anim.cancel(); el._photoMotion = null; } };
+    }
+
+    // Shrink the panel back into its map point, then run onDone (removal).
+    function animatePhotoPanelClose(el, coords, onDone) {
+        if (!el) { if (onDone) onDone(); return; }
+        el.style.pointerEvents = 'none';
+        var target = pointRectFor(coords);
+        var panelRect = el.getBoundingClientRect();
+        if (state.isMobile || prefersReducedMotion() || !target || !panelRect.width) {
+            el.classList.add('photo-grid-panel--dismiss');
+            el.classList.remove('active');
+            setTimeout(function () { if (onDone) onDone(); }, 400);
+            return;
+        }
+        if (el._photoMotion) { el._photoMotion.cancel(); el._photoMotion = null; }
+        var to = collapseTransform(target, panelRect);
+        var anim = el.animate([
+            { transform: 'translate(0,0) scale(1,1)', opacity: 1 },
+            { opacity: 1, offset: 0.82 },
+            { transform: to, opacity: 0 }
+        ], { duration: ARTICLE_MOTION.closeDuration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        el._photoMotion = anim;
+        anim.onfinish = function () { if (onDone) onDone(); };
+    }
+
     function dismissPhotoPanelWithAnim(key) {
         var panel = state.photoPanels.get(key);
         if (!panel || panel.dismissing) return;
         panel.dismissing = true;
         var el = panel.element;
-        el.classList.add('photo-grid-panel--dismiss');
-        el.classList.remove('active');
-        setTimeout(function() {
-            if (state.photoPanels.get(key) !== panel) return;
+        animatePhotoPanelClose(el, panel.entity && panel.entity.coords, function () {
             el.remove();
-            state.photoPanels.delete(key);
-        }, 400);
+            if (state.photoPanels.get(key) === panel) state.photoPanels.delete(key);
+        });
+    }
+
+    // Shrink every open panel back into its point, then drop them all.
+    function dismissAllPhotoPanels() {
+        if (state.photoPanels.size === 0) {
+            state.visibleEntities.clear();
+            state.activePhotoPanelKey = null;
+            return;
+        }
+        var panels = Array.from(state.photoPanels.values());
+        state.photoPanels = new Map();
+        state.visibleEntities = new Map();
+        state.activePhotoPanelKey = null;
+        panels.forEach(function (panel) {
+            var el = panel.element;
+            animatePhotoPanelClose(el, panel.entity && panel.entity.coords, function () { el.remove(); });
+        });
     }
 
     function renderVisibleEntities(nextEntities) {
@@ -1057,11 +1617,13 @@
             }
         });
 
+        var newlyCreated = [];
         nextEntities.forEach(function(entity, key) {
             var panel = state.photoPanels.get(key);
             if (!panel) {
                 panel = createPhotoPanel(entity, key === newActiveKey);
                 state.photoPanels.set(key, panel);
+                newlyCreated.push(panel);
             } else {
                 panel.entity = entity;
                 panel.element.classList.toggle('active', key === newActiveKey);
@@ -1076,6 +1638,12 @@
         requestAnimationFrame(function() {
             state.photoPanels.forEach(function(panel) {
                 panel.element.classList.add('photo-grid-panel--positioned');
+            });
+            // Grow freshly opened panels out of their corresponding map point.
+            newlyCreated.forEach(function(panel) {
+                if (panel.element.classList.contains('active')) {
+                    animatePhotoPanelOpen(panel.element, panel.entity.coords);
+                }
             });
         });
     }
@@ -1114,10 +1682,25 @@
                 + '<div class="photo-item-overlay">' + escapeHtml(props.title) + '</div>';
             item.addEventListener('click', function(event) {
                 event.stopPropagation();
-                closeAllPhotoPanels();
-                // Always show the large detail view first; the parent article
-                // is reachable from the "查看文章" button inside it.
-                openDetailPanel(props);
+                // Mobile keeps the large detail sheet (parent article reachable
+                // via its "查看文章" button). Desktop opens the parent article
+                // directly and glides to the paragraph holding this image.
+                if (state.isMobile) {
+                    closeAllPhotoPanels();
+                    openDetailPanel(props);
+                    return;
+                }
+                var postId = props.postId || props.post_id || null;
+                if (!postId) {
+                    closeAllPhotoPanels();
+                    openDetailPanel(props);
+                    return;
+                }
+                openSidebar();
+                openArticle(postId, {
+                    scrollToImageId: props.id,
+                    scrollToImageUrl: props.fullImage || props.thumbnail || ''
+                });
             });
             container.appendChild(item);
         });
@@ -1162,17 +1745,10 @@
         return state.photoPanels.size > 0;
     }
 
-    function clearRenderedPhotoPanels() {
-        state.photoPanels.forEach(function(panel) { panel.element.remove(); });
-        state.photoPanels.clear();
-        state.visibleEntities.clear();
-        state.activePhotoPanelKey = null;
-    }
-
     function closeAllPhotoPanels() {
         state.reconcileToken++;
         state.openPhotoIds.clear();
-        clearRenderedPhotoPanels();
+        dismissAllPhotoPanels();
     }
 
     // ---------------------------------------------------------------
@@ -1226,15 +1802,66 @@
     }
 
     // ---------------------------------------------------------------
-    // 14. About Card
+    // 14. About Card — 常驻右下角，无需展开/收起逻辑
     // ---------------------------------------------------------------
-    function toggleAboutCard(e) { if(e)e.stopPropagation(); dom.aboutCard.classList.toggle('hidden'); }
-    function closeAboutCard() { dom.aboutCard.classList.add('hidden'); }
 
     // ---------------------------------------------------------------
     // 16. Loading
     // ---------------------------------------------------------------
+    var LOADING_TIPS = [
+        '正在搭建传送门',
+        '再等等，马上就加载好了',
+        '正在手磨咖啡中，好喝！',
+        '正在摸鱼，不对这怎么能叫摸鱼呢',
+        '正在环游世界',
+        '正在标记地图钉',
+        '正在打电动，美滋滋',
+        '正在......不知道正在做什么呢',
+        '正在劈里啪啦敲键盘'
+    ];
+
+    // Show a random loading tip below the aperture, swapping every 3s in random
+    // order until loading finishes. The first tip is random too, and we avoid
+    // repeating the immediately-previous one so it never looks frozen.
+    function startLoadingTips() {
+        if (!dom.loadingTip) return;
+        var lastIndex = -1;
+
+        function pickIndex() {
+            if (LOADING_TIPS.length <= 1) return 0;
+            var i;
+            do { i = Math.floor(Math.random() * LOADING_TIPS.length); }
+            while (i === lastIndex);
+            return i;
+        }
+
+        function swap() {
+            var i = pickIndex();
+            lastIndex = i;
+            // Fade out, change text, fade back in.
+            dom.loadingTip.classList.remove('is-visible');
+            setTimeout(function () {
+                dom.loadingTip.textContent = LOADING_TIPS[i];
+                dom.loadingTip.classList.add('is-visible');
+            }, 300);
+        }
+
+        // First tip shows immediately (no fade-out delay).
+        lastIndex = pickIndex();
+        dom.loadingTip.textContent = LOADING_TIPS[lastIndex];
+        dom.loadingTip.classList.add('is-visible');
+        state.tipTimer = setInterval(swap, 3000);
+    }
+
+    function stopLoadingTips() {
+        if (state.tipTimer) {
+            clearInterval(state.tipTimer);
+            state.tipTimer = null;
+        }
+    }
+
     function hideLoading() {
+        stopLoadingTips();
         if (!dom.loadingOverlay) return;
         dom.loadingOverlay.classList.add('fade-out');
         setTimeout(function(){dom.loadingOverlay.style.display='none';},600);
@@ -1306,9 +1933,10 @@
         dom.sidebarToggle.addEventListener('click', function(e) { e.stopPropagation(); toggleSidebar(); });
         dom.sidebarExpand.addEventListener('click', function(e) { e.stopPropagation(); openSidebar(); });
         dom.sidebarSearch.addEventListener('input', debounce(function() { filterSidebarPosts(this.value); }, 300));
+        if (dom.filterBtn) dom.filterBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleFilterPanel(); });
+        if (dom.filterPanel) dom.filterPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
-        dom.aboutTrigger.addEventListener('click', function(e) { toggleAboutCard(e); });
         dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
 
         // Show the platform-correct modifier in the search hint (⌘ on Mac).
@@ -1337,11 +1965,11 @@
                     dom.sidebarSearch.blur();
                     return;
                 }
+                closeFilterPanel();
                 closeAllPhotoPanels();
                 closeArticlePanel();
                 dom.detailSheet.classList.remove('active');
                 state.detailOpen = false;
-                closeAboutCard();
             }
         });
 
@@ -1354,6 +1982,7 @@
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
+        startLoadingTips();
 
         var hasInlineData = useInlineData();
 
@@ -1372,12 +2001,18 @@
             }
 
             renderSidebarPosts(state.recentPosts);
+            buildFilterChips();
             initMap();
             initHitokoto();
             initEntryAnimation();
             bindUIEvents();
-            // Sidebar starts collapsed on both desktop and mobile.
-            closeSidebar(true);
+            // Sidebar defaults to collapsed unless the "default expand sidebar"
+            // setting is enabled.
+            if (SETTINGS.sidebarDefaultOpen) {
+                openSidebar();
+            } else {
+                closeSidebar(true);
+            }
         } catch (err) {
             console.error('Init error:', err);
             hideLoading();

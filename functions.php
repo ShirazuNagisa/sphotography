@@ -3,7 +3,7 @@
  * Sphotography Theme Functions
  *
  * @package Sphotography
- * @version 1.1.7
+ * @version 1.2.3
  */
 
 // ============================================
@@ -655,13 +655,17 @@ function sphotography_enqueue_scripts() {
         true
     );
 
+    $sp_current_user = wp_get_current_user();
     wp_localize_script(
         'sphotography-app',
         'Sphotography',
         array(
-            'restUrl'    => esc_url_raw( rest_url() ),
-            'siteName'   => get_bloginfo( 'name' ),
-            'restNonce'  => wp_create_nonce( 'wp_rest' ),
+            'restUrl'         => esc_url_raw( rest_url() ),
+            'siteName'        => get_bloginfo( 'name' ),
+            'restNonce'       => wp_create_nonce( 'wp_rest' ),
+            'loggedIn'        => is_user_logged_in(),
+            'currentUserName' => is_user_logged_in() ? $sp_current_user->display_name : '',
+            'commentsClosedText' => __( '评论已关闭。', 'sphotography' ),
         )
     );
 }

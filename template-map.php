@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.1.6
+ * @version 1.2.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -22,7 +22,15 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <link rel="profile" href="https://gmpg.org/xfn/11">
     <?php wp_head(); ?>
 </head>
-<body <?php body_class( array( 'map-template-body', 'sidebar-collapsed' ) ); ?>>
+<?php
+// Sidebar starts collapsed unless the "default expand sidebar" setting is on.
+// Emitting the class server-side avoids a collapsed→open flash on load.
+$sphotography_body_classes = array( 'map-template-body' );
+if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
+    $sphotography_body_classes[] = 'sidebar-collapsed';
+}
+?>
+<body <?php body_class( $sphotography_body_classes ); ?>>
 <?php wp_body_open(); ?>
 
     <!-- Loading Overlay — 品牌化光圈加载体验 -->
@@ -38,6 +46,8 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
         </div>
         <!-- 站点名称 -->
         <span class="loading-site-name"><?php echo esc_html( $site_name ); ?></span>
+        <!-- 随机加载提示（每 3 秒更换一次，由 app.js 驱动） -->
+        <div class="loading-tip" id="loading-tip" aria-live="polite"></div>
         <!-- 底部进度条 -->
         <div class="loading-progress"></div>
     </div>
@@ -60,15 +70,26 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <!-- Sidebar (left)                               -->
     <!-- ============================================ -->
     <aside id="sidebar" class="sidebar glass-panel" role="complementary" aria-label="<?php esc_attr_e( 'Article sidebar', 'sphotography' ); ?>">
-        <!-- Search -->
+        <!-- Search + Filter -->
         <div class="sidebar-search">
-            <input type="text" id="sidebar-search-input" placeholder="<?php esc_attr_e( '搜索文章...', 'sphotography' ); ?>" aria-label="<?php esc_attr_e( 'Search articles', 'sphotography' ); ?>">
-            <span class="sidebar-search-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </span>
-            <span id="sidebar-search-kbd" class="sidebar-search-kbd" aria-hidden="true">
-                <kbd class="kbd-mod">Ctrl</kbd><kbd>K</kbd>
-            </span>
+            <div class="sidebar-search-row">
+                <div class="sidebar-search-field">
+                    <input type="text" id="sidebar-search-input" placeholder="<?php esc_attr_e( '搜索文章...', 'sphotography' ); ?>" aria-label="<?php esc_attr_e( 'Search articles', 'sphotography' ); ?>">
+                    <span class="sidebar-search-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </span>
+                    <span id="sidebar-search-kbd" class="sidebar-search-kbd" aria-hidden="true">
+                        <kbd class="kbd-mod">Ctrl</kbd><kbd>K</kbd>
+                    </span>
+                </div>
+                <button id="sidebar-filter-btn" class="sidebar-filter-btn" type="button" aria-label="<?php esc_attr_e( '筛选文章分类', 'sphotography' ); ?>" aria-expanded="false" aria-controls="sidebar-filter-panel">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                </button>
+            </div>
+            <div id="sidebar-filter-panel" class="sidebar-filter-panel" hidden>
+                <div class="filter-panel-title"><?php esc_html_e( '按分类筛选', 'sphotography' ); ?></div>
+                <div id="filter-chips" class="filter-chips"></div>
+            </div>
         </div>
 
         <!-- Article list -->
@@ -111,6 +132,9 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
         <div id="article-content" class="article-content">
             <!-- WordPress formatted content loaded by JS -->
         </div>
+        <div id="article-comments" class="article-comments" aria-live="polite">
+            <!-- Comment list + form loaded by JS -->
+        </div>
     </div>
 
     <!-- ============================================ -->
@@ -142,12 +166,9 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     </div>
 
     <!-- ============================================ -->
-    <!-- About Trigger & Card (existing)               -->
+    <!-- About Card — 常驻右下角个人信息卡片              -->
     <!-- ============================================ -->
-    <button id="about-trigger" class="about-trigger glass-panel" aria-label="<?php esc_attr_e( 'About the photographer', 'sphotography' ); ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-    </button>
-    <div id="about-card" class="about-card glass-panel hidden">
+    <div id="about-card" class="about-card glass-panel">
         <?php
         $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
         $author_name = get_theme_mod( 'sphotography_author_nickname', '' );
