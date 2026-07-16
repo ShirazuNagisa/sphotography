@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.2.6
+ * @version 1.2.8
  */
 
 // Prevent direct access
@@ -23,6 +23,7 @@ function sphotography_get_default_settings() {
         'night_mode'          => 'system',
         'dark_scheme'         => 'default',
         'frontend_font'       => 'serif',
+        'cursor_style'        => 'dot',
         'admin_global_style'  => true,
         // ② Card Style
         'card_radius'         => 16,
@@ -35,6 +36,7 @@ function sphotography_get_default_settings() {
         'sidebar_default_open' => false,
         'article_card_size'   => 'small',
         'enable_hitokoto'     => false,
+        'about_card_enabled'  => true,
         'author_nickname'     => '',
         'avatar_url'          => '',
         'bio'                 => '',
@@ -81,7 +83,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'about_card_enabled', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -100,6 +102,8 @@ function sphotography_sanitize_settings( $input ) {
     $allowed_font = array( 'serif', 'wordpress' );
     $sanitized['frontend_font'] = in_array( $input['frontend_font'], $allowed_font, true ) ? $input['frontend_font'] : $defaults['frontend_font'];
     $sanitized['admin_global_style'] = ! empty( $input['admin_global_style'] ) ? 1 : 0;
+    $allowed_cursor = array( 'dot', 'normal' );
+    $sanitized['cursor_style'] = in_array( $input['cursor_style'], $allowed_cursor, true ) ? $input['cursor_style'] : $defaults['cursor_style'];
 
     // ② Card Style
     $sanitized['card_radius'] = min( max( (int) $input['card_radius'], 0 ), 40 );
@@ -115,6 +119,7 @@ function sphotography_sanitize_settings( $input ) {
     $allowed_card_size = array( 'small', 'large' );
     $sanitized['article_card_size'] = in_array( $input['article_card_size'], $allowed_card_size, true ) ? $input['article_card_size'] : $defaults['article_card_size'];
     $sanitized['enable_hitokoto'] = ! empty( $input['enable_hitokoto'] ) ? 1 : 0;
+    $sanitized['about_card_enabled'] = ! empty( $input['about_card_enabled'] ) ? 1 : 0;
     $sanitized['author_nickname'] = sanitize_text_field( $input['author_nickname'] );
     $sanitized['avatar_url'] = esc_url_raw( $input['avatar_url'] );
     $sanitized['bio'] = sanitize_textarea_field( $input['bio'] );
@@ -377,6 +382,16 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '选择前端全局字体。衬线字体呈现更优雅的排版；WordPress 默认字体使用系统无衬线字体栈，观感更现代。全局生效，默认衬线字体。', 'sphotography' ); ?></p>
                     </div>
 
+                    <!-- Cursor style (v1.2.8) -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-cursor-style"><?php _e( '鼠标光标样式', 'sphotography' ); ?></label>
+                        <select id="sphotography-cursor-style" name="sphotography[cursor_style]">
+                            <option value="dot" <?php selected( $values['cursor_style'], 'dot' ); ?>><?php _e( '点+圆环（默认）', 'sphotography' ); ?></option>
+                            <option value="normal" <?php selected( $values['cursor_style'], 'normal' ); ?>><?php _e( '普通样式（系统默认）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择前端地图页面的鼠标光标样式。「点+圆环」将光标替换为中心圆点外加一小圈圆环的精致指针；「普通样式」使用操作系统默认光标。默认为「点+圆环」。', 'sphotography' ); ?></p>
+                    </div>
+
                     <!-- Global admin style toggle -->
                     <div class="sphotography-field sphotography-field-checkbox">
                         <label class="sphotography-label">
@@ -525,6 +540,17 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '开启后，在左侧栏底部显示来自一言 API 的随机格言。', 'sphotography' ); ?></p>
                     </div>
 
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[about_card_enabled]"
+                                   value="1"
+                                   <?php checked( $values['about_card_enabled'], 1 ); ?>>
+                            <?php _e( '显示右下角个人信息卡片', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，地图右下角常驻显示个人信息卡片（头像、昵称、简介、一言）。关闭则完全隐藏该卡片。默认开启。', 'sphotography' ); ?></p>
+                    </div>
+
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-author-nickname"><?php _e( '作者昵称', 'sphotography' ); ?></label>
                         <input type="text"
@@ -551,7 +577,7 @@ function sphotography_render_settings_page() {
                                   name="sphotography[bio]"
                                   rows="4"
                                   placeholder="<?php esc_attr_e( '行走于街巷与山野，用镜头收集人间烟火与自然纹理。', 'sphotography' ); ?>"><?php echo esc_textarea( $values['bio'] ); ?></textarea>
-                        <p class="sphotography-desc"><?php _e( '留空则自动隐藏该模块。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '留空则自动隐藏简介行（卡片其余部分仍显示）。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
@@ -1304,6 +1330,30 @@ function sphotography_admin_enqueue_settings( $hook ) {
             border-color: var(--sp-accent);
             box-shadow: 0 0 0 1px var(--sp-accent);
             outline: none;
+        }
+        /* v1.2.8 — drop the default (often bright-blue) focus ring that browsers
+           paint on clickable option controls (TOC index links, buttons, preset
+           swatches, radios/checkboxes, advanced toggle) when activated by mouse.
+           Keyboard focus still gets a subtle accent ring via :focus-visible so
+           the page stays navigable without the ugly outline. Text inputs/selects
+           keep their own accent box-shadow above and are excluded here. */
+        .sphotography-settings-wrap .sphotography-toc-link:focus,
+        .sphotography-settings-wrap .sphotography-preset-btn:focus,
+        .sphotography-settings-wrap .sphotography-radio-label input:focus,
+        .sphotography-settings-wrap .sphotography-field-checkbox input[type=\"checkbox\"]:focus,
+        .sphotography-settings-wrap .sphotography-advanced-toggle:focus,
+        .sphotography-settings-wrap .button:focus {
+            outline: none;
+            box-shadow: none;
+        }
+        .sphotography-settings-wrap .sphotography-toc-link:focus-visible,
+        .sphotography-settings-wrap .sphotography-preset-btn:focus-visible,
+        .sphotography-settings-wrap .sphotography-radio-label input:focus-visible,
+        .sphotography-settings-wrap .sphotography-field-checkbox input[type=\"checkbox\"]:focus-visible,
+        .sphotography-settings-wrap .sphotography-advanced-toggle:focus-visible,
+        .sphotography-settings-wrap .button:focus-visible {
+            outline: 2px solid var(--sp-accent);
+            outline-offset: 2px;
         }
         /* Keep native form controls readable in dark mode. Without explicit
            colours on every state, browsers (and WordPress core form.css) fall
