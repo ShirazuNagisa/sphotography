@@ -3,7 +3,7 @@
  * Sphotography - Apply Theme Mods to Frontend
  *
  * @package Sphotography
- * @version 1.2.4
+ * @version 1.2.5
  */
 
 // ============================================
@@ -146,6 +146,20 @@ function sphotography_localize_data() {
         'readingSpeedLatin' => (int) sphotography_get_mod( 'reading_speed_latin' ),
         'mapStyle'         => sphotography_get_mod( 'map_style' ),
         'mapStyleCustomUrl' => sphotography_get_mod( 'map_style_custom_url' ),
+        // Motion personality (v1.2.5) — raw picker values; app.js resolves them.
+        'motionTier'       => sphotography_get_mod( 'motion_tier' ),
+        'motionArticleEasing' => sphotography_get_mod( 'motion_article_easing' ),
+        'motionArticleScale'  => (int) sphotography_get_mod( 'motion_article_scale' ),
+        'motionDropletEasing' => sphotography_get_mod( 'motion_droplet_easing' ),
+        'motionDropletScale'  => (int) sphotography_get_mod( 'motion_droplet_scale' ),
+        'motionIgnoreReduced' => (bool) sphotography_get_mod( 'motion_ignore_reduced' ),
+        // Cluster & tag styling (v1.2.5).
+        'clusterRadius'    => (int) sphotography_get_mod( 'cluster_radius' ),
+        'tagColor'         => (bool) sphotography_get_mod( 'tag_color' ),
+        'tagLegend'        => (bool) sphotography_get_mod( 'tag_legend' ),
+        // Full slug→colour map for every region_tag term (override-or-hash),
+        // so the frontend never hashes slugs itself.
+        'tagColors'        => sphotography_all_tag_colors(),
     ) );
 
     // ============================================

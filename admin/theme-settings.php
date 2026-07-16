@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.2.4
+ * @version 1.2.5
  */
 
 // Prevent direct access
@@ -43,6 +43,13 @@ function sphotography_get_default_settings() {
         'smooth_scroll'       => 'enabled',
         'entry_animation'     => true,
         'pjax_animation'      => true,
+        // ⑤b Motion personality (v1.2.5)
+        'motion_tier'          => 'standard',   // subtle | standard | expressive
+        'motion_article_easing' => 'inherit',   // inherit | linear | ease-out | ease-in-out | sharp
+        'motion_article_scale'  => 100,          // duration multiplier, 50–200 (%)
+        'motion_droplet_easing' => 'inherit',   // inherit | linear | ease-out | ease-in-out | spring | sharp
+        'motion_droplet_scale'  => 100,          // duration multiplier, 50–200 (%)
+        'motion_ignore_reduced' => false,        // play motion even when OS prefers reduced motion
         // ⑥ Reading Info
         'reading_info'        => false,
         'reading_speed_cjk'   => 300,
@@ -52,6 +59,11 @@ function sphotography_get_default_settings() {
         'map_style_custom_url' => '',
         'map_tint'            => false,
         'map_tint_intensity'  => 18,
+        // ⑦b Cluster & tag styling (v1.2.5)
+        'cluster_radius'       => 18,      // 10–60 px
+        'droplet_goo_strength' => 7,       // SVG feGaussianBlur stdDeviation, 3–12
+        'tag_color'            => false,   // colour markers by region_tag
+        'tag_legend'           => true,    // show the tag colour legend (only when tag_color on)
         // ⑧ Footer
         'footer_content'      => '',
         // ⑨ CDN
@@ -65,7 +77,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'map_tint' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'map_tint', 'motion_ignore_reduced', 'tag_color', 'tag_legend' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -111,6 +123,18 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['entry_animation'] = ! empty( $input['entry_animation'] ) ? 1 : 0;
     $sanitized['pjax_animation'] = ! empty( $input['pjax_animation'] ) ? 1 : 0;
 
+    // ⑤b Motion personality
+    $allowed_tier = array( 'subtle', 'standard', 'expressive' );
+    $sanitized['motion_tier'] = in_array( $input['motion_tier'], $allowed_tier, true ) ? $input['motion_tier'] : $defaults['motion_tier'];
+    // Article stays monotonic → no spring option offered.
+    $allowed_article_easing = array( 'inherit', 'linear', 'ease-out', 'ease-in-out', 'sharp' );
+    $sanitized['motion_article_easing'] = in_array( $input['motion_article_easing'], $allowed_article_easing, true ) ? $input['motion_article_easing'] : $defaults['motion_article_easing'];
+    $allowed_droplet_easing = array( 'inherit', 'linear', 'ease-out', 'ease-in-out', 'spring', 'sharp' );
+    $sanitized['motion_droplet_easing'] = in_array( $input['motion_droplet_easing'], $allowed_droplet_easing, true ) ? $input['motion_droplet_easing'] : $defaults['motion_droplet_easing'];
+    $sanitized['motion_article_scale'] = min( max( (int) $input['motion_article_scale'], 50 ), 200 );
+    $sanitized['motion_droplet_scale'] = min( max( (int) $input['motion_droplet_scale'], 50 ), 200 );
+    $sanitized['motion_ignore_reduced'] = ! empty( $input['motion_ignore_reduced'] ) ? 1 : 0;
+
     // ⑥ Reading Info
     $sanitized['reading_info'] = ! empty( $input['reading_info'] ) ? 1 : 0;
     $sanitized['reading_speed_cjk'] = min( max( (int) $input['reading_speed_cjk'], 100 ), 1500 );
@@ -131,6 +155,12 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['map_style_custom_url'] = $custom_url;
     $sanitized['map_tint'] = ! empty( $input['map_tint'] ) ? 1 : 0;
     $sanitized['map_tint_intensity'] = min( max( (int) $input['map_tint_intensity'], 0 ), 100 );
+
+    // ⑦b Cluster & tag styling
+    $sanitized['cluster_radius'] = min( max( (int) $input['cluster_radius'], 10 ), 60 );
+    $sanitized['droplet_goo_strength'] = min( max( (int) $input['droplet_goo_strength'], 3 ), 12 );
+    $sanitized['tag_color'] = ! empty( $input['tag_color'] ) ? 1 : 0;
+    $sanitized['tag_legend'] = ! empty( $input['tag_legend'] ) ? 1 : 0;
 
     // ⑧ Footer. This settings page is restricted to trusted administrators.
     // Raw HTML (including scripts) is intentionally supported by the theme.
@@ -556,6 +586,73 @@ function sphotography_render_settings_page() {
                         </label>
                         <p class="sphotography-desc"><?php _e( '开启后，通过 Pjax 无刷新跳转页面时会附带滚动动画过渡效果。', 'sphotography' ); ?></p>
                     </div>
+
+                    <!-- Motion personality (v1.2.5) -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-motion-tier"><?php _e( '动效性格', 'sphotography' ); ?></label>
+                        <select id="sphotography-motion-tier" name="sphotography[motion_tier]">
+                            <option value="subtle" <?php selected( $values['motion_tier'], 'subtle' ); ?>><?php _e( '克制（更快、更平，弱化存在感）', 'sphotography' ); ?></option>
+                            <option value="standard" <?php selected( $values['motion_tier'], 'standard' ); ?>><?php _e( '标准（默认，主题原有手感）', 'sphotography' ); ?></option>
+                            <option value="expressive" <?php selected( $values['motion_tier'], 'expressive' ); ?>><?php _e( '张扬（更慢、更有弹性，水滴回弹）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '统一调节全站动效的时长与缓动手感。文章面板始终保持单调收放（无回弹），仅地图水滴在「张扬」档带明显弹性。默认「标准」。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Advanced motion (collapsible) -->
+                    <div class="sphotography-field">
+                        <button type="button" class="sphotography-advanced-toggle" id="sphotography-motion-advanced-toggle" aria-expanded="false">
+                            <span class="dashicons dashicons-arrow-right-alt2"></span>
+                            <?php _e( '高级：分别微调文章与水滴动效', 'sphotography' ); ?>
+                        </button>
+                        <div class="sphotography-advanced-body" id="sphotography-motion-advanced" hidden>
+                            <p class="sphotography-desc" style="margin-top:0;"><?php _e( '两条通道独立微调。缓动保持「跟随动效性格」、倍率保持 100% 时，完全由上方档位决定。', 'sphotography' ); ?></p>
+
+                            <div class="sphotography-advanced-group">
+                                <p class="sphotography-advanced-group-title"><?php _e( '文章面板动效', 'sphotography' ); ?></p>
+                                <label class="sphotography-sublabel" for="sphotography-motion-article-easing"><?php _e( '缓动曲线', 'sphotography' ); ?></label>
+                                <select id="sphotography-motion-article-easing" name="sphotography[motion_article_easing]">
+                                    <option value="inherit" <?php selected( $values['motion_article_easing'], 'inherit' ); ?>><?php _e( '跟随动效性格（默认）', 'sphotography' ); ?></option>
+                                    <option value="linear" <?php selected( $values['motion_article_easing'], 'linear' ); ?>><?php _e( '线性', 'sphotography' ); ?></option>
+                                    <option value="ease-out" <?php selected( $values['motion_article_easing'], 'ease-out' ); ?>><?php _e( '缓出', 'sphotography' ); ?></option>
+                                    <option value="ease-in-out" <?php selected( $values['motion_article_easing'], 'ease-in-out' ); ?>><?php _e( '缓入缓出', 'sphotography' ); ?></option>
+                                    <option value="sharp" <?php selected( $values['motion_article_easing'], 'sharp' ); ?>><?php _e( '锐利', 'sphotography' ); ?></option>
+                                </select>
+                                <label class="sphotography-sublabel" for="sphotography-motion-article-scale"><?php _e( '时长倍率', 'sphotography' ); ?></label>
+                                <div class="sphotography-slider-row">
+                                    <input type="range" id="sphotography-motion-article-scale" name="sphotography[motion_article_scale]"
+                                           value="<?php echo esc_attr( $values['motion_article_scale'] ); ?>" min="50" max="200" step="5">
+                                    <span class="sphotography-slider-val" data-suffix="%"><?php echo esc_html( $values['motion_article_scale'] ); ?>%</span>
+                                </div>
+                            </div>
+
+                            <div class="sphotography-advanced-group">
+                                <p class="sphotography-advanced-group-title"><?php _e( '地图水滴动效', 'sphotography' ); ?></p>
+                                <label class="sphotography-sublabel" for="sphotography-motion-droplet-easing"><?php _e( '缓动曲线', 'sphotography' ); ?></label>
+                                <select id="sphotography-motion-droplet-easing" name="sphotography[motion_droplet_easing]">
+                                    <option value="inherit" <?php selected( $values['motion_droplet_easing'], 'inherit' ); ?>><?php _e( '跟随动效性格（默认）', 'sphotography' ); ?></option>
+                                    <option value="linear" <?php selected( $values['motion_droplet_easing'], 'linear' ); ?>><?php _e( '线性', 'sphotography' ); ?></option>
+                                    <option value="ease-out" <?php selected( $values['motion_droplet_easing'], 'ease-out' ); ?>><?php _e( '缓出', 'sphotography' ); ?></option>
+                                    <option value="ease-in-out" <?php selected( $values['motion_droplet_easing'], 'ease-in-out' ); ?>><?php _e( '缓入缓出', 'sphotography' ); ?></option>
+                                    <option value="spring" <?php selected( $values['motion_droplet_easing'], 'spring' ); ?>><?php _e( '弹性回弹', 'sphotography' ); ?></option>
+                                    <option value="sharp" <?php selected( $values['motion_droplet_easing'], 'sharp' ); ?>><?php _e( '锐利', 'sphotography' ); ?></option>
+                                </select>
+                                <label class="sphotography-sublabel" for="sphotography-motion-droplet-scale"><?php _e( '时长倍率', 'sphotography' ); ?></label>
+                                <div class="sphotography-slider-row">
+                                    <input type="range" id="sphotography-motion-droplet-scale" name="sphotography[motion_droplet_scale]"
+                                           value="<?php echo esc_attr( $values['motion_droplet_scale'] ); ?>" min="50" max="200" step="5">
+                                    <span class="sphotography-slider-val" data-suffix="%"><?php echo esc_html( $values['motion_droplet_scale'] ); ?>%</span>
+                                </div>
+                            </div>
+
+                            <div class="sphotography-field-checkbox" style="margin-top:4px;">
+                                <label class="sphotography-label">
+                                    <input type="checkbox" name="sphotography[motion_ignore_reduced]" value="1" <?php checked( $values['motion_ignore_reduced'], 1 ); ?>>
+                                    <?php _e( '即使系统开启「减弱动态效果」仍播放动效', 'sphotography' ); ?>
+                                </label>
+                                <p class="sphotography-desc"><?php _e( '默认关闭：尊重操作系统的「减弱动态效果」偏好，此时全站动效自动最小化。仅当你确定要覆盖该无障碍偏好时才勾选。', 'sphotography' ); ?></p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -682,6 +779,46 @@ function sphotography_render_settings_page() {
                                style="max-width:320px;vertical-align:middle;">
                         <span id="sphotography-map-tint-intensity-val" style="margin-left:10px;font-variant-numeric:tabular-nums;"><?php echo esc_html( $values['map_tint_intensity'] ); ?>%</span>
                         <p class="sphotography-desc"><?php _e( '色叠加的不透明度，范围 0-100%。数值越高染色越浓。默认 18%。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Cluster radius (v1.2.5) -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-cluster-radius"><?php _e( '标记聚合半径', 'sphotography' ); ?></label>
+                        <div class="sphotography-slider-row">
+                            <input type="range" id="sphotography-cluster-radius" name="sphotography[cluster_radius]"
+                                   value="<?php echo esc_attr( $values['cluster_radius'] ); ?>" min="10" max="60" step="1">
+                            <span class="sphotography-slider-val" data-suffix="px"><?php echo esc_html( $values['cluster_radius'] ); ?>px</span>
+                        </div>
+                        <p class="sphotography-desc"><?php _e( '控制邻近标记合并为聚合水滴的距离阈值，范围 10-60px。值越大越容易合并成大水滴，值越小标记越倾向保持独立。默认 18px。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Gooey fusion strength (v1.2.5) -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-droplet-goo-strength"><?php _e( '水滴融合强度', 'sphotography' ); ?></label>
+                        <div class="sphotography-slider-row">
+                            <input type="range" id="sphotography-droplet-goo-strength" name="sphotography[droplet_goo_strength]"
+                                   value="<?php echo esc_attr( $values['droplet_goo_strength'] ); ?>" min="3" max="12" step="1">
+                            <span class="sphotography-slider-val"><?php echo esc_html( $values['droplet_goo_strength'] ); ?></span>
+                        </div>
+                        <p class="sphotography-desc"><?php _e( '控制聚合／拆分时水滴之间的「拉丝融合」程度，范围 3-12。值越大，邻近水滴越容易黏连成一团；值越小水滴边缘越清爽。默认 7。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Tag colour master toggle (v1.2.5) -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[tag_color]" value="1" <?php checked( $values['tag_color'], 1 ); ?>>
+                            <?php _e( '按地区标签为标记分色', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，地图标记按其「地区标签（region_tag）」着色，让不同地区一眼可辨。默认按标签别名自动生成配色，可在「地区标签」编辑页手动指定颜色覆盖。聚合水滴按簇内出现最多的标签着色，无共同标签时回退主题主色。默认关闭，保持原有统一配色。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Legend toggle (v1.2.5) -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[tag_legend]" value="1" <?php checked( $values['tag_legend'], 1 ); ?>>
+                            <?php _e( '显示标签配色图例', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '仅在上方「按地区标签分色」开启时生效。在地图左下角显示可折叠的标签配色图例（移动端折叠为「图例」小胶囊）。默认开启。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
@@ -1160,6 +1297,71 @@ function sphotography_admin_enqueue_settings( $hook ) {
         }
         .sphotography-custom-date-field {
             margin-top: 12px;
+        }
+        /* v1.2.5 — advanced motion block + slider rows */
+        .sphotography-advanced-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            color: var(--sp-accent);
+            font-family: {$sp_serif};
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .sphotography-advanced-toggle .dashicons {
+            transition: transform 160ms ease;
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+        }
+        .sphotography-advanced-toggle[aria-expanded=\"true\"] .dashicons {
+            transform: rotate(90deg);
+        }
+        .sphotography-advanced-body {
+            margin-top: 14px;
+            padding: 16px 18px;
+            border: 1px dashed var(--sp-border);
+            border-radius: 10px;
+            background: var(--sp-surface-2);
+        }
+        .sphotography-advanced-group {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--sp-border);
+        }
+        .sphotography-advanced-group:last-of-type {
+            border-bottom: none;
+        }
+        .sphotography-advanced-group-title {
+            margin: 0 0 10px 0;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--sp-text);
+        }
+        .sphotography-sublabel {
+            display: block;
+            margin: 10px 0 4px 0;
+            font-size: 0.8125rem;
+            color: var(--sp-text-muted);
+        }
+        .sphotography-slider-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .sphotography-slider-row input[type=\"range\"] {
+            flex: 1 1 auto;
+            max-width: 320px;
+        }
+        .sphotography-slider-val {
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            color: var(--sp-text);
+            min-width: 3ch;
         }
         .sphotography-module-header .sphotography-module-icon {
             margin-right: 4px;

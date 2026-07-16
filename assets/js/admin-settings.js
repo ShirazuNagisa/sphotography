@@ -46,6 +46,25 @@
             $('#sphotography-map-tint-intensity-val').text($(this).val() + '%');
         });
 
+        // Generic slider readouts (v1.2.5): each .sphotography-slider-row pairs
+        // a range input with a .sphotography-slider-val; an optional
+        // data-suffix on the value element is appended to the number.
+        $('.sphotography-slider-row').each(function () {
+            var $range = $(this).find('input[type="range"]');
+            var $val = $(this).find('.sphotography-slider-val');
+            var suffix = $val.data('suffix') || '';
+            $range.on('input change', function () {
+                $val.text($(this).val() + suffix);
+            });
+        });
+
+        // Advanced motion block: collapsible reveal.
+        $('#sphotography-motion-advanced-toggle').on('click', function () {
+            var expanded = $(this).attr('aria-expanded') === 'true';
+            $(this).attr('aria-expanded', expanded ? 'false' : 'true');
+            $('#sphotography-motion-advanced').prop('hidden', expanded);
+        });
+
         // ----- Right-side index (TOC): smooth scroll + scrollspy -----
         var $tocLinks = $('.sphotography-toc-link');
         if ($tocLinks.length) {

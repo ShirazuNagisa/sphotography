@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.2.4
+Version: 1.2.5
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -2252,20 +2252,24 @@ body.sidebar-collapsed .sidebar-expand-btn {
     height: 18px;
     border-radius: 50%;
     /* Solid, single colour so neighbouring blobs fuse cleanly. A soft
-       radial highlight gives a water-like sheen. */
+       radial highlight gives a water-like sheen. --droplet-color is set
+       per-element when tag colouring is on; otherwise it falls back to the
+       theme primary. */
     background:
         radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55), rgba(255,255,255,0) 45%),
-        var(--primary);
+        var(--droplet-color, var(--primary));
     will-change: transform, opacity;
     transform: translate3d(-100px, -100px, 0) translate(-50%, -50%) scale(1);
 }
 
 /* Transition class is applied only to merging / splitting droplets so
-   panning (which repositions every frame) never rubber-bands. */
+   panning (which repositions every frame) never rubber-bands. Duration and
+   easing are driven by the resolved motion personality (set on :root by
+   app.js), falling back to the standard-tier values. */
 .droplet--transit {
     transition:
-        transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
-        opacity 620ms cubic-bezier(0.22, 1, 0.36, 1);
+        transform var(--sp-droplet-duration, 620ms) var(--sp-droplet-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+        opacity var(--sp-droplet-duration, 620ms) var(--sp-droplet-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .droplet-label {
@@ -2283,12 +2287,107 @@ body.sidebar-collapsed .sidebar-expand-btn {
 }
 
 .droplet-label--transit {
-    transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease;
+    transition: transform var(--sp-droplet-duration, 620ms) var(--sp-droplet-ease, cubic-bezier(0.22, 1, 0.36, 1)), opacity 300ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
     .droplet--transit,
     .droplet-label--transit { transition: none; }
+}
+
+/* ---------------------------------------------------------------
+   Tag colour legend (v1.2.5) — a compact, collapsible key of the
+   region_tags present on the map. Glass panel bottom-left; on mobile it
+   collapses to a "图例" pill.
+   --------------------------------------------------------------- */
+.tag-legend {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 220px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+    color: var(--text-primary);
+    transition: max-width 260ms cubic-bezier(0.16, 1, 0.3, 1), padding 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tag-legend-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.tag-legend-toggle-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+    flex: 0 0 auto;
+    background: linear-gradient(135deg, #e74c3c 0 33%, #3498db 33% 66%, #2ecc71 66% 100%);
+}
+.tag-legend-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+.tag-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    line-height: 1.2;
+}
+.tag-legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12) inset;
+}
+.tag-legend-name {
+    color: var(--text-secondary, var(--text-primary));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Collapsed → pill: hide the list, show only the toggle. */
+.tag-legend--collapsed {
+    max-width: max-content;
+}
+.tag-legend--collapsed .tag-legend-list {
+    display: none;
+}
+
+/* region_tag chip colour dot in the article panel (v1.2.5). */
+.tag-chip-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: baseline;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12) inset;
+}
+.article-term-chip {
+    display: inline-flex;
+    align-items: center;
 }
 
 /* ---------------------------------------------------------------
