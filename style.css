@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.2.3
+Version: 1.2.4
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -190,6 +190,30 @@ body {
     right: 0;
     bottom: 0;
     z-index: 1;
+}
+
+/* Theme-color tint: a non-interactive layer that multiply-blends the site
+   primary colour onto the basemap. Sits directly above the map canvas but
+   below every UI panel (sidebar z-index 100, panels 95+), so the map stays
+   fully interactive and the chrome is untinted. Opacity is 0 unless the
+   `sphotography-map-tint` body class is present; the strength comes from the
+   dynamic --sphotography-tint-opacity variable. */
+#map-tint-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: var(--primary);
+    mix-blend-mode: multiply;
+    opacity: 0;
+    transition: opacity var(--duration-normal, 300ms) ease;
+}
+
+body.sphotography-map-tint #map-tint-overlay {
+    opacity: var(--sphotography-tint-opacity, 0.18);
 }
 
 /* ============================================
@@ -1884,6 +1908,146 @@ body.sidebar-collapsed .sidebar-expand-btn {
 /* 兼容旧 spinner（降级） */
 .loading-spinner {
     display: none; /* 被新的光圈动画替代 */
+}
+
+/* ============================================
+   11b. Loading Overlay — 流光穿越（Flythrough）
+   站点名称流光登场 → 加载完成后镜头穿过文字进入地图。
+   结构由 template-map.php 输出，SVG 镂空遮罩由 app.js 动态构建。
+   ============================================ */
+.loading-overlay--flythrough {
+    /* 不透明底色完全遮住地图，保证揭晓前是干净的悬念；中央叠加一层主题色微光。
+       --ft-map-bg 由 app.js 写入为当前底图（dark-matter / positron）的确切背景色，
+       使穿越落地与地图零色差。揭晓时由 .is-revealing 置为透明，让镂空处透出地图。 */
+    background-color: var(--ft-map-bg, var(--bg));
+    background-image:
+        radial-gradient(
+            ellipse at 50% 45%,
+            color-mix(in srgb, var(--primary) 12%, transparent) 0%,
+            transparent 60%
+        );
+}
+
+/* 加载中的站点名称：主题色 + 循环右向流光 */
+.loading-overlay--flythrough .ft-name {
+    max-width: 80vw;
+    /* 纵向留白 + 更高行盒：容纳 y/g/p/j 等深下摆字形，避免 background-clip:text
+       与滤镜区域把下摆裁掉。 */
+    padding: 0.22em 24px 0.34em;
+    text-align: center;
+    font-family: var(--font-display, var(--font-body, serif));
+    font-size: clamp(1.5rem, 7vw, 4rem);
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    word-break: break-word;
+    /* 主题色文字，中段为提亮高光，随背景位移形成流光 */
+    background-image: linear-gradient(
+        100deg,
+        var(--primary) 0%,
+        var(--primary) 35%,
+        color-mix(in srgb, var(--primary) 30%, #ffffff) 50%,
+        var(--primary) 65%,
+        var(--primary) 100%
+    );
+    background-size: 220% 100%;
+    background-position: 120% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    /* 入场前隐藏，由 .is-in 触发优雅登场 */
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(6px);
+    will-change: opacity, transform, filter, background-position;
+}
+
+/* 优雅登场：模糊到清晰 + 字距收拢 */
+.loading-overlay--flythrough .ft-name.is-in {
+    animation:
+        ftNameIn 640ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+/* 流光循环（仅在允许动效时启用；登场后叠加播放） */
+@media (prefers-reduced-motion: no-preference) {
+    .loading-overlay--flythrough .ft-name.is-in {
+        animation:
+            ftNameIn 640ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) forwards,
+            ftShine 2.4s linear 640ms infinite;
+    }
+}
+
+/* 镂空穿越遮罩（由 JS 注入 <svg class="ft-mask-svg">） */
+.loading-overlay--flythrough .ft-mask-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transform: scale(1);
+    transform-origin: center center;
+    will-change: transform, opacity;
+    pointer-events: none;
+}
+/* 满屏纯色填充块（颜色对齐底图背景），文字部分被遮罩镂空，透出其后的地图 */
+.loading-overlay--flythrough .ft-mask-fill {
+    fill: var(--ft-map-bg, var(--bg));
+}
+
+/* 慢载提示（>8s 由 app.js 注入），站点名下方一行小字 */
+.loading-overlay--flythrough .ft-hint {
+    margin-top: 22px;
+    font-family: var(--font-body, sans-serif);
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    color: color-mix(in srgb, var(--primary) 60%, #888888);
+    opacity: 0;
+    transition: opacity 500ms var(--ease-in-out-sine, ease);
+}
+.loading-overlay--flythrough .ft-hint.is-in {
+    opacity: 0.8;
+}
+
+/* 揭晓阶段（两段式）：
+   1) 底色瞬时透明，站点名原地「溶解」淡出，透过镂空字洞渐露地图；
+   2) 遮罩延迟启动，加速冲刺、末段减速并淡出——镜头穿过文字进入地图。 */
+.loading-overlay--flythrough.is-revealing {
+    background: transparent;
+    pointer-events: none;
+}
+.loading-overlay--flythrough.is-revealing .ft-name {
+    animation: ftDissolve 460ms var(--ease-in-out-sine, ease) forwards;
+}
+.loading-overlay--flythrough.is-revealing .ft-hint {
+    opacity: 0;
+}
+.loading-overlay--flythrough.is-revealing .ft-mask-svg {
+    opacity: 1;
+    /* 340ms 延迟让文字先溶解；cubic-bezier 起步慢(加速)、收尾缓(减速) */
+    animation: ftFlythrough 1050ms cubic-bezier(0.5, 0, 0.2, 1) 340ms forwards;
+}
+
+@keyframes ftNameIn {
+    from { opacity: 0; transform: translateY(6px); filter: blur(6px); letter-spacing: 0.16em; }
+    to   { opacity: 1; transform: translateY(0);   filter: blur(0);   letter-spacing: 0.04em; }
+}
+
+@keyframes ftShine {
+    from { background-position: 120% 0; }
+    to   { background-position: -120% 0; }
+}
+
+/* 文字溶解：不透明 → 透明，并带轻微模糊，柔化「变透明」的衔接 */
+@keyframes ftDissolve {
+    from { opacity: 1; filter: blur(0); }
+    to   { opacity: 0; filter: blur(5px); }
+}
+
+@keyframes ftFlythrough {
+    0%   { transform: scale(1);  opacity: 1; }
+    65%  { opacity: 1; }
+    100% { transform: scale(18); opacity: 0; }
 }
 
 /* ============================================

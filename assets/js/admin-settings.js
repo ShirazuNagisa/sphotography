@@ -38,6 +38,14 @@
             $('.sphotography-custom-date-field').toggle($(this).val() === 'custom');
         });
 
+        $('#sphotography-map-style').on('change', function () {
+            $('.sphotography-custom-mapstyle-field').toggle($(this).val() === 'custom');
+        });
+
+        $('#sphotography-map-tint-intensity').on('input change', function () {
+            $('#sphotography-map-tint-intensity-val').text($(this).val() + '%');
+        });
+
         // ----- Right-side index (TOC): smooth scroll + scrollspy -----
         var $tocLinks = $('.sphotography-toc-link');
         if ($tocLinks.length) {

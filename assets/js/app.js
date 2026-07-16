@@ -2,7 +2,7 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.2.3
+ * @version 1.2.4
  */
 
 (function () {
@@ -14,15 +14,94 @@
 
     const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
     const LIGHT_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+    // Exact `background` layer colors of the two basemaps above — used so the
+    // flythrough preloader can land on the same color the map reveals.
+    const MAP_BG_DARK = '#0e0e0e';   // dark-matter
+    const MAP_BG_LIGHT = '#fafaf8';  // positron
 
-    function getMapStyle() {
+    // Built-in presets. Hosted vector styles ship their own tiles + glyphs;
+    // raster presets are wrapped in an inline MapLibre style pointing at free,
+    // no-API-key tile providers (attribution is surfaced by AttributionControl).
+    const VOYAGER_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+    const WATERCOLOR_STYLE = 'https://tiles.stadiamaps.com/styles/stamen_watercolor.json';
+
+    function rasterStyle(tiles, attribution, maxzoom) {
+        return {
+            version: 8,
+            sources: {
+                'sp-raster': {
+                    type: 'raster',
+                    tiles: tiles,
+                    tileSize: 256,
+                    maxzoom: maxzoom || 19,
+                    attribution: attribution,
+                },
+            },
+            layers: [{ id: 'sp-raster', type: 'raster', source: 'sp-raster' }],
+        };
+    }
+
+    function satelliteStyle() {
+        return rasterStyle(
+            ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+            19
+        );
+    }
+
+    function terrainStyle() {
+        return rasterStyle(
+            ['https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+             'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
+             'https://c.tile.opentopomap.org/{z}/{x}/{y}.png'],
+            'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
+            17
+        );
+    }
+
+    function resolveMapIsLight() {
         var mode = SETTINGS.nightMode || 'system';
-        if (mode === 'light') return LIGHT_STYLE;
-        if (mode === 'dark') return DARK_STYLE;
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-            return LIGHT_STYLE;
+        if (mode === 'light') return true;
+        if (mode === 'dark') return false;
+        return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+    }
+
+    // The night-mode-driven basemap: this is what "auto" resolves to and what
+    // any failed custom/preset style falls back to.
+    function autoStyle() {
+        return resolveMapIsLight() ? LIGHT_STYLE : DARK_STYLE;
+    }
+
+    function customStyleUrl() {
+        var url = (SETTINGS.mapStyleCustomUrl || '').trim();
+        return /^https:\/\//i.test(url) ? url : '';
+    }
+
+    // Is the effective basemap the auto (night-mode) style? True for the "auto"
+    // preset and for "custom" with an empty/invalid URL (which falls back).
+    function usingAutoStyle() {
+        var choice = SETTINGS.mapStyle || 'auto';
+        if (choice === 'auto') return true;
+        if (choice === 'custom') return customStyleUrl() === '';
+        return false;
+    }
+
+    // Resolve the configured style to a MapLibre `style` value: a hosted URL
+    // string, or an inline style object for the raster presets.
+    function getMapStyle() {
+        switch (SETTINGS.mapStyle || 'auto') {
+            case 'satellite':  return satelliteStyle();
+            case 'terrain':    return terrainStyle();
+            case 'voyager':    return VOYAGER_STYLE;
+            case 'watercolor': return WATERCOLOR_STYLE;
+            case 'custom':     return customStyleUrl() || autoStyle();
+            case 'auto':
+            default:           return autoStyle();
         }
-        return DARK_STYLE;
+    }
+
+    function getMapBgColor() {
+        return resolveMapIsLight() ? MAP_BG_LIGHT : MAP_BG_DARK;
     }
 
     const CONFIG = {
@@ -130,6 +209,34 @@
         return d.innerHTML;
     }
 
+    // Word count + reading estimate from rendered article HTML. CJK characters
+    // are counted individually; runs of Latin letters/digits count as words.
+    // HTML/media is stripped so only visible text feeds the count. Returns null
+    // when there's no readable text (e.g. photo-only posts) so the meta unit is
+    // omitted rather than showing "0 字".
+    var SP_CJK_RE = /[㐀-鿿豈-﫿぀-ヿ가-힯]/g;
+    function computeReadingInfo(html) {
+        if (!html) return null;
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        var drop = tmp.querySelectorAll('script,style');
+        for (var i = 0; i < drop.length; i++) { drop[i].parentNode.removeChild(drop[i]); }
+        var text = (tmp.textContent || '').trim();
+        if (!text) return null;
+        var cjkMatches = text.match(SP_CJK_RE);
+        var cjk = cjkMatches ? cjkMatches.length : 0;
+        var latinText = text.replace(SP_CJK_RE, ' ');
+        var latinMatches = latinText.match(/[A-Za-z0-9]+(?:['’\-][A-Za-z0-9]+)*/g);
+        var latin = latinMatches ? latinMatches.length : 0;
+        var total = cjk + latin;
+        if (total <= 0) return null;
+        var cjkSpeed = SETTINGS.readingSpeedCjk || 300;
+        var latinSpeed = SETTINGS.readingSpeedLatin || 200;
+        var minutes = Math.ceil(cjk / cjkSpeed + latin / latinSpeed);
+        if (minutes < 1) minutes = 1;
+        return { words: total, minutes: minutes };
+    }
+
     function formatDate(dateStr) {
         if (!dateStr) return '';
         var parts = dateStr.split('-');
@@ -230,12 +337,25 @@
         state.map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
         state.map.addControl(new maplibregl.ScaleControl({unit:'metric',maxWidth:120}),'bottom-left');
         state.map.on('load', function() {
+            state.mapLoaded = true;
             addPhotoSource(state.allPhotos);
             addPhotoLayers();
             bindMapEvents();
             hideLoading();
         });
-        state.map.on('error', function(e) { console.warn('Map error:',(e.error&&e.error.message)||e); });
+        state.map.on('error', function(e) {
+            var msg = (e && e.error && e.error.message) || e;
+            console.warn('Map error:', msg);
+            // A custom/preset style that fails to load before the map ever
+            // finishes: fall back once to the auto (night-mode) basemap so the
+            // map still renders rather than dying on a broken style URL.
+            if (!state.mapLoaded && !state.styleFellBack && !usingAutoStyle()) {
+                state.styleFellBack = true;
+                applyAutoFallbackStyle();
+                return;
+            }
+            onMapFatalError();
+        });
 
         state.map.on('move', function() {
             positionAllPhotoPanels();
@@ -258,6 +378,28 @@
             var m = isMobileView();
             if (m !== state.isMobile) { state.isMobile = m; }
         }, 200));
+    }
+
+    // Swap the failed style for the auto basemap, then re-add our photo source
+    // and layers and finish the load sequence the normal 'load' path would have.
+    function applyAutoFallbackStyle() {
+        try {
+            state.map.setStyle(autoStyle());
+        } catch (err) {
+            onMapFatalError();
+            return;
+        }
+        state.map.once('idle', function() {
+            if (!state.map.getSource(CONFIG.clusterSourceId)) {
+                addPhotoSource(state.allPhotos);
+                addPhotoLayers();
+            }
+            if (!state.mapLoaded) {
+                state.mapLoaded = true;
+                bindMapEvents();
+                hideLoading();
+            }
+        });
     }
 
     function addPhotoSource(geojson) {
@@ -1138,6 +1280,12 @@
             dom.articleTitle.textContent = post.title.rendered || '';
             var metaHtml = '';
             if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
+            if (SETTINGS.readingInfo && post.content && post.content.rendered) {
+                var ri = computeReadingInfo(post.content.rendered);
+                if (ri) {
+                    metaHtml += '<span class="article-reading-info">' + ri.words.toLocaleString('en-US') + ' 字 · 约 ' + ri.minutes + ' 分钟</span>';
+                }
+            }
             if (post._embedded && post._embedded['wp:term']) {
                 post._embedded['wp:term'].forEach(function(ta) { ta.forEach(function(t) { if (t.taxonomy === 'category' || t.taxonomy === 'region_tag') metaHtml += '<span style="color:var(--primary);font-size:0.75rem;">#' + escapeHtml(t.name) + '</span>'; }); });
             }
@@ -1820,6 +1968,22 @@
         '正在劈里啪啦敲键盘'
     ];
 
+    // Preloader style chosen in the admin (⑤ Animation): 'off' renders no
+    // overlay at all, 'aperture' is the legacy branded loader, 'flythrough' is
+    // the site-name streaming-light + camera-through-text reveal.
+    var PRELOADER_STYLE = SETTINGS.preloaderStyle || 'aperture';
+    // Minimum on-screen time for the flythrough so its rhythm reads properly
+    // even on instant (cached) loads. Only enforced for 'flythrough'.
+    var MIN_PRELOADER_MS = 1500;
+    // Cap on waiting for web fonts before building the knockout mask / revealing
+    // the name — a slow or stalled font never blocks the intro.
+    var FONT_WAIT_MS = 1200;
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+    var PRELOADER_START = Date.now();
+    var loadingHidden = false;
+    // Populated by prepareFlythrough(); stays null for other styles.
+    var flythrough = null;
+
     // Show a random loading tip below the aperture, swapping every 3s in random
     // order until loading finishes. The first tip is random too, and we avoid
     // repeating the immediately-previous one so it never looks frozen.
@@ -1860,11 +2024,252 @@
         }
     }
 
-    function hideLoading() {
-        stopLoadingTips();
-        if (!dom.loadingOverlay) return;
+    // ---- Flythrough preloader ----
+
+    // Emoji in the site name can't be cleanly knocked out of an SVG luminance
+    // mask, so such names fall back to a plain fade (see runFlythroughExit).
+    function preloaderContainsEmoji(str) {
+        if (!str) return false;
+        try { return /\p{Extended_Pictographic}/u.test(str); }
+        catch (e) {
+            return /[☀-➿⬀-⯿️‼⁉]|[\uD83C-\uDBFF][\uDC00-\uDFFF]/.test(str);
+        }
+    }
+
+    // The reveal needs background-clip:text (for 流光) plus SVG masking. If the
+    // browser lacks either, degrade to a plain fade.
+    function preloaderSupportsKnockout() {
+        var clip = false;
+        if (window.CSS && CSS.supports) {
+            clip = CSS.supports('-webkit-background-clip', 'text') || CSS.supports('background-clip', 'text');
+        }
+        return clip && typeof document.createElementNS === 'function';
+    }
+
+    // Run cb once fonts are ready, or after FONT_WAIT_MS — whichever comes
+    // first — so hole shapes are correct without ever hanging on a slow font.
+    function preloaderFontsReady(cb) {
+        var done = false;
+        function run() { if (!done) { done = true; cb(); } }
+        if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+            document.fonts.ready.then(run, run);
+            setTimeout(run, FONT_WAIT_MS);
+        } else {
+            setTimeout(run, 0);
+        }
+    }
+
+    // Split an over-long name across two centered lines. Prefers a space near
+    // the middle; falls back to a hard split for space-less (e.g. CJK) names.
+    function wrapSvgTextTwoLines(textEl, name, vw, fontSize) {
+        while (textEl.firstChild) { textEl.removeChild(textEl.firstChild); }
+        var l1, l2;
+        var mid = Math.floor(name.length / 2);
+        var sp = name.indexOf(' ', mid);
+        if (sp === -1) { sp = name.lastIndexOf(' ', mid); }
+        if (sp > 0) { l1 = name.slice(0, sp).trim(); l2 = name.slice(sp + 1).trim(); }
+        else { var c = Math.ceil(name.length / 2); l1 = name.slice(0, c); l2 = name.slice(c); }
+        var lineH = fontSize * 1.1;
+        var t1 = document.createElementNS(SVG_NS, 'tspan');
+        t1.setAttribute('x', vw / 2); t1.setAttribute('dy', -lineH * 0.5); t1.textContent = l1;
+        var t2 = document.createElementNS(SVG_NS, 'tspan');
+        t2.setAttribute('x', vw / 2); t2.setAttribute('dy', lineH); t2.textContent = l2;
+        textEl.appendChild(t1); textEl.appendChild(t2);
+    }
+
+    // Build the full-screen solid rect with the site name knocked out of it,
+    // matching the visible .ft-name's font/size so the crossfade is seamless.
+    function buildKnockoutSVG(nameEl, name) {
+        var cs = window.getComputedStyle(nameEl);
+        var vw = Math.max(window.innerWidth, 1);
+        var vh = Math.max(window.innerHeight, 1);
+
+        var svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('class', 'ft-mask-svg');
+        svg.setAttribute('viewBox', '0 0 ' + vw + ' ' + vh);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+        svg.setAttribute('aria-hidden', 'true');
+
+        var maskId = 'ft-knockout-' + Math.random().toString(36).slice(2);
+        var defs = document.createElementNS(SVG_NS, 'defs');
+        var mask = document.createElementNS(SVG_NS, 'mask');
+        mask.setAttribute('id', maskId);
+        mask.setAttribute('maskUnits', 'userSpaceOnUse');
+        mask.setAttribute('x', '0'); mask.setAttribute('y', '0');
+        mask.setAttribute('width', vw); mask.setAttribute('height', vh);
+
+        var whiteRect = document.createElementNS(SVG_NS, 'rect');
+        whiteRect.setAttribute('x', '0'); whiteRect.setAttribute('y', '0');
+        whiteRect.setAttribute('width', vw); whiteRect.setAttribute('height', vh);
+        whiteRect.setAttribute('fill', '#fff');
+        mask.appendChild(whiteRect);
+
+        var textEl = document.createElementNS(SVG_NS, 'text');
+        textEl.setAttribute('x', vw / 2);
+        textEl.setAttribute('y', vh / 2);
+        textEl.setAttribute('text-anchor', 'middle');
+        textEl.setAttribute('dominant-baseline', 'central');
+        textEl.setAttribute('fill', '#000');
+        textEl.setAttribute('font-family', cs.fontFamily || 'serif');
+        textEl.setAttribute('font-weight', cs.fontWeight || '700');
+        var lsPx = parseFloat(cs.letterSpacing);
+        if (!isNaN(lsPx) && lsPx) { textEl.setAttribute('letter-spacing', lsPx); }
+        var fontSize = parseFloat(cs.fontSize) || Math.min(vw, vh) * 0.1;
+        textEl.setAttribute('font-size', fontSize);
+        textEl.textContent = name;
+        mask.appendChild(textEl);
+        defs.appendChild(mask);
+        svg.appendChild(defs);
+
+        var fillRect = document.createElementNS(SVG_NS, 'rect');
+        fillRect.setAttribute('class', 'ft-mask-fill');
+        fillRect.setAttribute('x', '0'); fillRect.setAttribute('y', '0');
+        fillRect.setAttribute('width', vw); fillRect.setAttribute('height', vh);
+        fillRect.setAttribute('mask', 'url(#' + maskId + ')');
+        svg.appendChild(fillRect);
+
+        // Must be attached before measuring glyph widths.
+        nameEl.parentNode.appendChild(svg);
+
+        // Shrink, then wrap, so the knocked-out text fits ~80% of viewport width
+        // even for very long names.
+        var target = vw * 0.8;
+        if (typeof textEl.getComputedTextLength === 'function') {
+            try {
+                var w = textEl.getComputedTextLength();
+                if (w > target && w > 0) {
+                    fontSize = Math.max(fontSize * (target / w), 14);
+                    textEl.setAttribute('font-size', fontSize);
+                    w = textEl.getComputedTextLength();
+                    if (w > target) { wrapSvgTextTwoLines(textEl, name, vw, fontSize); }
+                }
+            } catch (e) { /* measurement unsupported → keep single line */ }
+        }
+        return svg;
+    }
+
+    function prepareFlythrough() {
+        var overlay = dom.loadingOverlay;
+        var nameEl = overlay ? overlay.querySelector('.ft-name') : null;
+        if (!overlay || !nameEl) return;
+
+        // Match the overlay + knockout fill to the actual basemap background so
+        // the reveal lands on the same color (no color jump into the map).
+        overlay.style.setProperty('--ft-map-bg', getMapBgColor());
+
+        var name = (nameEl.textContent || '').trim();
+        var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var canKnockout = !reduced && name.length > 0 &&
+            !preloaderContainsEmoji(name) && preloaderSupportsKnockout();
+
+        flythrough = { overlay: overlay, nameEl: nameEl, name: name, canKnockout: canKnockout, svg: null, hintEl: null };
+
+        // Wait for fonts before showing the name (avoids a fallback-font flash /
+        // reflow) and before building the knockout mask (correct hole shapes).
+        preloaderFontsReady(function () {
+            if (!flythrough || !document.body.contains(nameEl)) { return; }
+            nameEl.classList.add('is-in');
+            if (flythrough.canKnockout) {
+                try { flythrough.svg = buildKnockoutSVG(nameEl, name); }
+                catch (e) { flythrough.canKnockout = false; flythrough.svg = null; }
+            }
+        });
+    }
+
+    // --- Load watchdogs (both styles) ---
+    // Slow network: after SLOW_LOAD_MS still loading, reassure the user and keep
+    // waiting for the real map 'load' (no upper cap). Only a *fatal* map error
+    // (map can never load) force-reveals, after a short grace, so we never hang
+    // forever. See onMapFatalError().
+    var SLOW_LOAD_MS = 8000;
+    var ERROR_GRACE_MS = 5000;
+    var slowLoadTimer = null;
+    var errorGraceTimer = null;
+
+    function armLoadWatchdogs() {
+        if (!dom.loadingOverlay) return; // 'off'
+        slowLoadTimer = setTimeout(showSlowLoadHint, SLOW_LOAD_MS);
+    }
+
+    function clearLoadWatchdogs() {
+        if (slowLoadTimer) { clearTimeout(slowLoadTimer); slowLoadTimer = null; }
+        if (errorGraceTimer) { clearTimeout(errorGraceTimer); errorGraceTimer = null; }
+    }
+
+    function showSlowLoadHint() {
+        if (loadingHidden || !dom.loadingOverlay) return;
+        if (PRELOADER_STYLE === 'flythrough' && flythrough && !flythrough.hintEl) {
+            var hint = document.createElement('span');
+            hint.className = 'ft-hint';
+            hint.textContent = '加载中，请稍候…';
+            dom.loadingOverlay.appendChild(hint);
+            // Next frame so the opacity transition actually plays.
+            requestAnimationFrame(function () { hint.classList.add('is-in'); });
+            flythrough.hintEl = hint;
+        }
+        // The aperture style already cycles reassuring tips, so it needs nothing.
+    }
+
+    // Called on every map 'error'. A single error may be a transient tile 404,
+    // so we don't reveal immediately: we start a grace timer and only force the
+    // reveal if 'load' still hasn't fired by the time it elapses (a successful
+    // load runs hideLoading, which clears this timer).
+    function onMapFatalError() {
+        if (loadingHidden || errorGraceTimer) return;
+        errorGraceTimer = setTimeout(function () {
+            if (!loadingHidden) { hideLoading(); }
+        }, ERROR_GRACE_MS);
+    }
+
+    function startPreloader() {
+        PRELOADER_START = Date.now();
+        if (PRELOADER_STYLE === 'flythrough') {
+            prepareFlythrough();
+        } else if (PRELOADER_STYLE === 'aperture') {
+            startLoadingTips();
+        }
+        // 'off' → no overlay was rendered; nothing to start.
+        armLoadWatchdogs();
+    }
+
+    function runApertureExit() {
         dom.loadingOverlay.classList.add('fade-out');
-        setTimeout(function(){dom.loadingOverlay.style.display='none';},600);
+        setTimeout(function () { if (dom.loadingOverlay) { dom.loadingOverlay.style.display = 'none'; } }, 600);
+    }
+
+    function runFlythroughExit() {
+        var ov = dom.loadingOverlay;
+        if (!ov) return;
+        if (flythrough && flythrough.canKnockout && flythrough.svg) {
+            // Clear the inline landing color so the CSS `background: transparent`
+            // in .is-revealing can take effect and the knockout holes show the map.
+            ov.style.background = 'transparent';
+            ov.classList.add('is-revealing');
+            // Total = dissolve (460) overlapped + warp (340 delay + 1050) ≈ 1390ms.
+            setTimeout(function () { if (ov) { ov.style.display = 'none'; } }, 1550);
+        } else {
+            // Reduced motion / emoji / unsupported / font timeout → plain fade.
+            ov.classList.add('fade-out');
+            setTimeout(function () { if (ov) { ov.style.display = 'none'; } }, 800);
+        }
+    }
+
+    function hideLoading() {
+        if (loadingHidden) return;
+        loadingHidden = true;
+        clearLoadWatchdogs();
+        stopLoadingTips();
+        if (!dom.loadingOverlay) return; // 'off' or overlay missing
+        // Enforce a minimum on-screen time only for the flythrough so its
+        // entrance + 流光 + reveal always reads; aperture keeps its instant exit.
+        var wait = 0;
+        if (PRELOADER_STYLE === 'flythrough') {
+            wait = Math.max(0, MIN_PRELOADER_MS - (Date.now() - PRELOADER_START));
+        }
+        setTimeout(function () {
+            if (PRELOADER_STYLE === 'flythrough') { runFlythroughExit(); }
+            else { runApertureExit(); }
+        }, wait);
     }
 
     // ---------------------------------------------------------------
@@ -1982,7 +2387,7 @@
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
-        startLoadingTips();
+        startPreloader();
 
         var hasInlineData = useInlineData();
 
