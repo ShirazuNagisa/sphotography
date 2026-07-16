@@ -863,7 +863,7 @@ function sphotography_render_settings_page() {
                             <?php _e( '重建行政区索引', 'sphotography' ); ?>
                         </button>
                         <span id="sphotography-rebuild-geo-status" style="margin-left:12px;font-size:0.8125rem;color:var(--sp-text-muted);font-variant-numeric:tabular-nums;"></span>
-                        <p class="sphotography-desc"><?php _e( '为每张已定位照片计算其所属的省/市行政区划（点-在-多边形），结果缓存在数据库中。新上传或修改经纬度的照片会自动计算；点此可回填存量照片。切换到「行政区上色」模式或调整照片经纬度后，若地图未正确上色，运行一次即可。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '为每张已定位照片计算其所属的省/市行政区划（点-在-多边形），结果缓存在数据库中。首次运行会自动从 CDN 下载边界数据（约 3.7MB）到 uploads 目录并缓存，之后无需再下载；因此主题包本身保持精简。新上传或修改经纬度的照片会自动索引（前提是边界数据已下载）；点此可回填存量照片。若服务器无法访问外网，错误提示会给出手动放置文件的路径与来源。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
