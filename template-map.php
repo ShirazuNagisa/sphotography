@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.2.3
+ * @version 1.2.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -33,6 +33,8 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
 <body <?php body_class( $sphotography_body_classes ); ?>>
 <?php wp_body_open(); ?>
 
+    <?php $sphotography_preloader = sphotography_get_mod( 'preloader_style' ); ?>
+    <?php if ( 'aperture' === $sphotography_preloader ) : ?>
     <!-- Loading Overlay — 品牌化光圈加载体验 -->
     <div id="loading-overlay" class="loading-overlay">
         <div class="loading-aperture">
@@ -51,9 +53,18 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
         <!-- 底部进度条 -->
         <div class="loading-progress"></div>
     </div>
+    <?php elseif ( 'flythrough' === $sphotography_preloader ) : ?>
+    <!-- Loading Overlay — 流光穿越（站点名称流光登场，加载完成后镜头穿过文字进入地图，由 app.js 驱动） -->
+    <div id="loading-overlay" class="loading-overlay loading-overlay--flythrough" data-preloader="flythrough">
+        <span class="ft-name"><?php echo esc_html( $site_name ); ?></span>
+    </div>
+    <?php endif; ?>
 
     <!-- Fullscreen Map Container -->
     <div id="map"></div>
+
+    <!-- Theme-color tint overlay (opacity driven by body.sphotography-map-tint) -->
+    <div id="map-tint-overlay" aria-hidden="true"></div>
 
     <!-- Gooey (metaball) filter for the water-droplet cluster markers -->
     <svg class="droplet-goo-defs" width="0" height="0" aria-hidden="true" focusable="false">

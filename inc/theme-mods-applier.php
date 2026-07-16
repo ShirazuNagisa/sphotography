@@ -3,7 +3,7 @@
  * Sphotography - Apply Theme Mods to Frontend
  *
  * @package Sphotography
- * @version 1.2.3
+ * @version 1.2.4
  */
 
 // ============================================
@@ -58,6 +58,9 @@ function sphotography_output_dynamic_css() {
 
     $immersive_bg = $immersive ? $primary : 'transparent';
 
+    // Map tint overlay opacity (0–1) from the intensity percentage.
+    $tint_opacity = max( 0, min( 100, (int) sphotography_get_mod( 'map_tint_intensity' ) ) ) / 100;
+
     ?>
     <style id="sphotography-dynamic-css">
         :root {
@@ -66,6 +69,7 @@ function sphotography_output_dynamic_css() {
             --sphotography-card-shadow: <?php echo esc_attr( $shadow_value ); ?>;
             --sphotography-bg: <?php echo esc_attr( $bg ); ?>;
             --sphotography-immersive-bg: <?php echo esc_attr( $immersive_bg ); ?>;
+            --sphotography-tint-opacity: <?php echo esc_attr( $tint_opacity ); ?>;
         }
     </style>
     <?php
@@ -105,6 +109,11 @@ function sphotography_body_classes( $classes ) {
         $classes[] = 'sphotography-font-wordpress';
     }
 
+    // Map theme-color tint overlay.
+    if ( sphotography_get_mod( 'map_tint' ) ) {
+        $classes[] = 'sphotography-map-tint';
+    }
+
     return $classes;
 }
 add_filter( 'body_class', 'sphotography_body_classes' );
@@ -121,6 +130,7 @@ function sphotography_localize_data() {
     wp_localize_script( 'sphotography-app', 'SphotographySettings', array(
         'nightMode'        => sphotography_get_mod( 'night_mode' ),
         'darkScheme'       => sphotography_get_mod( 'dark_scheme' ),
+        'preloaderStyle'   => sphotography_get_mod( 'preloader_style' ),
         'dateFormat'       => sphotography_get_mod( 'date_format' ),
         'customDateFormat' => sphotography_get_mod( 'custom_date_format' ),
         'enableHitokoto'   => (bool) sphotography_get_mod( 'enable_hitokoto' ),
@@ -131,6 +141,11 @@ function sphotography_localize_data() {
         'frontendFont'     => sphotography_get_mod( 'frontend_font' ),
         'sidebarDefaultOpen' => (bool) sphotography_get_mod( 'sidebar_default_open' ),
         'articleCardSize'  => sphotography_get_mod( 'article_card_size' ),
+        'readingInfo'      => (bool) sphotography_get_mod( 'reading_info' ),
+        'readingSpeedCjk'  => (int) sphotography_get_mod( 'reading_speed_cjk' ),
+        'readingSpeedLatin' => (int) sphotography_get_mod( 'reading_speed_latin' ),
+        'mapStyle'         => sphotography_get_mod( 'map_style' ),
+        'mapStyleCustomUrl' => sphotography_get_mod( 'map_style_custom_url' ),
     ) );
 
     // ============================================

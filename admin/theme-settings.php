@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.2.3
+ * @version 1.2.4
  */
 
 // Prevent direct access
@@ -39,12 +39,22 @@ function sphotography_get_default_settings() {
         'avatar_url'          => '',
         'bio'                 => '',
         // ⑤ Animation
+        'preloader_style'     => 'aperture',
         'smooth_scroll'       => 'enabled',
         'entry_animation'     => true,
         'pjax_animation'      => true,
-        // ⑥ Footer
+        // ⑥ Reading Info
+        'reading_info'        => false,
+        'reading_speed_cjk'   => 300,
+        'reading_speed_latin' => 200,
+        // ⑦ Map Style
+        'map_style'           => 'auto',
+        'map_style_custom_url' => '',
+        'map_tint'            => false,
+        'map_tint_intensity'  => 18,
+        // ⑧ Footer
         'footer_content'      => '',
-        // ⑦ CDN
+        // ⑨ CDN
         'cdn_source'          => 'jsdelivr',
     );
 }
@@ -55,7 +65,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'map_tint' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -94,16 +104,39 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['bio'] = sanitize_textarea_field( $input['bio'] );
 
     // ⑤ Animation
+    $allowed_preloader = array( 'off', 'aperture', 'flythrough' );
+    $sanitized['preloader_style'] = in_array( $input['preloader_style'], $allowed_preloader, true ) ? $input['preloader_style'] : $defaults['preloader_style'];
     $allowed_scroll = array( 'disabled', 'enabled', 'mouse-only' );
     $sanitized['smooth_scroll'] = in_array( $input['smooth_scroll'], $allowed_scroll, true ) ? $input['smooth_scroll'] : $defaults['smooth_scroll'];
     $sanitized['entry_animation'] = ! empty( $input['entry_animation'] ) ? 1 : 0;
     $sanitized['pjax_animation'] = ! empty( $input['pjax_animation'] ) ? 1 : 0;
 
-    // ⑥ Footer. This settings page is restricted to trusted administrators.
+    // ⑥ Reading Info
+    $sanitized['reading_info'] = ! empty( $input['reading_info'] ) ? 1 : 0;
+    $sanitized['reading_speed_cjk'] = min( max( (int) $input['reading_speed_cjk'], 100 ), 1500 );
+    if ( empty( $input['reading_speed_cjk'] ) ) {
+        $sanitized['reading_speed_cjk'] = $defaults['reading_speed_cjk'];
+    }
+    $sanitized['reading_speed_latin'] = min( max( (int) $input['reading_speed_latin'], 50 ), 1000 );
+    if ( empty( $input['reading_speed_latin'] ) ) {
+        $sanitized['reading_speed_latin'] = $defaults['reading_speed_latin'];
+    }
+
+    // ⑦ Map Style
+    $allowed_map_style = array( 'auto', 'satellite', 'terrain', 'voyager', 'watercolor', 'custom' );
+    $sanitized['map_style'] = in_array( $input['map_style'], $allowed_map_style, true ) ? $input['map_style'] : $defaults['map_style'];
+    // MapLibre fetches this style JSON client-side, so require https to avoid
+    // mixed-content on secure sites; fall back to empty (→ auto) otherwise.
+    $custom_url = esc_url_raw( trim( (string) $input['map_style_custom_url'] ), array( 'https' ) );
+    $sanitized['map_style_custom_url'] = $custom_url;
+    $sanitized['map_tint'] = ! empty( $input['map_tint'] ) ? 1 : 0;
+    $sanitized['map_tint_intensity'] = min( max( (int) $input['map_tint_intensity'], 0 ), 100 );
+
+    // ⑧ Footer. This settings page is restricted to trusted administrators.
     // Raw HTML (including scripts) is intentionally supported by the theme.
     $sanitized['footer_content'] = (string) $input['footer_content'];
 
-    // ⑦ CDN
+    // ⑨ CDN
     $allowed_cdn = array( 'jsdelivr', 'unpkg', 'cdnjs' );
     $sanitized['cdn_source'] = in_array( $input['cdn_source'], $allowed_cdn, true )
         ? $input['cdn_source']
@@ -483,6 +516,16 @@ function sphotography_render_settings_page() {
                 <div class="sphotography-module-body">
 
                     <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-preloader-style"><?php _e( '开屏加载动画', 'sphotography' ); ?></label>
+                        <select id="sphotography-preloader-style" name="sphotography[preloader_style]">
+                            <option value="off" <?php selected( $values['preloader_style'], 'off' ); ?>><?php _e( '关闭', 'sphotography' ); ?></option>
+                            <option value="aperture" <?php selected( $values['preloader_style'], 'aperture' ); ?>><?php _e( '光圈（默认）', 'sphotography' ); ?></option>
+                            <option value="flythrough" <?php selected( $values['preloader_style'], 'flythrough' ); ?>><?php _e( '流光穿越', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '地图首页首次加载时的开屏动画。「光圈」为品牌化光圈加载；「流光穿越」以站点名称流光登场，加载完成后镜头穿过文字进入地图；「关闭」则不显示开屏。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-smooth-scroll"><?php _e( '平滑滚动', 'sphotography' ); ?></label>
                         <select id="sphotography-smooth-scroll" name="sphotography[smooth_scroll]">
                             <option value="disabled" <?php selected( $values['smooth_scroll'], 'disabled' ); ?>><?php _e( '禁用', 'sphotography' ); ?></option>
@@ -517,7 +560,50 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
-            <!-- Module 6: 页脚设置 -->
+            <!-- Module 6: 阅读信息 -->
+            <!-- ============================================ -->
+            <div class="sphotography-module" id="sp-mod-reading">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-book"></span>
+                    <h2><?php _e( '阅读信息', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[reading_info]"
+                                   value="1"
+                                   <?php checked( $values['reading_info'], 1 ); ?>>
+                            <?php _e( '显示字数与阅读时长', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，在文章展开页顶部的日期与分类之间显示「字数 · 约 N 分钟」。阅读时长根据下方阅读速度估算，中英文分别计算。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-reading-speed-cjk"><?php _e( '中文阅读速度（字/分钟）', 'sphotography' ); ?></label>
+                        <input type="number"
+                               id="sphotography-reading-speed-cjk"
+                               name="sphotography[reading_speed_cjk]"
+                               value="<?php echo esc_attr( $values['reading_speed_cjk'] ); ?>"
+                               min="100" max="1500" step="10">
+                        <p class="sphotography-desc"><?php _e( '每分钟阅读的中文字符数，范围 100-1500。默认 300。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-reading-speed-latin"><?php _e( '英文阅读速度（词/分钟）', 'sphotography' ); ?></label>
+                        <input type="number"
+                               id="sphotography-reading-speed-latin"
+                               name="sphotography[reading_speed_latin]"
+                               value="<?php echo esc_attr( $values['reading_speed_latin'] ); ?>"
+                               min="50" max="1000" step="10">
+                        <p class="sphotography-desc"><?php _e( '每分钟阅读的英文单词数，范围 50-1000。默认 200。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- Module 7: 页脚设置 -->
             <!-- ============================================ -->
             <div class="sphotography-module" id="sp-mod-footer">
                 <div class="sphotography-module-header">
@@ -538,7 +624,70 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
-            <!-- Module 8: CDN 来源配置 -->
+            <!-- Module 8: 地图样式 -->
+            <!-- ============================================ -->
+            <div class="sphotography-module" id="sp-mod-mapstyle">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-location-alt"></span>
+                    <h2><?php _e( '地图样式', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+
+                    <!-- Style preset -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-map-style"><?php _e( '底图样式', 'sphotography' ); ?></label>
+                        <select id="sphotography-map-style" name="sphotography[map_style]">
+                            <option value="auto" <?php selected( $values['map_style'], 'auto' ); ?>><?php _e( '自动（跟随夜间模式，默认）', 'sphotography' ); ?></option>
+                            <option value="satellite" <?php selected( $values['map_style'], 'satellite' ); ?>><?php _e( '卫星影像（Esri World Imagery）', 'sphotography' ); ?></option>
+                            <option value="terrain" <?php selected( $values['map_style'], 'terrain' ); ?>><?php _e( '地形（OpenTopoMap）', 'sphotography' ); ?></option>
+                            <option value="voyager" <?php selected( $values['map_style'], 'voyager' ); ?>><?php _e( '街道（CartoDB Voyager）', 'sphotography' ); ?></option>
+                            <option value="watercolor" <?php selected( $values['map_style'], 'watercolor' ); ?>><?php _e( '复古水彩（Stamen / Stadia Maps）', 'sphotography' ); ?></option>
+                            <option value="custom" <?php selected( $values['map_style'], 'custom' ); ?>><?php _e( '自定义（粘贴 MapLibre style JSON URL）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择前端地图的底图样式。选择「自动」时保持跟随夜间模式的深/浅色底图；选择其他预设或自定义样式时，将始终使用该样式，覆盖夜间模式的底图切换（站点界面明暗仍跟随夜间模式）。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc" style="color:#e0a800;"><?php _e( '注意：「复古水彩」由 Stadia Maps 托管，正式站点需在 Stadia 免费注册并添加你的域名后方可正常加载（本地开发无需注册）。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Custom style URL (revealed when style = custom) -->
+                    <div class="sphotography-field sphotography-custom-mapstyle-field" style="<?php echo $values['map_style'] === 'custom' ? '' : 'display:none;'; ?>">
+                        <label class="sphotography-label" for="sphotography-map-style-custom-url"><?php _e( '自定义 style JSON URL', 'sphotography' ); ?></label>
+                        <input type="url"
+                               id="sphotography-map-style-custom-url"
+                               name="sphotography[map_style_custom_url]"
+                               value="<?php echo esc_attr( $values['map_style_custom_url'] ); ?>"
+                               placeholder="https://example.com/style.json">
+                        <p class="sphotography-desc"><?php _e( '粘贴任意 MapLibre 兼容的 style JSON 地址（必须为 https）。留空或加载失败时将自动回退到「自动」底图。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Map tint toggle -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[map_tint]"
+                                   value="1"
+                                   <?php checked( $values['map_tint'], 1 ); ?>>
+                            <?php _e( '地图主题色滤镜', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，在地图上叠加一层主题主色调色叠加（正片叠底混合），让底图染上站点主题色。适合让暗色地图与站点风格统一。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Tint intensity -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-map-tint-intensity"><?php _e( '滤镜强度（%）', 'sphotography' ); ?></label>
+                        <input type="range"
+                               id="sphotography-map-tint-intensity"
+                               name="sphotography[map_tint_intensity]"
+                               value="<?php echo esc_attr( $values['map_tint_intensity'] ); ?>"
+                               min="0" max="100" step="1"
+                               style="max-width:320px;vertical-align:middle;">
+                        <span id="sphotography-map-tint-intensity-val" style="margin-left:10px;font-variant-numeric:tabular-nums;"><?php echo esc_html( $values['map_tint_intensity'] ); ?>%</span>
+                        <p class="sphotography-desc"><?php _e( '色叠加的不透明度，范围 0-100%。数值越高染色越浓。默认 18%。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
+            <!-- Module 9: CDN 来源配置 -->
             <!-- ============================================ -->
             <div class="sphotography-module" id="sp-mod-cdn">
                 <div class="sphotography-module-header">
@@ -559,7 +708,7 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
-            <!-- Module 9: 版本与更新 -->
+            <!-- Module 10: 版本与更新 -->
             <!-- ============================================ -->
             <div class="sphotography-module" id="sp-mod-version">
                 <div class="sphotography-module-header">
@@ -624,7 +773,9 @@ function sphotography_render_settings_page() {
                         'sp-mod-date'      => __( '日期格式', 'sphotography' ),
                         'sp-mod-sidebar'   => __( '左侧栏信息', 'sphotography' ),
                         'sp-mod-animation' => __( '动画设置', 'sphotography' ),
+                        'sp-mod-reading'   => __( '阅读信息', 'sphotography' ),
                         'sp-mod-footer'    => __( '页脚设置', 'sphotography' ),
+                        'sp-mod-mapstyle'  => __( '地图样式', 'sphotography' ),
                         'sp-mod-cdn'       => __( 'CDN 来源', 'sphotography' ),
                         'sp-mod-version'   => __( '版本与更新', 'sphotography' ),
                     );
