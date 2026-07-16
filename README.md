@@ -322,6 +322,6 @@ WordPress 数据库                    前端地图
 
 **Shirazu Nagisa**
 
-[GitHub 仓库](https://github.com/ShirazuNagisa/sphotography) · [Releases](https://github.com/ShirazuNagisa/sphotography/releases) · [Issues](https://github.com/ShirazuNagisa/sphotography/issues)
+[GitHub 仓库](https://github.com/ShirazuNagisa/sphotography) · [Releases](https://github.com/ShirazuNagisa/sphotography/releases) · [Issues](https://github.com/ShirazuNagisa/sphotography/issues) · [主题文档](https://shirazunagisa.github.io/sph-docs/)
 
 </div>
