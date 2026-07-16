@@ -34,3 +34,8 @@ yarn.lock
 # Geo build — large source/intermediate boundary data (keep the build script)
 .geo-build/*
 !.geo-build/build.mjs
+
+# Boundary data is hosted on the `geo-data` branch (served via jsDelivr) and
+# downloaded on demand into uploads/ — never shipped in the theme package or
+# the master update archive.
+assets/geo/

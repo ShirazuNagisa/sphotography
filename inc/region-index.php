@@ -29,8 +29,17 @@ const SPHOTOGRAPHY_META_PROV   = '_sphotography_prov_adcode';
 const SPHOTOGRAPHY_META_CITY   = '_sphotography_city_adcode';
 const SPHOTOGRAPHY_META_GEOVER = '_sphotography_geo_ver';
 
-// Bump when the bundled boundary data changes so stale rows can be detected.
+// Bump when the boundary data changes so stale rows can be detected.
 const SPHOTOGRAPHY_GEO_VERSION = '1';
+
+// The boundary GeoJSON is NOT shipped in the theme package (it is ~3.7 MB and
+// would bloat both the upload and the self-update archive). It lives on the
+// repo's dedicated `geo-data` branch, served by jsDelivr, and is downloaded on
+// demand into wp-content/uploads/sphotography-geo/ the first time the index is
+// rebuilt, then cached on disk. Bump SPHOTOGRAPHY_GEO_DATA_VERSION to force a
+// re-download when the hosted data changes.
+const SPHOTOGRAPHY_GEO_DATA_VERSION = '1';
+const SPHOTOGRAPHY_GEO_REMOTE_BASE  = 'https://cdn.jsdelivr.net/gh/ShirazuNagisa/sphotography@geo-data/';
 
 // Nearest-region fallback radius in degrees (~20 km). Coastal / offshore
 // photos that fall just outside a simplified polygon snap to the nearest
@@ -39,11 +48,91 @@ const SPHOTOGRAPHY_GEO_VERSION = '1';
 const SPHOTOGRAPHY_NEAREST_DEG = 0.2;
 
 // ============================================
+// Boundary data storage (downloaded to uploads on demand)
+// ============================================
+/**
+ * Directory the boundary files are cached in (created lazily).
+ */
+function sphotography_geo_dir() {
+    $u = wp_upload_dir();
+    return trailingslashit( $u['basedir'] ) . 'sphotography-geo';
+}
+
+/**
+ * On-disk path for a boundary set.
+ *
+ * @param string $which 'provinces' | 'cities'
+ */
+function sphotography_geo_file_path( $which ) {
+    return sphotography_geo_dir() . '/boundaries-' . $which . '.json';
+}
+
+/**
+ * Are both boundary files present on disk at the current data version?
+ */
+function sphotography_geo_files_ready() {
+    $ver_file = sphotography_geo_dir() . '/version.txt';
+    $have_ver = is_readable( $ver_file ) ? trim( (string) file_get_contents( $ver_file ) ) : '';
+    if ( $have_ver !== SPHOTOGRAPHY_GEO_DATA_VERSION ) {
+        return false;
+    }
+    foreach ( array( 'provinces', 'cities' ) as $which ) {
+        $p = sphotography_geo_file_path( $which );
+        if ( ! is_readable( $p ) || filesize( $p ) < 1000 ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Ensure the boundary files are present, downloading them from the hosted
+ * geo-data branch (jsDelivr) into uploads if missing or outdated. This makes
+ * an outbound HTTP request and is only ever called from the admin "rebuild
+ * index" action — never on a frontend page render.
+ *
+ * @param bool $force Re-download even if present.
+ * @return true|WP_Error
+ */
+function sphotography_geo_ensure_files( $force = false ) {
+    if ( ! $force && sphotography_geo_files_ready() ) {
+        return true;
+    }
+    $dir = sphotography_geo_dir();
+    if ( ! wp_mkdir_p( $dir ) ) {
+        return new WP_Error( 'sphotography_geo_mkdir', sprintf( __( '无法创建目录：%s', 'sphotography' ), $dir ) );
+    }
+    foreach ( array( 'provinces', 'cities' ) as $which ) {
+        $url  = SPHOTOGRAPHY_GEO_REMOTE_BASE . 'boundaries-' . $which . '.json';
+        $resp = wp_remote_get( $url, array( 'timeout' => 45 ) );
+        if ( is_wp_error( $resp ) ) {
+            return new WP_Error( 'sphotography_geo_http', sprintf( __( '下载失败：%1$s（%2$s）', 'sphotography' ), $url, $resp->get_error_message() ) );
+        }
+        $code = (int) wp_remote_retrieve_response_code( $resp );
+        if ( 200 !== $code ) {
+            return new WP_Error( 'sphotography_geo_http', sprintf( __( '下载失败：%1$s（HTTP %2$d）', 'sphotography' ), $url, $code ) );
+        }
+        $body = wp_remote_retrieve_body( $resp );
+        if ( strlen( $body ) < 1000 || false === strpos( $body, 'FeatureCollection' ) ) {
+            return new WP_Error( 'sphotography_geo_body', sprintf( __( '下载内容异常：%s', 'sphotography' ), $url ) );
+        }
+        if ( false === file_put_contents( sphotography_geo_file_path( $which ), $body ) ) {
+            return new WP_Error( 'sphotography_geo_write', sprintf( __( '无法写入文件：%s', 'sphotography' ), sphotography_geo_file_path( $which ) ) );
+        }
+    }
+    @file_put_contents( $dir . '/version.txt', SPHOTOGRAPHY_GEO_DATA_VERSION );
+    return true;
+}
+
+// ============================================
 // Boundary data loading (decoded once per request, bbox precomputed)
 // ============================================
 /**
  * Load and cache the decoded features for one boundary set, with a bounding
  * box precomputed on each feature under the '_bbox' key [minX,minY,maxX,maxY].
+ * Reads only from the on-disk cache (uploads); never downloads. Returns an
+ * empty list when the files have not been fetched yet, so callers degrade
+ * gracefully (frontend falls back to droplets).
  *
  * @param string $which 'provinces' | 'cities'
  * @return array[] List of GeoJSON features (may be empty if the file is missing).
@@ -53,7 +142,7 @@ function sphotography_geo_load( $which ) {
     if ( isset( $cache[ $which ] ) ) {
         return $cache[ $which ];
     }
-    $file     = get_template_directory() . '/assets/geo/boundaries-' . $which . '.json';
+    $file     = sphotography_geo_file_path( $which );
     $features = array();
     if ( is_readable( $file ) ) {
         $decoded = json_decode( (string) file_get_contents( $file ), true );
@@ -356,9 +445,28 @@ function sphotography_ajax_rebuild_geo_index() {
         wp_send_json_error( array( 'message' => __( '权限不足。', 'sphotography' ) ) );
     }
 
+    $offset = isset( $_POST['offset'] ) ? max( 0, (int) $_POST['offset'] ) : 0;
+
+    // On the first batch, make sure the boundary data is present (downloaded
+    // on demand into uploads). If the server cannot fetch it, tell the admin
+    // how to place the files manually rather than failing silently.
+    if ( 0 === $offset ) {
+        $ready = sphotography_geo_ensure_files();
+        if ( is_wp_error( $ready ) ) {
+            wp_send_json_error( array(
+                'message' => sprintf(
+                    /* translators: 1: error detail, 2: uploads dir, 3: source base URL */
+                    __( '%1$s。服务器可能无法访问外网。请手动下载边界文件放入 %2$s（来源：%3$s）。', 'sphotography' ),
+                    $ready->get_error_message(),
+                    sphotography_geo_dir(),
+                    SPHOTOGRAPHY_GEO_REMOTE_BASE
+                ),
+            ) );
+        }
+    }
+
     $ids   = sphotography_geo_indexable_ids();
     $total = count( $ids );
-    $offset = isset( $_POST['offset'] ) ? max( 0, (int) $_POST['offset'] ) : 0;
     $batch  = 60; // polygons are heavy; keep each request comfortably under PHP time limits.
 
     $slice   = array_slice( $ids, $offset, $batch );
