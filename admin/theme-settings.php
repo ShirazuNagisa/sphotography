@@ -3,7 +3,7 @@
  * Sphotography Theme Settings Page
  *
  * @package Sphotography
- * @version 1.2.5
+ * @version 1.2.6
  */
 
 // Prevent direct access
@@ -57,13 +57,17 @@ function sphotography_get_default_settings() {
         // ⑦ Map Style
         'map_style'           => 'auto',
         'map_style_custom_url' => '',
-        'map_tint'            => false,
-        'map_tint_intensity'  => 18,
-        // ⑦b Cluster & tag styling (v1.2.5)
-        'cluster_radius'       => 18,      // 10–60 px
-        'droplet_goo_strength' => 7,       // SVG feGaussianBlur stdDeviation, 3–12
-        'tag_color'            => false,   // colour markers by region_tag
-        'tag_legend'           => true,    // show the tag colour legend (only when tag_color on)
+        // ⑦b Marker mode & styling (v1.2.6)
+        // Single mutually-exclusive marker mode replaces the old tag_color flag:
+        //   droplet — plain theme-colour water droplets (default)
+        //   tag     — droplets coloured by region_tag
+        //   region  — no droplets; fill administrative regions that hold photos
+        'marker_mode'          => 'droplet',
+        'cluster_radius'       => 18,        // 10–60 px (droplet/tag modes)
+        'droplet_goo_strength' => 7,         // SVG feGaussianBlur stdDeviation, 3–12
+        'tag_legend'           => true,      // tag colour legend (tag mode only)
+        'region_granularity'   => 'province', // province | city (region mode)
+        'region_intensity'     => 35,        // region fill opacity %, 0–100 (region mode)
         // ⑧ Footer
         'footer_content'      => '',
         // ⑨ CDN
@@ -77,7 +81,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'map_tint', 'motion_ignore_reduced', 'tag_color', 'tag_legend' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -153,14 +157,16 @@ function sphotography_sanitize_settings( $input ) {
     // mixed-content on secure sites; fall back to empty (→ auto) otherwise.
     $custom_url = esc_url_raw( trim( (string) $input['map_style_custom_url'] ), array( 'https' ) );
     $sanitized['map_style_custom_url'] = $custom_url;
-    $sanitized['map_tint'] = ! empty( $input['map_tint'] ) ? 1 : 0;
-    $sanitized['map_tint_intensity'] = min( max( (int) $input['map_tint_intensity'], 0 ), 100 );
 
-    // ⑦b Cluster & tag styling
+    // ⑦b Marker mode & styling
+    $allowed_marker_mode = array( 'droplet', 'tag', 'region' );
+    $sanitized['marker_mode'] = in_array( $input['marker_mode'], $allowed_marker_mode, true ) ? $input['marker_mode'] : $defaults['marker_mode'];
     $sanitized['cluster_radius'] = min( max( (int) $input['cluster_radius'], 10 ), 60 );
     $sanitized['droplet_goo_strength'] = min( max( (int) $input['droplet_goo_strength'], 3 ), 12 );
-    $sanitized['tag_color'] = ! empty( $input['tag_color'] ) ? 1 : 0;
     $sanitized['tag_legend'] = ! empty( $input['tag_legend'] ) ? 1 : 0;
+    $allowed_granularity = array( 'province', 'city' );
+    $sanitized['region_granularity'] = in_array( $input['region_granularity'], $allowed_granularity, true ) ? $input['region_granularity'] : $defaults['region_granularity'];
+    $sanitized['region_intensity'] = min( max( (int) $input['region_intensity'], 0 ), 100 );
 
     // ⑧ Footer. This settings page is restricted to trusted administrators.
     // Raw HTML (including scripts) is intentionally supported by the theme.
@@ -201,6 +207,21 @@ function sphotography_handle_save_settings() {
     exit;
 }
 add_action( 'admin_post_sphotography_save_settings', 'sphotography_handle_save_settings' );
+
+// ============================================
+// One-time migration (v1.2.6): fold the old boolean tag_color into the new
+// mutually-exclusive marker_mode so upgrading sites keep their tag colouring.
+// ============================================
+function sphotography_migrate_marker_mode() {
+    // Only act before marker_mode has ever been set explicitly.
+    if ( null !== get_theme_mod( 'sphotography_marker_mode', null ) ) {
+        return;
+    }
+    if ( get_theme_mod( 'sphotography_tag_color', null ) ) {
+        set_theme_mod( 'sphotography_marker_mode', 'tag' );
+    }
+}
+add_action( 'admin_init', 'sphotography_migrate_marker_mode' );
 
 // ============================================
 // Handle form submission: Reset
@@ -730,6 +751,21 @@ function sphotography_render_settings_page() {
                 </div>
                 <div class="sphotography-module-body">
 
+                    <!-- Live preview (v1.2.6) -->
+                    <?php $sphotography_preview_url = sphotography_map_preview_url(); ?>
+                    <div class="sphotography-field sphotography-map-preview-field">
+                        <label class="sphotography-label"><?php _e( '实时预览', 'sphotography' ); ?></label>
+                        <?php if ( $sphotography_preview_url ) : ?>
+                            <div class="sphotography-map-preview" id="sphotography-map-preview" data-preview-base="<?php echo esc_attr( $sphotography_preview_url ); ?>">
+                                <iframe id="sphotography-map-preview-frame" title="<?php esc_attr_e( '地图预览', 'sphotography' ); ?>" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                                <div class="sphotography-map-preview-refresh" id="sphotography-map-preview-refresh" aria-hidden="true"></div>
+                            </div>
+                            <p class="sphotography-desc"><?php _e( '改动下方任一地图相关设置后自动刷新预览（约 0.3 秒防抖）。预览使用站点真实照片数据；「行政区上色」需先运行下方「重建行政区索引」。改动尚未保存时预览即时体现，正式生效仍需点击保存。', 'sphotography' ); ?></p>
+                        <?php else : ?>
+                            <p class="sphotography-desc"><?php _e( '未找到使用「全屏地图」模板的页面，暂时无法预览。请先创建一个页面并将其模板设为「Fullscreen Map」。', 'sphotography' ); ?></p>
+                        <?php endif; ?>
+                    </div>
+
                     <!-- Style preset -->
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-map-style"><?php _e( '底图样式', 'sphotography' ); ?></label>
@@ -756,33 +792,19 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '粘贴任意 MapLibre 兼容的 style JSON 地址（必须为 https）。留空或加载失败时将自动回退到「自动」底图。', 'sphotography' ); ?></p>
                     </div>
 
-                    <!-- Map tint toggle -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox"
-                                   name="sphotography[map_tint]"
-                                   value="1"
-                                   <?php checked( $values['map_tint'], 1 ); ?>>
-                            <?php _e( '地图主题色滤镜', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，在地图上叠加一层主题主色调色叠加（正片叠底混合），让底图染上站点主题色。适合让暗色地图与站点风格统一。默认关闭。', 'sphotography' ); ?></p>
+                    <!-- Marker mode (v1.2.6) — single mutually-exclusive selector -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-marker-mode"><?php _e( '地图标记模式', 'sphotography' ); ?></label>
+                        <select id="sphotography-marker-mode" name="sphotography[marker_mode]" data-sp-map-preview="markerMode">
+                            <option value="droplet" <?php selected( $values['marker_mode'], 'droplet' ); ?>><?php _e( '水滴标记（默认，主题色）', 'sphotography' ); ?></option>
+                            <option value="tag" <?php selected( $values['marker_mode'], 'tag' ); ?>><?php _e( '按地区标签分色（水滴按 region_tag 着色）', 'sphotography' ); ?></option>
+                            <option value="region" <?php selected( $values['marker_mode'], 'region' ); ?>><?php _e( '行政区上色（去除钉子，点击色块看照片）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '三选一，互斥。「水滴标记」为经典水滴；「按地区标签分色」让水滴按其地区标签着色；「行政区上色」移除所有钉子/水滴，改为把含照片的市/省行政区划用主题色填充，点击色块即可查看该区全部照片。', 'sphotography' ); ?></p>
                     </div>
 
-                    <!-- Tint intensity -->
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-map-tint-intensity"><?php _e( '滤镜强度（%）', 'sphotography' ); ?></label>
-                        <input type="range"
-                               id="sphotography-map-tint-intensity"
-                               name="sphotography[map_tint_intensity]"
-                               value="<?php echo esc_attr( $values['map_tint_intensity'] ); ?>"
-                               min="0" max="100" step="1"
-                               style="max-width:320px;vertical-align:middle;">
-                        <span id="sphotography-map-tint-intensity-val" style="margin-left:10px;font-variant-numeric:tabular-nums;"><?php echo esc_html( $values['map_tint_intensity'] ); ?>%</span>
-                        <p class="sphotography-desc"><?php _e( '色叠加的不透明度，范围 0-100%。数值越高染色越浓。默认 18%。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Cluster radius (v1.2.5) -->
-                    <div class="sphotography-field">
+                    <!-- Cluster radius (droplet/tag modes) -->
+                    <div class="sphotography-field sp-mode-field" data-sp-mode="droplet tag">
                         <label class="sphotography-label" for="sphotography-cluster-radius"><?php _e( '标记聚合半径', 'sphotography' ); ?></label>
                         <div class="sphotography-slider-row">
                             <input type="range" id="sphotography-cluster-radius" name="sphotography[cluster_radius]"
@@ -792,8 +814,8 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '控制邻近标记合并为聚合水滴的距离阈值，范围 10-60px。值越大越容易合并成大水滴，值越小标记越倾向保持独立。默认 18px。', 'sphotography' ); ?></p>
                     </div>
 
-                    <!-- Gooey fusion strength (v1.2.5) -->
-                    <div class="sphotography-field">
+                    <!-- Gooey fusion strength (droplet/tag modes) -->
+                    <div class="sphotography-field sp-mode-field" data-sp-mode="droplet tag">
                         <label class="sphotography-label" for="sphotography-droplet-goo-strength"><?php _e( '水滴融合强度', 'sphotography' ); ?></label>
                         <div class="sphotography-slider-row">
                             <input type="range" id="sphotography-droplet-goo-strength" name="sphotography[droplet_goo_strength]"
@@ -803,22 +825,45 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '控制聚合／拆分时水滴之间的「拉丝融合」程度，范围 3-12。值越大，邻近水滴越容易黏连成一团；值越小水滴边缘越清爽。默认 7。', 'sphotography' ); ?></p>
                     </div>
 
-                    <!-- Tag colour master toggle (v1.2.5) -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[tag_color]" value="1" <?php checked( $values['tag_color'], 1 ); ?>>
-                            <?php _e( '按地区标签为标记分色', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，地图标记按其「地区标签（region_tag）」着色，让不同地区一眼可辨。默认按标签别名自动生成配色，可在「地区标签」编辑页手动指定颜色覆盖。聚合水滴按簇内出现最多的标签着色，无共同标签时回退主题主色。默认关闭，保持原有统一配色。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Legend toggle (v1.2.5) -->
-                    <div class="sphotography-field sphotography-field-checkbox">
+                    <!-- Legend toggle (tag mode only) -->
+                    <div class="sphotography-field sphotography-field-checkbox sp-mode-field" data-sp-mode="tag">
                         <label class="sphotography-label">
                             <input type="checkbox" name="sphotography[tag_legend]" value="1" <?php checked( $values['tag_legend'], 1 ); ?>>
                             <?php _e( '显示标签配色图例', 'sphotography' ); ?>
                         </label>
-                        <p class="sphotography-desc"><?php _e( '仅在上方「按地区标签分色」开启时生效。在地图左下角显示可折叠的标签配色图例（移动端折叠为「图例」小胶囊）。默认开启。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '仅在「按地区标签分色」模式下生效。在地图左下角显示可折叠的标签配色图例（移动端折叠为「图例」小胶囊）。默认开启。可在「地区标签」编辑页手动为标签指定颜色，留空则按别名自动配色。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Region colouring: granularity (region mode only) -->
+                    <div class="sphotography-field sp-mode-field" data-sp-mode="region">
+                        <label class="sphotography-label" for="sphotography-region-granularity"><?php _e( '上色粒度', 'sphotography' ); ?></label>
+                        <select id="sphotography-region-granularity" name="sphotography[region_granularity]" data-sp-map-preview="regionGranularity">
+                            <option value="province" <?php selected( $values['region_granularity'], 'province' ); ?>><?php _e( '省级 / 州级（默认，全球）', 'sphotography' ); ?></option>
+                            <option value="city" <?php selected( $values['region_granularity'], 'city' ); ?>><?php _e( '市级（中国；境外自动回退省级）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择着色的行政区划层级。省级：全球按省/州上色。市级：中国按市/区上色，境外因无市级数据自动回退到省/州。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Region colouring: fill intensity (region mode only) -->
+                    <div class="sphotography-field sp-mode-field" data-sp-mode="region">
+                        <label class="sphotography-label" for="sphotography-region-intensity"><?php _e( '行政区填充强度（%）', 'sphotography' ); ?></label>
+                        <div class="sphotography-slider-row">
+                            <input type="range" id="sphotography-region-intensity" name="sphotography[region_intensity]"
+                                   value="<?php echo esc_attr( $values['region_intensity'] ); ?>" min="0" max="100" step="1" data-sp-map-preview="regionIntensity">
+                            <span class="sphotography-slider-val" data-suffix="%"><?php echo esc_html( $values['region_intensity'] ); ?>%</span>
+                        </div>
+                        <p class="sphotography-desc"><?php _e( '含照片的行政区划以主题主色填充的不透明度，范围 0-100%。所有区块统一使用主题主色，数值越高染色越浓。默认 35%。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Region colouring: rebuild the adcode index (region mode only) -->
+                    <div class="sphotography-field sp-mode-field" data-sp-mode="region">
+                        <label class="sphotography-label"><?php _e( '行政区索引', 'sphotography' ); ?></label>
+                        <button type="button" id="sphotography-rebuild-geo" class="button button-secondary" style="display:inline-flex;align-items:center;gap:4px;">
+                            <span class="dashicons dashicons-update" style="font-size:16px;width:16px;height:16px;"></span>
+                            <?php _e( '重建行政区索引', 'sphotography' ); ?>
+                        </button>
+                        <span id="sphotography-rebuild-geo-status" style="margin-left:12px;font-size:0.8125rem;color:var(--sp-text-muted);font-variant-numeric:tabular-nums;"></span>
+                        <p class="sphotography-desc"><?php _e( '为每张已定位照片计算其所属的省/市行政区划（点-在-多边形），结果缓存在数据库中。新上传或修改经纬度的照片会自动计算；点此可回填存量照片。切换到「行政区上色」模式或调整照片经纬度后，若地图未正确上色，运行一次即可。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
@@ -1369,6 +1414,47 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-settings-wrap .notice {
             border-radius: 10px;
         }
+        /* v1.2.6 — live map preview */
+        .sphotography-map-preview {
+            position: relative;
+            width: 100%;
+            height: 440px;
+            border: 1px solid var(--sp-border);
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--sp-surface-2);
+        }
+        .sphotography-map-preview iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+        }
+        .sphotography-map-preview-refresh {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.06);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 160ms ease;
+        }
+        .sphotography-map-preview.is-refreshing .sphotography-map-preview-refresh {
+            opacity: 1;
+        }
+        .sphotography-map-preview.is-refreshing .sphotography-map-preview-refresh::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 28px;
+            height: 28px;
+            margin: -14px 0 0 -14px;
+            border: 3px solid rgba(255,255,255,0.5);
+            border-top-color: var(--sp-accent);
+            border-radius: 50%;
+            animation: sphotographyPreviewSpin 0.7s linear infinite;
+        }
+        @keyframes sphotographyPreviewSpin { to { transform: rotate(360deg); } }
     ";
 
     wp_add_inline_style( 'wp-color-picker', $settings_css );
@@ -1387,6 +1473,8 @@ function sphotography_admin_enqueue_settings( $hook ) {
         'updateUrl'      => 'https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json',
         'releaseUrl'     => 'https://github.com/ShirazuNagisa/sphotography/releases',
         'updateNonce'    => wp_create_nonce( 'sphotography_update_nonce' ),
+        'geoRebuildNonce' => wp_create_nonce( 'sphotography_geo_rebuild' ),
+        'previewUrl'     => sphotography_map_preview_url(),
         'resetConfirm'   => __( '确定要重置所有设置为默认值吗？此操作不可撤销。', 'sphotography' ),
         'updateConfirm'  => __( "确定从 master 分支下载并覆盖主题文件吗？\n\n配置数据存在数据库中，不受影响。\n更新后请重新激活主题。", 'sphotography' ),
     ) );

@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.2.5
+Version: 1.2.6
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -190,30 +190,6 @@ body {
     right: 0;
     bottom: 0;
     z-index: 1;
-}
-
-/* Theme-color tint: a non-interactive layer that multiply-blends the site
-   primary colour onto the basemap. Sits directly above the map canvas but
-   below every UI panel (sidebar z-index 100, panels 95+), so the map stays
-   fully interactive and the chrome is untinted. Opacity is 0 unless the
-   `sphotography-map-tint` body class is present; the strength comes from the
-   dynamic --sphotography-tint-opacity variable. */
-#map-tint-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 2;
-    pointer-events: none;
-    background: var(--primary);
-    mix-blend-mode: multiply;
-    opacity: 0;
-    transition: opacity var(--duration-normal, 300ms) ease;
-}
-
-body.sphotography-map-tint #map-tint-overlay {
-    opacity: var(--sphotography-tint-opacity, 0.18);
 }
 
 /* ============================================
@@ -2293,6 +2269,55 @@ body.sidebar-collapsed .sidebar-expand-btn {
 @media (prefers-reduced-motion: reduce) {
     .droplet--transit,
     .droplet-label--transit { transition: none; }
+}
+
+/* ---------------------------------------------------------------
+   Photo pulse dot (v1.2.6, region mode) — marks the exact coordinate an
+   article image flew to, since region mode has no droplets. A small solid
+   core with a periodically expanding ring for visibility. Default is a black
+   dot (light UI / non-auto basemaps); the --light modifier switches to white
+   for the dark auto basemap.
+   --------------------------------------------------------------- */
+.sp-pulse-dot {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    --sp-pulse-color: #111;
+    pointer-events: none;
+}
+.sp-pulse-dot--light { --sp-pulse-color: #fff; }
+.sp-pulse-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--sp-pulse-color);
+    box-shadow: 0 0 0 1.5px rgba(0,0,0,0.25);
+    transform: translate(-50%, -50%);
+}
+.sp-pulse-dot--light .sp-pulse-core { box-shadow: 0 0 0 1.5px rgba(255,255,255,0.35); }
+.sp-pulse-ring {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--sp-pulse-color);
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.7;
+    animation: spPulseRing 1.8s ease-out infinite;
+}
+@keyframes spPulseRing {
+    0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0.75; }
+    70%  { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+    100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+}
+.sp-pulse-dot--static .sp-pulse-ring { animation: none; opacity: 0.5; }
+@media (prefers-reduced-motion: reduce) {
+    .sp-pulse-ring { animation: none; opacity: 0.5; }
 }
 
 /* ---------------------------------------------------------------

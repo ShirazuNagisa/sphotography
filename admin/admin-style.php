@@ -15,7 +15,7 @@
  * here.
  *
  * @package Sphotography
- * @version 1.2.5
+ * @version 1.2.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
