@@ -2,7 +2,7 @@
  * Sphotography - Frontend Map Application v2
  *
  * @package Sphotography
- * @version 1.2.4
+ * @version 1.2.5
  */
 
 (function () {
@@ -125,7 +125,124 @@
         markerBorderColor: PRIMARY_COLOR,
         markerRadius: 8,
         markerBorderWidth: 3,
+        // Cluster merge distance — tied to droplet diameter by default (18px),
+        // exposed as a setting (10–60). See addPhotoSource().
+        clusterRadius: (function () {
+            var r = parseInt(SETTINGS.clusterRadius, 10);
+            return (r >= 10 && r <= 60) ? r : 18;
+        })(),
     };
+
+    // ---------------------------------------------------------------
+    // 1b. Motion personality (v1.2.5)
+    //
+    // The admin passes only raw picker values; the tier→value table and all
+    // resolution live here so there is one source of truth. The resolved
+    // droplet duration/easing are also written to CSS custom properties so the
+    // .droplet--transit rule (a CSS transition) stays in sync with the JS
+    // timing that drives its cleanup setTimeouts.
+    // ---------------------------------------------------------------
+    var MOTION_TIERS = {
+        subtle:     { artOpen: 180, artClose: 160, switchGap: 60,  artEase: 'cubic-bezier(0.33,0,0.2,1)',    drop: 380, dropEase: 'cubic-bezier(0.33,0,0.2,1)' },
+        standard:   { artOpen: 260, artClose: 240, switchGap: 90,  artEase: 'cubic-bezier(0.18,0.85,0.28,1)', drop: 620, dropEase: 'cubic-bezier(0.22,1,0.36,1)' },
+        expressive: { artOpen: 340, artClose: 300, switchGap: 120, artEase: 'cubic-bezier(0.16,1,0.3,1)',     drop: 820, dropEase: 'cubic-bezier(0.34,1.3,0.5,1)' }
+    };
+    // Named easing overrides. Article never offers 'spring' (stays monotonic),
+    // but resolution is shared; the admin UI simply doesn't expose it there.
+    var EASING_PRESETS = {
+        'linear':      'linear',
+        'ease-out':    'cubic-bezier(0.16,1,0.3,1)',
+        'ease-in-out': 'cubic-bezier(0.65,0,0.35,1)',
+        'sharp':       'cubic-bezier(0.4,0,0.2,1)',
+        'spring':      'cubic-bezier(0.34,1.3,0.5,1)'
+    };
+
+    function motionScale(v) {
+        var n = parseInt(v, 10);
+        if (!(n >= 50 && n <= 200)) n = 100;
+        return n / 100;
+    }
+    function motionEasing(choice, fallback) {
+        return (choice && choice !== 'inherit' && EASING_PRESETS[choice]) ? EASING_PRESETS[choice] : fallback;
+    }
+    function resolveMotion() {
+        var tier = MOTION_TIERS[SETTINGS.motionTier] ? MOTION_TIERS[SETTINGS.motionTier] : MOTION_TIERS.standard;
+        var artScale = motionScale(SETTINGS.motionArticleScale);
+        var dropScale = motionScale(SETTINGS.motionDropletScale);
+        return {
+            article: {
+                openDuration: Math.round(tier.artOpen * artScale),
+                closeDuration: Math.round(tier.artClose * artScale),
+                switchGap: Math.round(tier.switchGap * artScale),
+                easing: motionEasing(SETTINGS.motionArticleEasing, tier.artEase)
+            },
+            droplet: {
+                transition: Math.round(tier.drop * dropScale),
+                easing: motionEasing(SETTINGS.motionDropletEasing, tier.dropEase)
+            }
+        };
+    }
+    var MOTION_RESOLVED = resolveMotion();
+    // Drive the CSS .droplet--transit rule from the resolved values.
+    try {
+        var _root = document.documentElement;
+        _root.style.setProperty('--sp-droplet-duration', MOTION_RESOLVED.droplet.transition + 'ms');
+        _root.style.setProperty('--sp-droplet-ease', MOTION_RESOLVED.droplet.easing);
+    } catch (e) {}
+
+    // ---------------------------------------------------------------
+    // 1c. Tag colour (v1.2.5)
+    //
+    // Per-region_tag colouring. Colours are resolved server-side (override or
+    // slug hash) and delivered as a slug→{name,color} map, so the frontend
+    // never hashes anything — it just looks up. Falls back to the theme
+    // primary when a tag has no colour or a droplet shares no common tag.
+    // ---------------------------------------------------------------
+    var TAG = {
+        enabled: !!SETTINGS.tagColor,
+        map: (SETTINGS.tagColors && typeof SETTINGS.tagColors === 'object') ? SETTINGS.tagColors : {},
+        color: function (slug) {
+            var e = this.map[slug];
+            return (e && e.color) ? e.color : PRIMARY_COLOR;
+        },
+        name: function (slug) {
+            var e = this.map[slug];
+            return (e && e.name) ? e.name : slug;
+        }
+    };
+
+    // Feature properties survive clustering, but queryRenderedFeatures may
+    // hand array values back as JSON strings — normalise to an array.
+    function featureTagSlugs(props) {
+        if (!props) return [];
+        var t = props.tagSlugs;
+        if (typeof t === 'string') {
+            try { t = JSON.parse(t); } catch (e) { t = t ? [t] : []; }
+        }
+        return Array.isArray(t) ? t : [];
+    }
+
+    // Colour for a single point: its first tag, else primary.
+    function pointColor(slugs) {
+        if (!TAG.enabled || !slugs || !slugs.length) return PRIMARY_COLOR;
+        return TAG.color(slugs[0]);
+    }
+
+    // Majority tag across a set of leaf features: most frequent slug wins,
+    // ties broken by slug alphabetical order; no tags at all → null (primary).
+    function majorityTagSlug(leaves) {
+        var counts = {};
+        (leaves || []).forEach(function (leaf) {
+            featureTagSlugs(leaf.properties).forEach(function (s) {
+                counts[s] = (counts[s] || 0) + 1;
+            });
+        });
+        var best = null, bestCount = 0;
+        Object.keys(counts).sort().forEach(function (s) {
+            if (counts[s] > bestCount) { bestCount = counts[s]; best = s; }
+        });
+        return best;
+    }
 
     // ---------------------------------------------------------------
     // 2. State
@@ -411,7 +528,7 @@
             // 18px across (radius 9), so two markers only overlap when their
             // centres are closer than that diameter. Points farther apart
             // render without overlap and stay separate.
-            clusterMaxZoom:CONFIG.maxZoom, clusterRadius:18, clusterMinPoints:2
+            clusterMaxZoom:CONFIG.maxZoom, clusterRadius:CONFIG.clusterRadius, clusterMinPoints:2
         });
     }
 
@@ -573,10 +690,7 @@
     // fuses close ones — reading as liquid merging and splitting. The WebGL
     // circle layers underneath stay invisible but handle all hit-testing.
     // ---------------------------------------------------------------
-    var DROPLET = {
-        transition: 620,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
-    };
+    var DROPLET = MOTION_RESOLVED.droplet;
 
     function ensureDropletLayers() {
         if (dom.dropletGoo && dom.dropletGoo.isConnected) return;
@@ -615,6 +729,17 @@
         }
     }
 
+    // Recolour a droplet. Empty/primary clears the override so the CSS default
+    // (var(--primary)) applies; the radial sheen is preserved via CSS.
+    function applyDropletColor(rec, color) {
+        rec.color = color || '';
+        if (color && color !== PRIMARY_COLOR) {
+            rec.el.style.setProperty('--droplet-color', color);
+        } else {
+            rec.el.style.removeProperty('--droplet-color');
+        }
+    }
+
     function createDroplet(spec) {
         var size = dropletSize(spec.isCluster, spec.count);
         var el = document.createElement('div');
@@ -622,7 +747,8 @@
         el.style.width = size + 'px';
         el.style.height = size + 'px';
         dom.dropletGoo.appendChild(el);
-        var rec = { key: spec.key, isCluster: spec.isCluster, count: spec.count, coords: spec.coords, el: el, label: null, size: size };
+        var rec = { key: spec.key, isCluster: spec.isCluster, count: spec.count, coords: spec.coords, el: el, label: null, size: size, color: '', clusterId: spec.clusterId };
+        if (TAG.enabled) applyDropletColor(rec, spec.color);
         if (spec.isCluster) {
             var label = document.createElement('div');
             label.className = 'droplet-label';
@@ -642,6 +768,12 @@
             rec.el.style.width = size + 'px';
             rec.el.style.height = size + 'px';
             if (rec.label) rec.label.textContent = spec.count;
+        }
+        if (spec.isCluster && spec.clusterId !== undefined) rec.clusterId = spec.clusterId;
+        // Non-cluster (point) colour can update in place; cluster colour is
+        // owned by the async majority resolver, so don't clobber it here.
+        if (TAG.enabled && !spec.isCluster && spec.color !== undefined && spec.color !== rec.color) {
+            applyDropletColor(rec, spec.color);
         }
     }
 
@@ -707,12 +839,22 @@
             var key = isCluster ? 'c:' + f.properties.cluster_id : 'p:' + photoId(f.properties);
             if (!isCluster && key === 'p:') return;
             if (next.has(key)) return;
-            next.set(key, {
+            var spec = {
                 key: key,
                 isCluster: isCluster,
                 count: isCluster ? (parseInt(f.properties.point_count, 10) || 2) : 1,
                 coords: f.geometry.coordinates.slice()
-            });
+            };
+            if (TAG.enabled) {
+                if (isCluster) {
+                    // Preliminary colour; the majority tag resolves async below.
+                    spec.color = PRIMARY_COLOR;
+                    spec.clusterId = f.properties.cluster_id;
+                } else {
+                    spec.color = pointColor(featureTagSlugs(f.properties));
+                }
+            }
+            next.set(key, spec);
         });
 
         var prev = state.droplets;
@@ -793,6 +935,35 @@
 
         state.droplets = result;
         if (animating) scheduleGooDisable();
+        if (TAG.enabled) resolveClusterColors(result);
+    }
+
+    // Cluster colour = majority tag among its leaves (ties by slug order),
+    // resolved asynchronously from the clustered source. Runs only on the
+    // debounced sync, and only for clusters, so the leaf queries stay cheap.
+    function resolveClusterColors(dropletMap) {
+        var source = state.map && state.map.getSource(CONFIG.clusterSourceId);
+        if (!source || typeof source.getClusterLeaves !== 'function') return;
+        dropletMap.forEach(function (rec) {
+            if (!rec.isCluster || rec.clusterColorFor === rec.key + ':' + rec.count) return;
+            var clusterId = rec.clusterId;
+            if (clusterId === undefined) return;
+            var limit = Math.max(2, rec.count || 2);
+            var handle = function (leaves) {
+                if (state.droplets.get(rec.key) !== rec) return; // gone/replaced
+                var slug = majorityTagSlug(leaves || []);
+                applyDropletColor(rec, slug ? TAG.color(slug) : PRIMARY_COLOR);
+                rec.clusterColorFor = rec.key + ':' + rec.count;
+            };
+            try {
+                if (source.getClusterLeaves.length >= 4) {
+                    source.getClusterLeaves(clusterId, limit, 0, function (err, leaves) { if (!err) handle(leaves); });
+                } else {
+                    var p = source.getClusterLeaves(clusterId, limit, 0);
+                    if (p && typeof p.then === 'function') p.then(handle).catch(function () {});
+                }
+            } catch (e) {}
+        });
     }
 
     // ---------------------------------------------------------------
@@ -995,6 +1166,69 @@
         });
     }
 
+    // ---------------------------------------------------------------
+    // Tag colour legend (v1.2.5)
+    //
+    // A compact, collapsible key of the region_tags present on this map. Only
+    // built when tag colouring + legend are both on. Lists tags used by loaded
+    // markers (stable — doesn't flicker as clusters merge), sorted by name.
+    // Desktop: expanded panel bottom-left; mobile: collapsed to a "图例" pill.
+    // ---------------------------------------------------------------
+    function buildLegend() {
+        if (!TAG.enabled || !SETTINGS.tagLegend) return;
+        if (dom.tagLegend) { dom.tagLegend.remove(); dom.tagLegend = null; }
+
+        var seen = {};
+        var tags = [];
+        var feats = (state.allPhotos && state.allPhotos.features) ? state.allPhotos.features : [];
+        feats.forEach(function (f) {
+            var arr = (f.properties && Array.isArray(f.properties.tags)) ? f.properties.tags : [];
+            arr.forEach(function (t) {
+                if (t && t.slug && !seen[t.slug]) {
+                    seen[t.slug] = true;
+                    tags.push({ slug: t.slug, name: TAG.name(t.slug), color: TAG.color(t.slug) });
+                }
+            });
+        });
+        if (!tags.length) return;
+        tags.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+        var panel = document.createElement('div');
+        panel.className = 'tag-legend';
+        if (isMobileView()) panel.classList.add('tag-legend--collapsed');
+
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'tag-legend-toggle';
+        toggle.setAttribute('aria-label', '标签配色图例');
+        toggle.innerHTML = '<span class="tag-legend-toggle-icon" aria-hidden="true"></span><span class="tag-legend-toggle-text">图例</span>';
+        toggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            panel.classList.toggle('tag-legend--collapsed');
+        });
+
+        var list = document.createElement('div');
+        list.className = 'tag-legend-list';
+        tags.forEach(function (t) {
+            var item = document.createElement('div');
+            item.className = 'tag-legend-item';
+            var sw = document.createElement('span');
+            sw.className = 'tag-legend-swatch';
+            sw.style.background = t.color;
+            var lbl = document.createElement('span');
+            lbl.className = 'tag-legend-name';
+            lbl.textContent = t.name;
+            item.appendChild(sw);
+            item.appendChild(lbl);
+            list.appendChild(item);
+        });
+
+        panel.appendChild(toggle);
+        panel.appendChild(list);
+        document.body.appendChild(panel);
+        dom.tagLegend = panel;
+    }
+
     // Uses the article panel's window-scale motion: the panel grows out of the
     // filter button and collapses back into it, recomputed live each time.
     function openFilterPanel() {
@@ -1058,16 +1292,12 @@
     // onto the live card rect via a compositor-only transform. Only
     // transform / opacity animate, so there is no reflow and no warp.
     // ---------------------------------------------------------------
-    var ARTICLE_MOTION = {
-        openDuration: 260,
-        closeDuration: 240,
-        // Pause between collapsing the old article and expanding the new one.
-        switchGap: 90,
-        // Fast start, smooth middle, soft settle, no bounce (monotonic curve).
-        easing: 'cubic-bezier(0.18, 0.85, 0.28, 1)'
-    };
+    var ARTICLE_MOTION = MOTION_RESOLVED.article;
 
+    // Effective reduced-motion gate: the OS preference wins by default, unless
+    // the site owner opted to override it (motionIgnoreReduced).
     function prefersReducedMotion() {
+        if (SETTINGS.motionIgnoreReduced) return false;
         return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
@@ -1287,7 +1517,16 @@
                 }
             }
             if (post._embedded && post._embedded['wp:term']) {
-                post._embedded['wp:term'].forEach(function(ta) { ta.forEach(function(t) { if (t.taxonomy === 'category' || t.taxonomy === 'region_tag') metaHtml += '<span style="color:var(--primary);font-size:0.75rem;">#' + escapeHtml(t.name) + '</span>'; }); });
+                post._embedded['wp:term'].forEach(function(ta) { ta.forEach(function(t) {
+                    if (t.taxonomy !== 'category' && t.taxonomy !== 'region_tag') return;
+                    // When tag colouring is on, region_tag chips get a leading
+                    // colour dot (text/background stay unchanged).
+                    var dot = '';
+                    if (TAG.enabled && t.taxonomy === 'region_tag' && t.slug) {
+                        dot = '<span class="tag-chip-dot" style="background:' + escapeHtml(TAG.color(t.slug)) + ';"></span>';
+                    }
+                    metaHtml += '<span class="article-term-chip" style="color:var(--primary);font-size:0.75rem;">' + dot + '#' + escapeHtml(t.name) + '</span>';
+                }); });
             }
             dom.articleMeta.innerHTML = metaHtml;
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
@@ -2158,7 +2397,7 @@
         overlay.style.setProperty('--ft-map-bg', getMapBgColor());
 
         var name = (nameEl.textContent || '').trim();
-        var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var reduced = prefersReducedMotion();
         var canKnockout = !reduced && name.length > 0 &&
             !preloaderContainsEmoji(name) && preloaderSupportsKnockout();
 
@@ -2407,6 +2646,7 @@
 
             renderSidebarPosts(state.recentPosts);
             buildFilterChips();
+            buildLegend();
             initMap();
             initHitokoto();
             initEntryAnimation();

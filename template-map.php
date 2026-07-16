@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.2.4
+ * @version 1.2.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -70,7 +70,7 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
     <svg class="droplet-goo-defs" width="0" height="0" aria-hidden="true" focusable="false">
         <defs>
             <filter id="droplet-goo">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"></feGaussianBlur>
+                <feGaussianBlur in="SourceGraphic" stdDeviation="<?php echo esc_attr( (int) sphotography_get_mod( 'droplet_goo_strength' ) ); ?>" result="blur"></feGaussianBlur>
                 <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="goo"></feColorMatrix>
                 <feBlend in="SourceGraphic" in2="goo"></feBlend>
             </filter>

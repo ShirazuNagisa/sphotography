@@ -3,7 +3,7 @@
  * Sphotography Theme Functions
  *
  * @package Sphotography
- * @version 1.2.4
+ * @version 1.2.5
  */
 
 // ============================================
@@ -17,6 +17,7 @@ if ( ! defined( 'SPHOTOGRAPHY_VERSION' ) ) {
 require_once get_template_directory() . '/admin/theme-settings.php';
 require_once get_template_directory() . '/admin/admin-style.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
+require_once get_template_directory() . '/inc/region-tag-color.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"
@@ -526,7 +527,12 @@ function sphotography_collect_all_markers( $region_tag = '' ) {
         $terms    = wp_get_post_terms( $post->ID, 'region_tag' );
         if ( ! is_wp_error( $terms ) ) {
             foreach ( $terms as $t ) {
-                $tag_data[] = array( 'id' => $t->term_id, 'name' => $t->name, 'slug' => $t->slug );
+                $tag_data[] = array(
+                    'id'    => $t->term_id,
+                    'name'  => $t->name,
+                    'slug'  => $t->slug,
+                    'color' => sphotography_tag_color( $t ),
+                );
             }
         }
 
