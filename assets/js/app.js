@@ -198,8 +198,12 @@
     // never hashes anything — it just looks up. Falls back to the theme
     // primary when a tag has no colour or a droplet shares no common tag.
     // ---------------------------------------------------------------
+    // Marker mode (v1.2.6): 'droplet' | 'tag' | 'region'. Mutually exclusive;
+    // replaces the old boolean tag_color flag.
+    var MARKER_MODE = SETTINGS.markerMode || 'droplet';
+
     var TAG = {
-        enabled: !!SETTINGS.tagColor,
+        enabled: MARKER_MODE === 'tag',
         map: (SETTINGS.tagColors && typeof SETTINGS.tagColors === 'object') ? SETTINGS.tagColors : {},
         color: function (slug) {
             var e = this.map[slug];
@@ -245,6 +249,91 @@
     }
 
     // ---------------------------------------------------------------
+    // 1d. Administrative-region colouring (v1.2.6)
+    //
+    // In 'region' mode the droplets are replaced by filled admin regions
+    // (province worldwide, plus city inside China). Each photo carries its
+    // resolved province/city adcode (computed server-side); we group photos by
+    // the id for the chosen granularity and fill only the regions that hold
+    // photos with the theme colour. Clicking a region opens a fused photo
+    // panel. Photos with no resolved region fall back to normal droplets.
+    // ---------------------------------------------------------------
+    var REGION = {
+        active: MARKER_MODE === 'region',
+        granularity: (SETTINGS.regionGranularity === 'city') ? 'city' : 'province',
+        opacity: (function () { var n = parseInt(SETTINGS.regionIntensity, 10); return (n >= 0 && n <= 100) ? n / 100 : 0.35; })(),
+        geo: (typeof SphotographyGeo !== 'undefined' && SphotographyGeo && SphotographyGeo.features) ? SphotographyGeo : { type: 'FeatureCollection', features: [] },
+        byId: {},        // region id → boundary feature
+        photos: {},      // region id → [photo features]
+        centroids: {},   // region id → [lng, lat]
+        used: null,      // FeatureCollection of regions that hold photos
+        sourceId: 'sp-regions',
+        fillLayerId: 'sp-region-fill',
+        lineLayerId: 'sp-region-line',
+        hoverLayerId: 'sp-region-hover'
+    };
+
+    // The region id a photo colours, honouring the granularity + China-only
+    // city fallback: city granularity uses the city adcode when present, else
+    // the province adcode; province granularity always uses the province.
+    function regionIdForPhoto(props) {
+        if (!props) return '';
+        var prov = props.provAdcode || '';
+        var city = props.cityAdcode || '';
+        if (REGION.granularity === 'city' && city) return city;
+        return prov || '';
+    }
+
+    // Bounding-box centre of a Polygon/MultiPolygon — the panel anchor point.
+    function geomCentroid(geom) {
+        var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+        var polys = (geom.type === 'Polygon') ? [geom.coordinates] : geom.coordinates;
+        polys.forEach(function (poly) {
+            poly.forEach(function (ring) {
+                ring.forEach(function (pt) {
+                    if (pt[0] < minx) minx = pt[0];
+                    if (pt[0] > maxx) maxx = pt[0];
+                    if (pt[1] < miny) miny = pt[1];
+                    if (pt[1] > maxy) maxy = pt[1];
+                });
+            });
+        });
+        return [(minx + maxx) / 2, (miny + maxy) / 2];
+    }
+
+    // Partition photos into region-matched (grouped by id) and unmatched (kept
+    // for the droplet fallback source). Builds the render FeatureCollection.
+    function buildRegionData() {
+        REGION.byId = {};
+        REGION.photos = {};
+        REGION.centroids = {};
+        (REGION.geo.features || []).forEach(function (f) {
+            var id = f.properties && f.properties.id != null ? String(f.properties.id) : '';
+            if (id) REGION.byId[id] = f;
+        });
+
+        var unmatched = [];
+        var feats = (state.allPhotos && state.allPhotos.features) ? state.allPhotos.features : [];
+        feats.forEach(function (f) {
+            var id = regionIdForPhoto(f.properties);
+            if (id && REGION.byId[id]) {
+                (REGION.photos[id] = REGION.photos[id] || []).push(f);
+            } else {
+                unmatched.push(f);
+            }
+        });
+
+        var usedFeatures = [];
+        Object.keys(REGION.photos).forEach(function (id) {
+            var f = REGION.byId[id];
+            usedFeatures.push(f);
+            REGION.centroids[id] = geomCentroid(f.geometry);
+        });
+        REGION.used = { type: 'FeatureCollection', features: usedFeatures };
+        state.regionUnmatched = { type: 'FeatureCollection', features: unmatched };
+    }
+
+    // ---------------------------------------------------------------
     // 2. State
     // ---------------------------------------------------------------
     const state = {
@@ -274,6 +363,9 @@
         selectedCategories: new Set(),
         searchQuery: '',
         mapFlyId: 0,
+        regionPanels: new Map(),
+        regionUnmatched: null,
+        pulseDot: null,
     };
 
     // ---------------------------------------------------------------
@@ -435,6 +527,8 @@
                     takenAt: m.taken_at || m.takenAt || '',
                     tags: tags,
                     tagSlugs: tags.map(function (t) { return t.slug; }),
+                    provAdcode: m.prov_adcode || m.provAdcode || '',
+                    cityAdcode: m.city_adcode || m.cityAdcode || '',
                 },
             });
         });
@@ -455,8 +549,11 @@
         state.map.addControl(new maplibregl.ScaleControl({unit:'metric',maxWidth:120}),'bottom-left');
         state.map.on('load', function() {
             state.mapLoaded = true;
-            addPhotoSource(state.allPhotos);
+            // Region mode: only the unmatched photos become droplets; matched
+            // ones are represented by the filled regions instead.
+            addPhotoSource(REGION.active ? state.regionUnmatched : state.allPhotos);
             addPhotoLayers();
+            if (REGION.active) addRegionLayers();
             bindMapEvents();
             hideLoading();
         });
@@ -508,8 +605,9 @@
         }
         state.map.once('idle', function() {
             if (!state.map.getSource(CONFIG.clusterSourceId)) {
-                addPhotoSource(state.allPhotos);
+                addPhotoSource(REGION.active ? state.regionUnmatched : state.allPhotos);
                 addPhotoLayers();
+                if (REGION.active) addRegionLayers();
             }
             if (!state.mapLoaded) {
                 state.mapLoaded = true;
@@ -554,6 +652,61 @@
     }
 
     // ---------------------------------------------------------------
+    // 7b. Region fill layers (region mode)
+    // ---------------------------------------------------------------
+    function addRegionLayers() {
+        if (!REGION.used) return;
+        [REGION.hoverLayerId, REGION.lineLayerId, REGION.fillLayerId].forEach(function (id) {
+            if (state.map.getLayer(id)) state.map.removeLayer(id);
+        });
+        if (state.map.getSource(REGION.sourceId)) state.map.removeSource(REGION.sourceId);
+
+        state.map.addSource(REGION.sourceId, { type: 'geojson', data: REGION.used, promoteId: 'id' });
+        // Base fill (theme colour at the configured intensity).
+        state.map.addLayer({
+            id: REGION.fillLayerId, type: 'fill', source: REGION.sourceId,
+            paint: { 'fill-color': PRIMARY_COLOR, 'fill-opacity': REGION.opacity }
+        });
+        // Hover highlight — a brighter overlay for the feature under the cursor.
+        state.map.addLayer({
+            id: REGION.hoverLayerId, type: 'fill', source: REGION.sourceId,
+            paint: {
+                'fill-color': PRIMARY_COLOR,
+                'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], Math.min(1, REGION.opacity + 0.25), 0]
+            }
+        });
+        // Outline for legibility.
+        state.map.addLayer({
+            id: REGION.lineLayerId, type: 'line', source: REGION.sourceId,
+            paint: { 'line-color': PRIMARY_COLOR, 'line-width': 1, 'line-opacity': 0.85 }
+        });
+
+        var hoveredId = null;
+        var setHover = function (id, on) {
+            if (id == null) return;
+            state.map.setFeatureState({ source: REGION.sourceId, id: id }, { hover: on });
+        };
+        state.map.on('mousemove', REGION.fillLayerId, function (e) {
+            if (!e.features || !e.features.length) return;
+            state.map.getCanvas().style.cursor = 'pointer';
+            var id = e.features[0].id != null ? e.features[0].id : (e.features[0].properties && e.features[0].properties.id);
+            if (id !== hoveredId) { setHover(hoveredId, false); hoveredId = id; setHover(hoveredId, true); }
+        });
+        state.map.on('mouseleave', REGION.fillLayerId, function () {
+            state.map.getCanvas().style.cursor = '';
+            setHover(hoveredId, false); hoveredId = null;
+        });
+        state.map.on('click', REGION.fillLayerId, function (e) {
+            if (!e.features || !e.features.length) return;
+            state.clickedMarker = true; // suppress the map-background close handler
+            var props = e.features[0].properties || {};
+            var id = props.id != null ? String(props.id) : '';
+            if (id) openRegionPanel(id);
+            if (e.originalEvent) e.originalEvent.stopPropagation();
+        });
+    }
+
+    // ---------------------------------------------------------------
     // 8. Map Events
     // ---------------------------------------------------------------
     function bindMapEvents() {
@@ -593,6 +746,13 @@
             closeArticlePanel();
             if (state.isMobile) { closeSidebar(); }
         });
+
+        // Region-mode pulse dot: any manual pan/zoom is the "next interaction"
+        // that clears it. Fires harmlessly before a dot exists.
+        if (REGION.active) {
+            state.map.on('dragstart', removePulseDot);
+            state.map.on('zoomstart', removePulseDot);
+        }
     }
 
     // ---------------------------------------------------------------
@@ -1678,6 +1838,7 @@
         targetZoom = Math.max(CONFIG.minZoom, Math.min(CONFIG.maxZoom, targetZoom));
 
         var flyId = ++state.mapFlyId;
+        removePulseDot(); // a fresh fly supersedes any previous dot
 
         // Phase 1 — pan at the current zoom until the point hits the target pixel.
         state.map.easeTo({
@@ -1699,6 +1860,14 @@
                     duration: 1600,
                     easing: easeInOutSine
                 });
+                // Region mode: mark the exact photo location once the zoom
+                // settles (no droplet exists there to show it otherwise).
+                if (REGION.active) {
+                    state.map.once('moveend', function () {
+                        if (flyId !== state.mapFlyId) return;
+                        showPulseDot(coords);
+                    });
+                }
             }, 100);
         });
     }
@@ -2035,8 +2204,9 @@
         });
     }
 
-    function createPhotoPanel(entity, isActive) {
+    function createPhotoPanel(entity, isActive, opts) {
         if (typeof isActive === 'undefined') isActive = true;
+        opts = opts || {};
         var element = document.createElement('div');
         element.className = 'photo-grid-panel glass-panel' + (isActive ? ' active' : '');
         element.setAttribute('role', 'dialog');
@@ -2094,6 +2264,7 @@
 
         close.addEventListener('click', function(event) {
             event.stopPropagation();
+            if (opts.onClose) { opts.onClose(); return; }
             entity.ids.forEach(function(id) { state.openPhotoIds.delete(id); });
             reconcileOpenPhotoPanels();
         });
@@ -2110,6 +2281,7 @@
         state.photoPanels.forEach(function(panel) {
             positionPhotoPanel(panel.element, panel.entity.coords, index++);
         });
+        positionRegionPanels();
     }
 
     function positionPhotoPanel(panel, coords, index) {
@@ -2136,6 +2308,83 @@
         state.reconcileToken++;
         state.openPhotoIds.clear();
         dismissAllPhotoPanels();
+        closeAllRegionPanels();
+    }
+
+    // ---------------------------------------------------------------
+    // 12b. Region photo panels (region mode)
+    //
+    // Kept in their own map so the droplet reconcile loop (which rebuilds
+    // state.photoPanels from rendered clusters) never dismisses them. Only one
+    // region panel is open at a time, anchored at the region centroid.
+    // ---------------------------------------------------------------
+    function openRegionPanel(id) {
+        var photos = REGION.photos[id] || [];
+        if (!photos.length) return;
+        closeAllRegionPanels();
+        var entity = {
+            coords: REGION.centroids[id] || (photos[0].geometry && photos[0].geometry.coordinates),
+            photos: photos,
+            ids: photos.map(function (f) { return photoId(f.properties); }),
+            key: 'region:' + id
+        };
+        var panel = createPhotoPanel(entity, true, { onClose: closeAllRegionPanels });
+        state.regionPanels.set(entity.key, panel);
+        positionPhotoPanel(panel.element, entity.coords, 0);
+        if (!state.isMobile) openSidebar();
+        requestAnimationFrame(function () {
+            panel.element.classList.add('photo-grid-panel--positioned');
+            animatePhotoPanelOpen(panel.element, entity.coords);
+        });
+    }
+
+    function closeAllRegionPanels() {
+        if (!state.regionPanels || state.regionPanels.size === 0) return;
+        var panels = Array.from(state.regionPanels.values());
+        state.regionPanels = new Map();
+        panels.forEach(function (panel) {
+            var el = panel.element;
+            animatePhotoPanelClose(el, panel.entity && panel.entity.coords, function () { el.remove(); });
+        });
+    }
+
+    function positionRegionPanels() {
+        if (!state.regionPanels) return;
+        state.regionPanels.forEach(function (panel) {
+            positionPhotoPanel(panel.element, panel.entity.coords, 0);
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // 12c. Photo pulse dot (region mode)
+    //
+    // Region mode has no droplets, so after an article image click flies the
+    // map to a photo we drop a small pulsing dot at its exact coordinate to
+    // show precisely where it sits. Colour keeps contrast against the basemap:
+    // white on the dark auto style, black otherwise. Cleared on the next
+    // interaction.
+    // ---------------------------------------------------------------
+    function pulseDotIsLight() {
+        // A light dot (white) is only wanted on the dark auto basemap.
+        return usingAutoStyle() && !resolveMapIsLight();
+    }
+
+    function showPulseDot(coords) {
+        removePulseDot();
+        if (!state.map || !coords) return;
+        var el = document.createElement('div');
+        el.className = 'sp-pulse-dot' + (pulseDotIsLight() ? ' sp-pulse-dot--light' : '');
+        if (prefersReducedMotion()) el.classList.add('sp-pulse-dot--static');
+        el.innerHTML = '<span class="sp-pulse-ring"></span><span class="sp-pulse-core"></span>';
+        try {
+            state.pulseDot = new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat(new maplibregl.LngLat(coords[0], coords[1]))
+                .addTo(state.map);
+        } catch (e) { state.pulseDot = null; }
+    }
+
+    function removePulseDot() {
+        if (state.pulseDot) { try { state.pulseDot.remove(); } catch (e) {} state.pulseDot = null; }
     }
 
     // ---------------------------------------------------------------
@@ -2186,6 +2435,7 @@
     function closeDetailPanel() {
         dom.detailSheet.classList.remove('active');
         state.detailOpen = false;
+        removePulseDot();
     }
 
     // ---------------------------------------------------------------
@@ -2647,6 +2897,7 @@
             renderSidebarPosts(state.recentPosts);
             buildFilterChips();
             buildLegend();
+            if (REGION.active) buildRegionData();
             initMap();
             initHitokoto();
             initEntryAnimation();

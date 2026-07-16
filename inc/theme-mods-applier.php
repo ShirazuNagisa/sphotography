@@ -3,7 +3,7 @@
  * Sphotography - Apply Theme Mods to Frontend
  *
  * @package Sphotography
- * @version 1.2.5
+ * @version 1.2.6
  */
 
 // ============================================
@@ -11,7 +11,106 @@
 // ============================================
 function sphotography_get_mod( $key ) {
     $defaults = sphotography_get_default_settings();
-    return get_theme_mod( 'sphotography_' . $key, $defaults[ $key ] );
+    $value    = get_theme_mod( 'sphotography_' . $key, $defaults[ $key ] );
+    return sphotography_maybe_preview_override( $key, $value );
+}
+
+// ============================================
+// 1b. Live-preview overrides (settings page iframe)
+//
+// When an administrator loads the map template with ?sp_preview=1 and a valid
+// nonce, map-related settings can be overridden by query parameters so the
+// settings page can render an instant "what-if" preview of unsaved values
+// without touching the database. Gated to edit_theme_options + nonce so the
+// public can never inject settings via URL.
+// ============================================
+function sphotography_is_map_preview() {
+    static $is = null;
+    if ( null !== $is ) {
+        return $is;
+    }
+    $is = isset( $_GET['sp_preview'] )
+        && current_user_can( 'edit_theme_options' )
+        && isset( $_GET['sp_nonce'] )
+        && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['sp_nonce'] ) ), 'sphotography_map_preview' );
+    return $is;
+}
+
+/**
+ * Map of theme-mod key → [query param, type] exposed to the live preview.
+ */
+function sphotography_preview_param_map() {
+    return array(
+        'primary_color'        => array( 'sp_primary', 'hex' ),
+        'night_mode'           => array( 'sp_night', 'enum', array( 'system', 'light', 'dark' ) ),
+        'map_style'            => array( 'sp_mapstyle', 'enum', array( 'auto', 'satellite', 'terrain', 'voyager', 'watercolor', 'custom' ) ),
+        'map_style_custom_url' => array( 'sp_mapurl', 'url' ),
+        'marker_mode'          => array( 'sp_markermode', 'enum', array( 'droplet', 'tag', 'region' ) ),
+        'cluster_radius'       => array( 'sp_cluster', 'int', 10, 60 ),
+        'droplet_goo_strength' => array( 'sp_goo', 'int', 3, 12 ),
+        'region_granularity'   => array( 'sp_granularity', 'enum', array( 'province', 'city' ) ),
+        'region_intensity'     => array( 'sp_intensity', 'int', 0, 100 ),
+    );
+}
+
+function sphotography_maybe_preview_override( $key, $value ) {
+    if ( ! sphotography_is_map_preview() ) {
+        return $value;
+    }
+    $map = sphotography_preview_param_map();
+    if ( ! isset( $map[ $key ] ) ) {
+        return $value;
+    }
+    $spec  = $map[ $key ];
+    $param = $spec[0];
+    if ( ! isset( $_GET[ $param ] ) ) {
+        return $value;
+    }
+    $raw = wp_unslash( $_GET[ $param ] );
+    switch ( $spec[1] ) {
+        case 'hex':
+            $c = sanitize_hex_color( (string) $raw );
+            return $c ? $c : $value;
+        case 'url':
+            return esc_url_raw( trim( (string) $raw ), array( 'https' ) );
+        case 'enum':
+            return in_array( $raw, $spec[2], true ) ? $raw : $value;
+        case 'int':
+            return min( max( (int) $raw, $spec[2] ), $spec[3] );
+    }
+    return $value;
+}
+
+/**
+ * URL of the map page in preview mode (nonce-signed), for the settings iframe.
+ * Returns '' if no page uses the fullscreen-map template.
+ */
+function sphotography_map_preview_url() {
+    $pages = get_posts( array(
+        'post_type'      => 'page',
+        'post_status'    => 'publish',
+        'posts_per_page' => 1,
+        'fields'         => 'ids',
+        'meta_key'       => '_wp_page_template',
+        'meta_value'     => 'template-map.php',
+    ) );
+    if ( empty( $pages ) ) {
+        // Fall back to the front page if it is set to the map template.
+        $front = (int) get_option( 'page_on_front' );
+        if ( $front && 'template-map.php' === get_page_template_slug( $front ) ) {
+            $pages = array( $front );
+        }
+    }
+    if ( empty( $pages ) ) {
+        return '';
+    }
+    return add_query_arg(
+        array(
+            'sp_preview' => '1',
+            'sp_nonce'   => wp_create_nonce( 'sphotography_map_preview' ),
+        ),
+        get_permalink( $pages[0] )
+    );
 }
 
 // ============================================
@@ -58,8 +157,8 @@ function sphotography_output_dynamic_css() {
 
     $immersive_bg = $immersive ? $primary : 'transparent';
 
-    // Map tint overlay opacity (0–1) from the intensity percentage.
-    $tint_opacity = max( 0, min( 100, (int) sphotography_get_mod( 'map_tint_intensity' ) ) ) / 100;
+    // Region fill opacity (0–1) from the intensity percentage (region mode).
+    $region_opacity = max( 0, min( 100, (int) sphotography_get_mod( 'region_intensity' ) ) ) / 100;
 
     ?>
     <style id="sphotography-dynamic-css">
@@ -69,7 +168,7 @@ function sphotography_output_dynamic_css() {
             --sphotography-card-shadow: <?php echo esc_attr( $shadow_value ); ?>;
             --sphotography-bg: <?php echo esc_attr( $bg ); ?>;
             --sphotography-immersive-bg: <?php echo esc_attr( $immersive_bg ); ?>;
-            --sphotography-tint-opacity: <?php echo esc_attr( $tint_opacity ); ?>;
+            --sphotography-region-opacity: <?php echo esc_attr( $region_opacity ); ?>;
         }
     </style>
     <?php
@@ -109,10 +208,9 @@ function sphotography_body_classes( $classes ) {
         $classes[] = 'sphotography-font-wordpress';
     }
 
-    // Map theme-color tint overlay.
-    if ( sphotography_get_mod( 'map_tint' ) ) {
-        $classes[] = 'sphotography-map-tint';
-    }
+    // Marker mode drives the frontend map rendering; expose it as a body class
+    // so mode-specific styling (e.g. region fill vs droplets) can key off it.
+    $classes[] = 'sphotography-markers-' . sphotography_get_mod( 'marker_mode' );
 
     return $classes;
 }
@@ -153,10 +251,12 @@ function sphotography_localize_data() {
         'motionDropletEasing' => sphotography_get_mod( 'motion_droplet_easing' ),
         'motionDropletScale'  => (int) sphotography_get_mod( 'motion_droplet_scale' ),
         'motionIgnoreReduced' => (bool) sphotography_get_mod( 'motion_ignore_reduced' ),
-        // Cluster & tag styling (v1.2.5).
+        // Marker mode & styling (v1.2.6).
+        'markerMode'       => sphotography_get_mod( 'marker_mode' ),
         'clusterRadius'    => (int) sphotography_get_mod( 'cluster_radius' ),
-        'tagColor'         => (bool) sphotography_get_mod( 'tag_color' ),
         'tagLegend'        => (bool) sphotography_get_mod( 'tag_legend' ),
+        'regionGranularity' => sphotography_get_mod( 'region_granularity' ),
+        'regionIntensity'  => (int) sphotography_get_mod( 'region_intensity' ),
         // Full slug→colour map for every region_tag term (override-or-hash),
         // so the frontend never hashes slugs itself.
         'tagColors'        => sphotography_all_tag_colors(),
@@ -221,5 +321,21 @@ function sphotography_localize_data() {
         ) ) . ';',
         'before'
     );
+
+    // Region mode: emit only the boundary polygons that actually contain
+    // photos (province adcode for province granularity, plus city adcode for
+    // China). The frontend picks the right feature per granularity at render.
+    if ( 'region' === sphotography_get_mod( 'marker_mode' ) ) {
+        $used_ids = array();
+        foreach ( $photo_data_arr as $m ) {
+            if ( ! empty( $m['prov_adcode'] ) ) { $used_ids[ $m['prov_adcode'] ] = true; }
+            if ( ! empty( $m['city_adcode'] ) ) { $used_ids[ $m['city_adcode'] ] = true; }
+        }
+        $geo = sphotography_geo_features_for_ids( array_keys( $used_ids ) );
+        wp_add_inline_script( 'sphotography-app',
+            'var SphotographyGeo = ' . wp_json_encode( $geo ) . ';',
+            'before'
+        );
+    }
 }
 add_action( 'wp_enqueue_scripts', 'sphotography_localize_data', 20 );

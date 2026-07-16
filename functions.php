@@ -3,7 +3,7 @@
  * Sphotography Theme Functions
  *
  * @package Sphotography
- * @version 1.2.5
+ * @version 1.2.6
  */
 
 // ============================================
@@ -18,6 +18,7 @@ require_once get_template_directory() . '/admin/theme-settings.php';
 require_once get_template_directory() . '/admin/admin-style.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
 require_once get_template_directory() . '/inc/region-tag-color.php';
+require_once get_template_directory() . '/inc/region-index.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"
@@ -555,6 +556,8 @@ function sphotography_collect_all_markers( $region_tag = '' ) {
             $att    = get_post( $img_id );
             $caption = $att ? wp_strip_all_tags( $att->post_excerpt ? $att->post_excerpt : $att->post_content ) : '';
 
+            $adcodes = sphotography_attachment_adcodes( $img_id );
+
             $markers[] = array(
                 'id'          => $img_id,
                 'post_id'     => (int) $post->ID,
@@ -562,6 +565,8 @@ function sphotography_collect_all_markers( $region_tag = '' ) {
                 'title'       => ( $att && $att->post_title ) ? $att->post_title : $post_title,
                 'latitude'    => $lat,
                 'longitude'   => $lng,
+                'prov_adcode' => $adcodes['prov'],
+                'city_adcode' => $adcodes['city'],
                 'thumbnail'   => $medium ? $medium[0] : '',
                 'full_image'  => $full ? $full[0] : '',
                 'camera_info' => (string) get_post_meta( $img_id, 'camera_info', true ),

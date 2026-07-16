@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.2.5
+ * @version 1.2.6
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -62,9 +62,6 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
 
     <!-- Fullscreen Map Container -->
     <div id="map"></div>
-
-    <!-- Theme-color tint overlay (opacity driven by body.sphotography-map-tint) -->
-    <div id="map-tint-overlay" aria-hidden="true"></div>
 
     <!-- Gooey (metaball) filter for the water-droplet cluster markers -->
     <svg class="droplet-goo-defs" width="0" height="0" aria-hidden="true" focusable="false">

@@ -30,3 +30,7 @@ yarn.lock
 
 # Documentation
 /organization.md
+
+# Geo build — large source/intermediate boundary data (keep the build script)
+.geo-build/*
+!.geo-build/build.mjs
