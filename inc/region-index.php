@@ -104,7 +104,10 @@ function sphotography_geo_ensure_files( $force = false ) {
     }
     foreach ( array( 'provinces', 'cities' ) as $which ) {
         $url  = SPHOTOGRAPHY_GEO_REMOTE_BASE . 'boundaries-' . $which . '.json';
-        $resp = wp_remote_get( $url, array( 'timeout' => 45 ) );
+        // Generous timeout: this is a one-time admin download, and slow server
+        // links shouldn't fail it. WordPress requests gzip and decompresses, so
+        // the wire transfer is ~1 MB total, not the ~3.7 MB on-disk size.
+        $resp = wp_remote_get( $url, array( 'timeout' => 120 ) );
         if ( is_wp_error( $resp ) ) {
             return new WP_Error( 'sphotography_geo_http', sprintf( __( '下载失败：%1$s（%2$s）', 'sphotography' ), $url, $resp->get_error_message() ) );
         }
