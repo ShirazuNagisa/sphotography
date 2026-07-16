@@ -3,7 +3,7 @@
  * Template Name: Fullscreen Map
  *
  * @package Sphotography
- * @version 1.2.6
+ * @version 1.2.8
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -176,6 +176,7 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
     <!-- ============================================ -->
     <!-- About Card — 常驻右下角个人信息卡片              -->
     <!-- ============================================ -->
+    <?php if ( sphotography_get_mod( 'about_card_enabled' ) ) : ?>
     <div id="about-card" class="about-card glass-panel">
         <?php
         $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
@@ -186,21 +187,23 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
         if ( empty( $author_name ) ) {
             $author_name = __( 'Shirazu Nagisa', 'sphotography' );
         }
-        if ( empty( $bio ) ) {
-            $bio = __( '行走于街巷与山野，用镜头收集人间烟火与自然纹理。', 'sphotography' );
-        }
+        // Bio is intentionally NOT given a fallback: leaving it empty in the
+        // backend hides the bio line so the card adapts to minimal setups.
         ?>
         <?php if ( $avatar_url ) : ?>
             <img src="<?php echo esc_url( $avatar_url ); ?>" alt="" class="about-avatar">
         <?php endif; ?>
         <h4><?php echo esc_html( $author_name ); ?></h4>
-        <p><?php echo esc_html( $bio ); ?></p>
+        <?php if ( ! empty( $bio ) ) : ?>
+            <p><?php echo esc_html( $bio ); ?></p>
+        <?php endif; ?>
         <?php if ( $hitokoto_enabled ) : ?>
             <div id="hitokoto" class="about-hitokoto">
                 <span id="hitokoto-text">Loading...</span>
             </div>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- ============================================ -->
     <!-- Footer -->

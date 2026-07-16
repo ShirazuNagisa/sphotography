@@ -3,7 +3,7 @@
  * Sphotography - Apply Theme Mods to Frontend
  *
  * @package Sphotography
- * @version 1.2.6
+ * @version 1.2.8
  */
 
 // ============================================
@@ -206,6 +206,11 @@ function sphotography_body_classes( $classes ) {
     // 'wordpress' switches to the system sans-serif stack globally.
     if ( sphotography_get_mod( 'frontend_font' ) === 'wordpress' ) {
         $classes[] = 'sphotography-font-wordpress';
+    }
+
+    // Cursor style (v1.2.8): 'dot' swaps the OS arrow for a dot+ring pointer.
+    if ( sphotography_get_mod( 'cursor_style' ) === 'dot' ) {
+        $classes[] = 'sphotography-cursor-dot';
     }
 
     // Marker mode drives the frontend map rendering; expose it as a body class

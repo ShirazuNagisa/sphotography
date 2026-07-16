@@ -17,7 +17,7 @@
  *   properties.pid   string  (cities only) parent province adcode
  *
  * @package Sphotography
- * @version 1.2.6
+ * @version 1.2.8
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

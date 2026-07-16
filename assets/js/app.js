@@ -2831,7 +2831,7 @@
         if (dom.filterPanel) dom.filterPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
-        dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
+        if (dom.aboutCard) dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
 
         // Show the platform-correct modifier in the search hint (⌘ on Mac).
         var isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
