@@ -421,6 +421,32 @@ function sphotography_geo_features_for_ids( $ids ) {
     return array( 'type' => 'FeatureCollection', 'features' => $features );
 }
 
+/**
+ * Number of distinct "lit" administrative regions across all indexed photos:
+ * distinct province/state adcodes plus distinct China city adcodes. A China
+ * photo lights up both its province and its city, so both are counted.
+ * Cached per request.
+ *
+ * @return int
+ */
+function sphotography_lit_region_count() {
+    static $cached = null;
+    if ( null !== $cached ) {
+        return $cached;
+    }
+    global $wpdb;
+    $prov = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT meta_value) FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> ''",
+        SPHOTOGRAPHY_META_PROV
+    ) );
+    $city = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT meta_value) FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> ''",
+        SPHOTOGRAPHY_META_CITY
+    ) );
+    $cached = $prov + $city;
+    return $cached;
+}
+
 // ============================================
 // Manual "rebuild index" — batched admin-ajax endpoint
 // ============================================

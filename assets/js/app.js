@@ -59,8 +59,28 @@
         );
     }
 
+    // ---------------------------------------------------------------
+    // Night mode (v1.3.2)
+    //
+    // The three-way switch (light / dark / follow-system) overrides the
+    // backend `night_mode` at runtime. The choice is remembered in
+    // localStorage; the first visit falls back to the backend default. This
+    // drives BOTH the UI theme (body class) and — for the auto basemap — the
+    // map style, so `nightMode` here is the single source of truth the map
+    // resolvers read.
+    // ---------------------------------------------------------------
+    var NIGHT_STORAGE_KEY = 'sp-night-mode';
+    function readStoredNightMode() {
+        try {
+            var v = localStorage.getItem(NIGHT_STORAGE_KEY);
+            if (v === 'light' || v === 'dark' || v === 'system') return v;
+        } catch (e) {}
+        return null;
+    }
+    var nightMode = readStoredNightMode() || SETTINGS.nightMode || 'system';
+
     function resolveMapIsLight() {
-        var mode = SETTINGS.nightMode || 'system';
+        var mode = nightMode;
         if (mode === 'light') return true;
         if (mode === 'dark') return false;
         return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
@@ -399,6 +419,9 @@
         dom.detailTags = document.getElementById('detail-tags');
         dom.detailViewArticle = document.getElementById('detail-view-article');
         dom.aboutCard = document.getElementById('about-card');
+        dom.sidebarProfile = document.getElementById('sidebar-profile');
+        dom.sidebarProfileToggle = document.getElementById('sidebar-profile-toggle');
+        dom.sidebarProfilePanel = document.getElementById('sidebar-profile-panel');
     }
 
     // ---------------------------------------------------------------
@@ -535,6 +558,102 @@
     }
 
     // ---------------------------------------------------------------
+    // 6b. Night-mode switch (v1.3.2)
+    //
+    // A vertical three-segment control stacked below the zoom/compass in the
+    // top-right. Icons only (sun / moon / monitor). Toggling swaps the body
+    // night class immediately and, when the auto basemap is active, re-applies
+    // the resolved style and re-adds our photo layers.
+    // ---------------------------------------------------------------
+    var NIGHT_ICONS = {
+        light: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></svg>',
+        dark: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+        system: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
+    };
+    var NIGHT_LABELS = { light: '浅色', dark: '深色', system: '跟随系统' };
+
+    function updateNightSwitchUI() {
+        var btns = document.querySelectorAll('.sp-night-switch .sp-night-btn');
+        Array.prototype.forEach.call(btns, function (b) {
+            var on = b.getAttribute('data-mode') === nightMode;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+    }
+
+    // Re-apply the auto basemap after a night-mode change: setStyle preserves
+    // the camera; on idle we re-add the photo source/layers (and region layers)
+    // the new style dropped, then re-sync the DOM droplets.
+    function reapplyAutoStyle() {
+        if (!state.map) return;
+        try {
+            state.map.setStyle(autoStyle());
+        } catch (e) {
+            return;
+        }
+        state.map.once('idle', function () {
+            if (!state.map.getSource(CONFIG.clusterSourceId)) {
+                addPhotoSource(REGION.active ? state.regionUnmatched : state.allPhotos);
+                addPhotoLayers();
+                if (REGION.active) addRegionLayers();
+            }
+            if (typeof syncDroplets === 'function') syncDroplets();
+        });
+    }
+
+    function applyNightMode(mode) {
+        if (mode !== 'light' && mode !== 'dark' && mode !== 'system') mode = 'system';
+        if (mode === nightMode) return;
+        var wasLight = resolveMapIsLight();
+        nightMode = mode;
+        try { localStorage.setItem(NIGHT_STORAGE_KEY, mode); } catch (e) {}
+
+        var b = document.body;
+        b.classList.remove('sphotography-night-force-dark', 'sphotography-night-force-light', 'sphotography-night-system');
+        b.classList.add(mode === 'dark' ? 'sphotography-night-force-dark'
+            : mode === 'light' ? 'sphotography-night-force-light'
+            : 'sphotography-night-system');
+
+        updateNightSwitchUI();
+
+        // Only the auto basemap tracks light/dark; other presets keep their
+        // tiles. Re-apply just once the resolved lightness actually changed.
+        if (usingAutoStyle() && resolveMapIsLight() !== wasLight) {
+            reapplyAutoStyle();
+        }
+    }
+
+    function NightSwitchControl() {}
+    NightSwitchControl.prototype.onAdd = function (map) {
+        this._map = map;
+        var c = document.createElement('div');
+        c.className = 'maplibregl-ctrl maplibregl-ctrl-group sp-night-switch';
+        c.setAttribute('role', 'group');
+        c.setAttribute('aria-label', '明暗模式');
+        ['light', 'dark', 'system'].forEach(function (m) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'sp-night-btn';
+            btn.setAttribute('data-mode', m);
+            btn.title = NIGHT_LABELS[m];
+            btn.setAttribute('aria-label', NIGHT_LABELS[m]);
+            btn.innerHTML = NIGHT_ICONS[m];
+            btn.addEventListener('click', function () { applyNightMode(m); });
+            c.appendChild(btn);
+        });
+        this._container = c;
+        // Defer to next frame so the buttons exist before we mark the active one.
+        requestAnimationFrame(updateNightSwitchUI);
+        return c;
+    };
+    NightSwitchControl.prototype.onRemove = function () {
+        if (this._container && this._container.parentNode) {
+            this._container.parentNode.removeChild(this._container);
+        }
+        this._map = undefined;
+    };
+
+    // ---------------------------------------------------------------
     // 7. Map
     // ---------------------------------------------------------------
     function initMap() {
@@ -545,6 +664,8 @@
             attributionControl:true,
         });
         state.map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
+        // Stacks in top-right immediately below the zoom/compass group.
+        state.map.addControl(new NightSwitchControl(), 'top-right');
         state.map.addControl(new maplibregl.ScaleControl({unit:'metric',maxWidth:120}),'bottom-left');
         state.map.on('load', function() {
             state.mapLoaded = true;
@@ -3181,6 +3302,91 @@
     }
 
     // ---------------------------------------------------------------
+    // 16b. Profile expand (v1.3.2)
+    //
+    // Both profile modes reveal the same content (avatar / name / bio / stats /
+    // links). The card (mode A) grows in place upward; the sidebar panel
+    // (mode B) slides up over the article list. Height is measured so the
+    // max-height transition lands exactly on the content height for a clean,
+    // reversible animation. Closes on outside click, re-click, or Esc.
+    // ---------------------------------------------------------------
+    function initProfileExpand() {
+        // --- Mode A: bottom-right card ---
+        var card = dom.aboutCard;
+        if (card) {
+            var cardExpand = card.querySelector('.about-card-expand');
+            var setCard = function (open) {
+                card.classList.toggle('is-expanded', open);
+                card.setAttribute('aria-expanded', open ? 'true' : 'false');
+                if (cardExpand) {
+                    cardExpand.setAttribute('aria-hidden', open ? 'false' : 'true');
+                    cardExpand.style.maxHeight = open ? (cardExpand.scrollHeight + 'px') : '';
+                }
+            };
+            card.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (e.target.closest('a')) return; // let links work
+                setCard(!card.classList.contains('is-expanded'));
+            });
+            card.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.target.closest('a')) return;
+                    e.preventDefault();
+                    setCard(!card.classList.contains('is-expanded'));
+                }
+            });
+            document.addEventListener('click', function () {
+                if (card.classList.contains('is-expanded')) setCard(false);
+            });
+            window.addEventListener('resize', debounce(function () {
+                if (card.classList.contains('is-expanded') && cardExpand) {
+                    cardExpand.style.maxHeight = cardExpand.scrollHeight + 'px';
+                }
+            }, 150));
+            state._closeAboutCard = function () {
+                if (card.classList.contains('is-expanded')) setCard(false);
+            };
+        }
+
+        // --- Mode B: sidebar bottom panel ---
+        var wrap = dom.sidebarProfile;
+        var toggle = dom.sidebarProfileToggle;
+        var panel = dom.sidebarProfilePanel;
+        if (wrap && toggle && panel) {
+            var setSidebar = function (open) {
+                wrap.classList.toggle('is-expanded', open);
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+                panel.style.maxHeight = open ? (panel.scrollHeight + 'px') : '';
+            };
+            toggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                setSidebar(!wrap.classList.contains('is-expanded'));
+            });
+            // The expanded panel covers the trigger row, so a click on it
+            // (anywhere but a link) is the "click again to close" gesture.
+            panel.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (e.target.closest('a')) return; // let links work
+                setSidebar(false);
+            });
+            document.addEventListener('click', function (e) {
+                if (wrap.classList.contains('is-expanded') && !wrap.contains(e.target)) {
+                    setSidebar(false);
+                }
+            });
+            window.addEventListener('resize', debounce(function () {
+                if (wrap.classList.contains('is-expanded')) {
+                    panel.style.maxHeight = panel.scrollHeight + 'px';
+                }
+            }, 150));
+            state._closeSidebarProfile = function () {
+                if (wrap.classList.contains('is-expanded')) setSidebar(false);
+            };
+        }
+    }
+
+    // ---------------------------------------------------------------
     // 17. Hitokoto
     // ---------------------------------------------------------------
     function initHitokoto() {
@@ -3250,7 +3456,8 @@
         if (dom.filterPanel) dom.filterPanel.addEventListener('click', function(e) { e.stopPropagation(); });
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
-        if (dom.aboutCard) dom.aboutCard.addEventListener('click', function(e) { e.stopPropagation(); });
+        // The about-card's own click handling (toggle expand) lives in
+        // initProfileExpand(); no plain stop-propagation binding here.
 
         // Show the platform-correct modifier in the search hint (⌘ on Mac).
         var isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
@@ -3281,6 +3488,8 @@
                 closeFilterPanel();
                 closeAllPhotoPanels();
                 closeArticlePanel();
+                if (state._closeAboutCard) state._closeAboutCard();
+                if (state._closeSidebarProfile) state._closeSidebarProfile();
                 dom.detailSheet.classList.remove('active');
                 state.detailOpen = false;
             }
@@ -3321,6 +3530,7 @@
             initHitokoto();
             initEntryAnimation();
             bindUIEvents();
+            initProfileExpand();
             // Sidebar defaults to collapsed unless the "default expand sidebar"
             // setting is enabled.
             if (SETTINGS.sidebarDefaultOpen) {

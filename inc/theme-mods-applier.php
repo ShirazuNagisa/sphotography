@@ -222,6 +222,118 @@ function sphotography_body_classes( $classes ) {
 add_filter( 'body_class', 'sphotography_body_classes' );
 
 // ============================================
+// 3b. Profile stats + custom links (v1.3.2)
+// ============================================
+/**
+ * Counts shown in the expanded profile view: published posts, non-empty
+ * categories, and lit administrative regions. Cached per request.
+ *
+ * @return array{posts:int, categories:int, regions:int}
+ */
+function sphotography_profile_stats() {
+    static $cached = null;
+    if ( null !== $cached ) {
+        return $cached;
+    }
+    $counts = wp_count_posts( 'post' );
+    $posts  = $counts && isset( $counts->publish ) ? (int) $counts->publish : 0;
+    $cats   = get_categories( array( 'hide_empty' => true ) );
+    $regions = function_exists( 'sphotography_lit_region_count' ) ? sphotography_lit_region_count() : 0;
+    $cached = array(
+        'posts'      => $posts,
+        'categories' => is_array( $cats ) ? count( $cats ) : 0,
+        'regions'    => $regions,
+    );
+    return $cached;
+}
+
+/**
+ * Parse the "custom_links" mod (one "名称|链接" per line) into a list of
+ * validated { name, url } pairs. Lines without a valid URL are dropped.
+ *
+ * @return array[] List of array{name:string, url:string}.
+ */
+function sphotography_parse_profile_links() {
+    $raw = (string) sphotography_get_mod( 'custom_links' );
+    if ( '' === trim( $raw ) ) {
+        return array();
+    }
+    $links = array();
+    $lines = preg_split( '/\r\n|\r|\n/', $raw );
+    foreach ( $lines as $line ) {
+        $line = trim( $line );
+        if ( '' === $line ) {
+            continue;
+        }
+        $parts = explode( '|', $line, 2 );
+        if ( count( $parts ) === 2 ) {
+            $name = trim( $parts[0] );
+            $url  = trim( $parts[1] );
+        } else {
+            // No separator: use the URL itself as the label.
+            $name = trim( $parts[0] );
+            $url  = $name;
+        }
+        $url = esc_url_raw( $url );
+        if ( '' === $url ) {
+            continue;
+        }
+        if ( '' === $name ) {
+            $name = $url;
+        }
+        $links[] = array( 'name' => $name, 'url' => $url );
+    }
+    return $links;
+}
+
+/**
+ * Render the shared expanded-profile inner markup (avatar, name, bio, stats,
+ * custom links). Used by both the bottom-right card and the sidebar panel.
+ *
+ * @param array $args {
+ *     @type string $avatar   Avatar URL (may be empty).
+ *     @type string $name     Display name.
+ *     @type string $bio      Bio text (may be empty).
+ *     @type string $initial  Placeholder initial when no avatar.
+ * }
+ */
+function sphotography_render_profile_expand( $args ) {
+    $avatar  = isset( $args['avatar'] ) ? $args['avatar'] : '';
+    $name    = isset( $args['name'] ) ? $args['name'] : '';
+    $bio     = isset( $args['bio'] ) ? $args['bio'] : '';
+    $initial = isset( $args['initial'] ) ? $args['initial'] : '';
+    $stats   = sphotography_profile_stats();
+    $links   = sphotography_parse_profile_links();
+    ?>
+    <div class="profile-expand-inner">
+        <?php if ( $avatar ) : ?>
+            <img src="<?php echo esc_url( $avatar ); ?>" alt="" class="profile-expand-avatar">
+        <?php else : ?>
+            <span class="profile-expand-avatar profile-expand-avatar--placeholder"><?php echo esc_html( $initial ); ?></span>
+        <?php endif; ?>
+        <div class="profile-expand-name"><?php echo esc_html( $name ); ?></div>
+        <?php if ( '' !== trim( (string) $bio ) ) : ?>
+            <div class="profile-expand-bio"><?php echo esc_html( $bio ); ?></div>
+        <?php endif; ?>
+        <div class="profile-expand-stats">
+            <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $stats['posts']; ?></span><span class="profile-stat-label"><?php esc_html_e( '文章', 'sphotography' ); ?></span></div>
+            <span class="profile-stat-sep" aria-hidden="true"></span>
+            <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $stats['categories']; ?></span><span class="profile-stat-label"><?php esc_html_e( '分类', 'sphotography' ); ?></span></div>
+            <span class="profile-stat-sep" aria-hidden="true"></span>
+            <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $stats['regions']; ?></span><span class="profile-stat-label"><?php esc_html_e( '地块', 'sphotography' ); ?></span></div>
+        </div>
+        <?php if ( ! empty( $links ) ) : ?>
+            <div class="profile-expand-links">
+                <?php foreach ( $links as $link ) : ?>
+                    <a class="profile-expand-link" href="<?php echo esc_url( $link['url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $link['name'] ); ?></a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+// ============================================
 // 4. Pass settings to JS + embed photo/post data
 // ============================================
 function sphotography_localize_data() {
