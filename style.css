@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.3.5
+Version: 1.3.6
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -938,12 +938,27 @@ body.sidebar-collapsed .sidebar-expand-btn {
 }
 
 /* ============================================
-   Article scroll controls (v1.3.5)
-   The panel carries a transform while active, so these position:fixed children
-   are contained by (and pinned to) the panel box while its content scrolls.
+   Article scroll controls (v1.3.6)
+   Body-mounted overlay whose box is JS-synced to the panel's on-screen rect.
+   The overlay is NOT a scroll container and carries no transform, so the
+   absolutely-positioned buttons inside it stay pinned to the panel frame while
+   the panel content scrolls underneath.
    ============================================ */
-.article-nav-btn {
+.article-nav-overlay {
     position: fixed;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    z-index: 130;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 200ms var(--ease-out-expo, ease);
+}
+.article-nav-overlay.is-active { opacity: 1; }
+
+.article-nav-btn {
+    position: absolute;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -987,7 +1002,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
 
 /* Bottom trio: centred at the panel bottom. */
 .article-nav-bottom {
-    position: fixed;
+    position: absolute;
     bottom: 16px;
     left: 50%;
     transform: translateX(-50%) translateY(8px);
@@ -1008,6 +1023,47 @@ button.article-nav-btn:active { transform: scale(0.94); }
 .article-nav-bottom .article-nav-btn { position: static; }
 .article-nav-progress { cursor: default; pointer-events: none; }
 .article-nav-progress-num { font-variant-numeric: tabular-nums; }
+
+/* ============================================
+   AI full-text summary card (v1.3.6)
+   Sits between the header and the content; typewritten on first open.
+   ============================================ */
+.article-summary {
+    margin: 0 0 22px;
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+    border-left: 3px solid var(--primary);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+.article-summary-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 7px;
+    color: var(--primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.article-summary-label svg { flex: none; }
+.article-summary-text {
+    font-size: 0.9rem;
+    line-height: 1.75;
+    color: var(--text-secondary, var(--text-muted));
+}
+/* Blinking caret while the typewriter is running. */
+.article-summary.is-typing .article-summary-text::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 1px;
+    vertical-align: -0.15em;
+    background: var(--primary);
+    animation: sp-summary-caret 1s steps(1) infinite;
+}
+@keyframes sp-summary-caret { 50% { opacity: 0; } }
 
 .article-panel-header {
     margin-bottom: 20px;

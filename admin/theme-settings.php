@@ -87,6 +87,7 @@ function sphotography_get_default_settings() {
         'ai_enabled'          => false,
         'ai_model_mode'       => 'single',   // single | dual (vision + text)
         'ai_image_enabled'    => false,       // single-mode: model is multimodal
+        'ai_summary'          => false,       // AI 全文概述（前台文章页，默认关）
         'ai_base_url'         => '',          // primary / text / single model
         'ai_model'            => '',
         'ai_vision_base_url'  => '',          // vision model (dual mode)
@@ -119,7 +120,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'ai_summary', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -231,6 +232,7 @@ function sphotography_sanitize_settings( $input ) {
     $allowed_ai_mode               = array( 'single', 'dual' );
     $sanitized['ai_model_mode']    = in_array( $input['ai_model_mode'], $allowed_ai_mode, true ) ? $input['ai_model_mode'] : $defaults['ai_model_mode'];
     $sanitized['ai_image_enabled'] = ! empty( $input['ai_image_enabled'] ) ? 1 : 0;
+    $sanitized['ai_summary']       = ! empty( $input['ai_summary'] ) ? 1 : 0;
     $sanitized['ai_base_url']      = esc_url_raw( trim( (string) $input['ai_base_url'] ), array( 'https' ) );
     $sanitized['ai_model']         = sanitize_text_field( $input['ai_model'] );
     $sanitized['ai_vision_base_url'] = esc_url_raw( trim( (string) $input['ai_vision_base_url'] ), array( 'https' ) );
@@ -1101,6 +1103,18 @@ function sphotography_render_settings_page() {
                             <?php _e( '启用图片分析（单模型为多模态时勾选）', 'sphotography' ); ?>
                         </label>
                         <p class="sphotography-desc"><?php _e( '仅单模型模式：勾选表示你的单模型支持多模态，补全/润色会把文章图片一并发送分析。若你的模型不支持图片，请保持关闭——此时图片相关分析停用，仅使用文字，其余功能照常。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- AI 全文概述 (v1.3.6) -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[ai_summary]"
+                                   value="1"
+                                   <?php checked( $values['ai_summary'], 1 ); ?>>
+                            <?php _e( '启用 AI 全文概述（前台文章页）', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，文章发布/更新时会用文案模型为全文生成一段简短概述，存入数据库，并显示在文章展开页的标题与正文之间（读者首次打开以打字机逐字显示）。仅调用文案模型、只分析正文文字。已发布的旧文章会在下次被打开或保存时自动补生，也可在文章编辑页的 AI 面板手动重新生成。默认关闭。', 'sphotography' ); ?></p>
                     </div>
 
                     <!-- Primary / text / single model -->
