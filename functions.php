@@ -756,10 +756,33 @@ add_action( 'admin_enqueue_scripts', 'sphotography_admin_enqueue_settings' );
 // ============================================
 // The fullscreen map covers the viewport, so WP's admin toolbar (and the
 // html{margin-top:32px} bump it injects) pushes the map down and obscures the
-// top of the page for logged-in users. Disabling the bar on the front-end
-// stops the bump entirely — no CSS override needed. The wp-admin dashboard is
-// unaffected (the show_admin_bar filter isn't consulted there).
-add_filter( 'show_admin_bar', '__return_false' );
+// top of the page for logged-in users.
+//
+// `show_admin_bar => false` is the documented switch, but it can be overridden:
+// a plugin (or per-user "Show Toolbar" meta) may re-enable the bar at a later
+// filter priority, in which case the plain one-liner silently loses. So we do
+// three things, all front-end only — the wp-admin dashboard is never touched:
+//   1. Register the filter at PHP_INT_MAX so it wins any priority race.
+//   2. Force-hide the toolbar again on the `wp` hook, after all other plugins
+//      have had their say but before rendering.
+//   3. Emit a CSS safety net in <head> that neutralises the layout bump and
+//      hides the node even if something still forces it into the DOM.
+add_filter( 'show_admin_bar', '__return_false', PHP_INT_MAX );
+
+function sphotography_force_hide_admin_bar() {
+    if ( ! is_admin() ) {
+        show_admin_bar( false );
+    }
+}
+add_action( 'wp', 'sphotography_force_hide_admin_bar' );
+
+function sphotography_hide_admin_bar_css() {
+    if ( is_admin() ) {
+        return;
+    }
+    echo "<style id=\"sphotography-hide-adminbar\">html{margin-top:0 !important}#wpadminbar{display:none !important}</style>\n";
+}
+add_action( 'wp_head', 'sphotography_hide_admin_bar_css', 100 );
 
 // ============================================
 // 11. AJAX: Update theme from GitHub branch
