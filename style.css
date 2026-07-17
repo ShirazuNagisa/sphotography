@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.2.8
+Version: 1.2.9
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -543,6 +543,49 @@ body.sidebar-collapsed .sidebar {
 
 .post-card--large .post-card-date {
     margin-top: auto;
+}
+
+/* Sidebar profile row (v1.2.9) — one-line avatar + nickname, above the footer */
+.sidebar-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    margin: 0 4px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--color-border);
+}
+
+.sidebar-profile-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--color-surface);
+}
+
+.sidebar-profile-avatar--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: var(--primary);
+}
+
+.sidebar-profile-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Sidebar footer */

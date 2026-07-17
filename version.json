@@ -1,6 +1,6 @@
 {
-  "version": "1.2.8",
-  "changelog": "1、新增点+圆环鼠标光标样式，允许在后端选择（点+圆环/普通），默认为点+圆环；2、去除后端选项（含索引按键）点击时出现的蓝色边框；3、修复右下角个人信息模块个人简介留空未自动隐藏的问题；4、新增后端个人信息模块总开关，默认开启。",
+  "version": "1.2.9",
+  "changelog": "1、新增实验性 AI 模块：可在后端「实验性功能」中填入自己的 OpenAI 兼容 API Key，开启后在文章编辑页按关键词扩写正文、AI 自动建议标签；API Key 经 AES-256 加密存储、仅服务器端使用，从不回显；总开关默认关闭，附风险提示与连接测试。2、个人信息新增「边栏一行」展示方式（头像 + 昵称，位于边栏收起按钮上方），不含简介与一言，并设为默认；原右下角卡片方式仍可选择，升级用户保持原有外观。",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
   "check_url": "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
 }
