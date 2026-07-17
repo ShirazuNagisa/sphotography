@@ -113,7 +113,6 @@
         restBase: (typeof Sphotography !== 'undefined' ? Sphotography.restUrl : '/wp-json').replace(/\/$/, ''),
         markersEndpoint: 'sphotography/v1/photos',
         postsEndpoint: 'wp/v2/posts',
-        commentsEndpoint: 'wp/v2/comments',
         perPage: 500,
         postsPerPage: 50,
         sourceId: 'photos',
@@ -1922,149 +1921,569 @@
     }
 
     // ---------------------------------------------------------------
-    // 10b. Article Comments (WordPress comment system, inline via REST)
+    // 10b. Article Comments (custom sphotography/v1/comments REST API)
+    //
+    // Single-level threading, captcha, 悄悄话 (private) threads, reply e-mail
+    // notifications, safe Markdown, Unicode emoji, likes, pinning, commenter
+    // editing with edit history, UA display and generated text avatars — all
+    // driven by the per-site config in APP.comments.
     // ---------------------------------------------------------------
-    function buildCommentItem(c) {
-        var name = escapeHtml((c.author_name || '匿名').trim() || '匿名');
-        var dateStr = c.date ? formatDate(c.date.split('T')[0]) : '';
-        var avatar = '';
-        if (c.author_avatar_urls) {
-            var url = c.author_avatar_urls['48'] || c.author_avatar_urls['96'] || c.author_avatar_urls['24'];
-            if (url) avatar = '<img class="comment-avatar" src="' + escapeHtml(url) + '" alt="" loading="lazy">';
+    var CCFG = (APP.comments && typeof APP.comments === 'object') ? APP.comments : {};
+    var COMMENTS_BASE = 'sphotography/v1/comments';
+    // Per-post render state so pagination / reloads stay scoped to one article.
+    var cState = { postId: 0, page: 1, hasMore: false, loading: false };
+
+    var EMOJI_LIST = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳','😅','😜','🤔','😴','😇','🙃','😉','😌','😢','😭','😤','😱','😳','🥺','😔','🙄','😏','😬','🤯','🤗','👍','👎','👌','🙏','👏','🙌','💪','🤝','✌️','🤞','❤️','🧡','💛','💚','💙','💜','🖤','💔','✨','🔥','🎉','🎂','🌟','⭐','☀️','🌈','🌸','🍀','🐶','🐱','🍎','🍕','☕','🎵','📷','💯'];
+
+    function ccEndpoint(path) {
+        return CONFIG.restBase + '/' + COMMENTS_BASE + (path || '');
+    }
+
+    // Avatar block: preferred Gravatar with a text-avatar fallback (colour from
+    // the email hash) revealed when the Gravatar 404s. When text avatars are
+    // disabled the fallback is a neutral initial placeholder.
+    function commentAvatar(c) {
+        var name = (c.author || '匿名');
+        var initial = escapeHtml(name.trim().charAt(0).toUpperCase() || '?');
+        var textAvatar = CCFG.textAvatar !== false;
+        var hue = hashHue(c.hash || name);
+        var baseStyle = textAvatar ? (' style="background:hsl(' + hue + ',60%,52%)"') : '';
+        var baseCls = 'comment-avatar comment-avatar-fallback' + (textAvatar ? ' comment-text-avatar' : ' comment-avatar--placeholder');
+        var html = '<span class="comment-avatar-wrap">';
+        html += '<span class="' + baseCls + '"' + baseStyle + '>' + initial + '</span>';
+        if (c.gravatar) {
+            html += '<img class="comment-avatar comment-gravatar" src="' + escapeHtml(c.gravatar) + '" alt="" loading="lazy" onerror="this.remove()">';
         }
-        if (!avatar) {
-            avatar = '<span class="comment-avatar comment-avatar--placeholder">' + name.charAt(0).toUpperCase() + '</span>';
+        html += '</span>';
+        return html;
+    }
+
+    // Deterministic hue (0–359) from a string hash — matches the server's
+    // "colour by email hash" rule closely enough for a stable per-user colour.
+    function hashHue(str) {
+        str = String(str || '');
+        var h = 0;
+        for (var i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) >>> 0; }
+        return h % 360;
+    }
+
+    function commentMetaLine(c, isChild) {
+        var bits = [];
+        if (c.author_is_admin) bits.push('<span class="comment-badge comment-badge-admin">博主</span>');
+        if (c.pinned) bits.push('<span class="comment-badge comment-badge-pin">置顶</span>');
+        if (c.is_private) bits.push('<span class="comment-badge comment-badge-private">悄悄话</span>');
+        var reply = '';
+        if (isChild && CCFG.showReplyTo !== false && c.reply_to && c.reply_to.name) {
+            reply = '<span class="comment-reply-to">回复 @' + escapeHtml(c.reply_to.name) + '</span>';
         }
-        // content.rendered is sanitized HTML from WordPress.
-        var body = (c.content && c.content.rendered) ? c.content.rendered : '';
+        var date = c.date ? formatDate(String(c.date).split('T')[0]) : '';
+        var ua = c.ua ? '<span class="comment-ua">' + escapeHtml(c.ua) + '</span>' : '';
+        var edited = c.edited ? '<button type="button" class="comment-edited" data-cc-history="' + c.id + '">已编辑</button>' : '';
         return ''
-            + '<li class="comment-item">'
-            +   avatar
+            + '<div class="comment-head">'
+            +   '<span class="comment-author">' + escapeHtml(c.author || '匿名') + '</span>'
+            +   bits.join('')
+            +   reply
+            + '</div>'
+            + '<div class="comment-sub">'
+            +   (date ? '<span class="comment-date">' + escapeHtml(date) + '</span>' : '')
+            +   ua + edited
+            + '</div>';
+    }
+
+    function commentActions(c) {
+        var acts = [];
+        if (CCFG.likeEnabled !== false) {
+            acts.push('<button type="button" class="comment-act comment-like' + (c.liked ? ' is-liked' : '') + '" data-cc-like="' + c.id + '">♥ <span class="comment-like-count">' + (c.likes || 0) + '</span></button>');
+        }
+        acts.push('<button type="button" class="comment-act" data-cc-reply="' + c.id + '" data-cc-name="' + escapeHtml(c.author || '') + '">回复</button>');
+        if (c.can_edit) acts.push('<button type="button" class="comment-act" data-cc-edit="' + c.id + '">编辑</button>');
+        if (c.can_pin) acts.push('<button type="button" class="comment-act" data-cc-pin="' + c.id + '">' + (c.pinned ? '取消置顶' : '置顶') + '</button>');
+        return '<div class="comment-actions">' + acts.join('') + '</div>';
+    }
+
+    function buildCommentNode(c, isChild) {
+        // Cache per-comment raw text (for edit prefill) and edit history.
+        ccEditRaw[c.id] = c.content_raw || '';
+        ccHistory[c.id] = c.history || [];
+        var children = '';
+        if (!isChild && c.children && c.children.length) {
+            children = '<ul class="comment-children">' + c.children.map(function (ch) { return buildCommentNode(ch, true); }).join('') + '</ul>';
+        }
+        return ''
+            + '<li class="comment-item' + (isChild ? ' comment-item--child' : '') + (c.pinned ? ' is-pinned' : '') + '" id="comment-' + c.id + '" data-cc-id="' + c.id + '">'
+            +   commentAvatar(c)
             +   '<div class="comment-body">'
-            +     '<div class="comment-head"><span class="comment-author">' + name + '</span>'
-            +       (dateStr ? '<span class="comment-date">' + escapeHtml(dateStr) + '</span>' : '')
-            +     '</div>'
-            +     '<div class="comment-text">' + body + '</div>'
+            +     commentMetaLine(c, isChild)
+            +     '<div class="comment-text" data-cc-text="' + c.id + '">' + (c.content || '') + '</div>'
+            +     commentActions(c)
+            +     '<div class="comment-reply-slot"></div>'
             +   '</div>'
+            +   children
             + '</li>';
     }
 
     function renderComments(postId, commentStatus) {
         var wrap = dom.articleComments;
         if (!wrap) return;
+        cState = { postId: postId, page: 1, hasMore: false, loading: false };
         var isOpen = commentStatus !== 'closed';
         wrap.innerHTML = ''
-            + '<div class="comments-section">'
+            + '<div class="comments-section" data-cc-align="' + escapeHtml(CCFG.avatarAlign || 'top') + '">'
             +   '<h4 class="comments-title"><span class="comments-count-label">评论</span> <span class="comments-count">…</span></h4>'
             +   '<ul class="comment-list" id="comment-list"></ul>'
-            +   (isOpen ? buildCommentFormHtml() : '<p class="comments-closed">' + escapeHtml(APP.commentsClosedText || '评论已关闭。') + '</p>')
+            +   '<div class="comment-pager" id="comment-pager"></div>'
+            +   (isOpen ? buildCommentFormHtml(0) : '<p class="comments-closed">' + escapeHtml(APP.commentsClosedText || '评论已关闭。') + '</p>')
             + '</div>';
 
         var listEl = wrap.querySelector('#comment-list');
         var countEl = wrap.querySelector('.comments-count');
+        listEl.innerHTML = '<li class="comments-loading">加载中…</li>';
 
-        // Fetch approved comments for this post.
-        fetchFromRest(CONFIG.commentsEndpoint, { post: postId, per_page: 100, order: 'asc', orderby: 'date' })
-            .then(function (comments) {
-                if (state.openedPostId !== postId) return;
-                comments = Array.isArray(comments) ? comments : [];
-                countEl.textContent = comments.length ? '(' + comments.length + ')' : '(0)';
-                if (comments.length === 0) {
-                    listEl.innerHTML = '<li class="comments-empty">还没有评论，来抢沙发吧。</li>';
-                    return;
-                }
-                listEl.innerHTML = comments.map(buildCommentItem).join('');
-            });
+        wireCommentList(postId, listEl, countEl);
+        if (isOpen) wireCommentForm(postId, wrap.querySelector('.comment-form'), listEl, countEl);
 
-        if (isOpen) wireCommentForm(postId, listEl, countEl);
+        loadCommentPage(postId, 1, true, listEl, countEl);
     }
 
-    function buildCommentFormHtml() {
+    // GET with credentials + nonce. Logged-in users MUST send the REST nonce or
+    // WordPress rejects cookie-authenticated requests (rest_cookie_invalid_nonce),
+    // so we can't reuse the plain fetchFromRest helper here.
+    function ccGet(endpoint, params) {
+        var qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return fetch(CONFIG.restBase + '/' + endpoint + qs, {
+            credentials: 'same-origin',
+            headers: { 'X-WP-Nonce': APP.restNonce || '' }
+        }).then(function (res) {
+            if (!res.ok) return null;
+            return res.json();
+        }).catch(function () { return null; });
+    }
+
+    function loadCommentPage(postId, page, replace, listEl, countEl) {
+        if (cState.loading) return;
+        cState.loading = true;
+        ccGet(COMMENTS_BASE, { post: postId, page: page }).then(function (data) {
+            cState.loading = false;
+            if (state.openedPostId !== postId || !data) return;
+            var items = Array.isArray(data.items) ? data.items : [];
+            cState.page = data.page || page;
+            cState.hasMore = !!data.has_more;
+            countEl.textContent = '(' + (data.total || 0) + ')';
+
+            var loading = listEl.querySelector('.comments-loading');
+            if (loading) loading.remove();
+            if (replace) listEl.innerHTML = '';
+            var emptyEl = listEl.querySelector('.comments-empty');
+            if (emptyEl) emptyEl.remove();
+
+            if (replace && items.length === 0) {
+                listEl.innerHTML = '<li class="comments-empty">还没有评论，来抢沙发吧。</li>';
+            } else {
+                listEl.insertAdjacentHTML('beforeend', items.map(function (c) { return buildCommentNode(c, false); }).join(''));
+                applyFolding(listEl);
+            }
+            renderPager(postId, listEl, countEl);
+        });
+    }
+
+    function renderPager(postId, listEl, countEl) {
+        var pager = dom.articleComments.querySelector('#comment-pager');
+        if (!pager) return;
+        var paged = (CCFG.pagination === 'paged');
+        pager.innerHTML = '';
+        if (!cState.hasMore && cState.page <= 1) return;
+
+        if (paged) {
+            var html = '';
+            if (cState.page > 1) html += '<button type="button" class="comment-page-btn" data-cc-page="' + (cState.page - 1) + '">上一页</button>';
+            html += '<span class="comment-page-cur">第 ' + cState.page + ' 页</span>';
+            if (cState.hasMore) html += '<button type="button" class="comment-page-btn" data-cc-page="' + (cState.page + 1) + '">下一页</button>';
+            pager.innerHTML = html;
+        } else if (cState.hasMore) {
+            pager.innerHTML = '<button type="button" class="comment-page-btn comment-load-more" data-cc-page="' + (cState.page + 1) + '">加载更多评论</button>';
+        }
+    }
+
+    function applyFolding(listEl) {
+        if (CCFG.foldLong === false) return;
+        var limit = CCFG.foldPx || 200;
+        var texts = listEl.querySelectorAll('.comment-text');
+        for (var i = 0; i < texts.length; i++) {
+            var el = texts[i];
+            if (el.dataset.ccFolded) continue;
+            if (el.scrollHeight > limit + 40) {
+                el.dataset.ccFolded = '1';
+                el.classList.add('is-folded');
+                el.style.maxHeight = limit + 'px';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'comment-fold-toggle';
+                btn.textContent = '展开阅读全文';
+                btn.setAttribute('data-cc-fold', '1');
+                el.parentNode.insertBefore(btn, el.nextSibling);
+            }
+        }
+    }
+
+    function buildCommentFormHtml(parentId, replyName) {
         var loggedIn = !!APP.loggedIn;
+        var isReply = parentId > 0;
         var identityRow = loggedIn
-            ? '<p class="comment-identity">以 <strong>' + escapeHtml(APP.currentUserName || '') + '</strong> 的身份评论</p>'
+            ? '<p class="comment-identity">以 <strong>' + escapeHtml(APP.currentUserName || '') + '</strong> 的身份' + (isReply ? '回复' : '评论') + '</p>'
             : ''
                 + '<div class="comment-fields">'
-                +   '<input type="text" class="comment-input" id="comment-author" placeholder="昵称 *" autocomplete="name" required>'
-                +   '<input type="email" class="comment-input" id="comment-email" placeholder="邮箱（不公开）*" autocomplete="email" required>'
+                +   '<input type="text" class="comment-input comment-author" placeholder="昵称 *" autocomplete="name" required>'
+                +   '<input type="email" class="comment-input comment-email" placeholder="邮箱（不公开）*" autocomplete="email" required>'
                 + '</div>';
+
+        var emojiBtn = (CCFG.emojiPanel !== false)
+            ? '<button type="button" class="comment-emoji-btn" title="插入表情">😊</button>'
+            : '';
+
+        var captchaRow = (CCFG.captcha && !loggedIn)
+            ? '<div class="comment-captcha-row"><span class="comment-captcha-q">…</span><input type="text" class="comment-input comment-captcha-input" inputmode="numeric" placeholder="= ?" autocomplete="off"><button type="button" class="comment-captcha-refresh" title="换一题">↻</button></div>'
+            : '';
+
+        var options = '';
+        if (!isReply && CCFG.allowPrivate) {
+            options += '<label class="comment-opt"><input type="checkbox" class="comment-private"> 悄悄话（仅自己和博主可见）</label>';
+        }
+        if (CCFG.mailNotify) {
+            options += '<label class="comment-opt"><input type="checkbox" class="comment-notify" checked> 启用邮件通知</label>';
+        }
+
         return ''
-            + '<form class="comment-form" id="comment-form" novalidate>'
+            + '<form class="comment-form' + (isReply ? ' comment-form--reply' : '') + '" novalidate data-cc-parent="' + (parentId || 0) + '">'
             +   identityRow
-            +   '<textarea class="comment-textarea" id="comment-content" rows="3" placeholder="写下你的评论…" required></textarea>'
+            +   '<textarea class="comment-textarea" rows="3" placeholder="' + (isReply ? ('回复 @' + escapeHtml(replyName || '') + '…') : '写下你的评论…') + '" required></textarea>'
+            +   (CCFG.emojiPanel !== false ? '<div class="comment-emoji-panel" hidden>' + EMOJI_LIST.map(function (e) { return '<button type="button" class="comment-emoji">' + e + '</button>'; }).join('') + '</div>' : '')
+            +   captchaRow
+            +   (options ? '<div class="comment-options">' + options + '</div>' : '')
             +   '<div class="comment-form-footer">'
-            +     '<span class="comment-feedback" id="comment-feedback"></span>'
-            +     '<button type="submit" class="comment-submit">发表评论</button>'
+            +     emojiBtn
+            +     '<span class="comment-feedback"></span>'
+            +     '<button type="submit" class="comment-submit">' + (isReply ? '回复' : '发表评论') + '</button>'
             +   '</div>'
             + '</form>';
     }
 
-    function wireCommentForm(postId, listEl, countEl) {
-        var form = dom.articleComments.querySelector('#comment-form');
+    // Fetch and inject a fresh captcha challenge into a form.
+    function loadCaptcha(form) {
+        var qEl = form.querySelector('.comment-captcha-q');
+        var input = form.querySelector('.comment-captcha-input');
+        if (!qEl || !input) return;
+        qEl.textContent = '…';
+        input.value = '';
+        input.removeAttribute('data-cc-token');
+        fetchFromRest(COMMENTS_BASE + '/captcha', null).then(function (data) {
+            if (!data) { qEl.textContent = '验证码加载失败'; return; }
+            qEl.textContent = data.question + ' =';
+            input.setAttribute('data-cc-token', data.token);
+        });
+    }
+
+    // Insert text at the caret of a textarea.
+    function insertAtCaret(textarea, text) {
+        var start = textarea.selectionStart || 0;
+        var end = textarea.selectionEnd || 0;
+        var val = textarea.value;
+        textarea.value = val.slice(0, start) + text + val.slice(end);
+        var pos = start + text.length;
+        textarea.selectionStart = textarea.selectionEnd = pos;
+        textarea.focus();
+    }
+
+    // Wire an individual form (top-level or reply/edit) — submit, emoji, captcha.
+    function wireCommentForm(postId, form, listEl, countEl, editId) {
         if (!form) return;
         form.addEventListener('click', function (e) { e.stopPropagation(); });
+
+        var textarea = form.querySelector('.comment-textarea');
+        var emojiBtn = form.querySelector('.comment-emoji-btn');
+        var emojiPanel = form.querySelector('.comment-emoji-panel');
+        if (emojiBtn && emojiPanel) {
+            emojiBtn.addEventListener('click', function () { emojiPanel.hidden = !emojiPanel.hidden; });
+            emojiPanel.addEventListener('click', function (e) {
+                var b = e.target.closest('.comment-emoji');
+                if (b) { insertAtCaret(textarea, b.textContent); }
+            });
+        }
+
+        var captchaInput = form.querySelector('.comment-captcha-input');
+        if (captchaInput) {
+            loadCaptcha(form);
+            var refresh = form.querySelector('.comment-captcha-refresh');
+            if (refresh) refresh.addEventListener('click', function () { loadCaptcha(form); });
+        }
+
         form.addEventListener('submit', function (e) {
             e.preventDefault();
-            var feedback = form.querySelector('#comment-feedback');
-            var submitBtn = form.querySelector('.comment-submit');
-            var contentEl = form.querySelector('#comment-content');
-            var content = (contentEl.value || '').trim();
-            feedback.className = 'comment-feedback';
-            if (!content) { feedback.textContent = '请输入评论内容。'; feedback.classList.add('is-error'); return; }
+            submitCommentForm(postId, form, listEl, countEl, editId);
+        });
+    }
 
-            var payload = { post: postId, content: content };
-            if (!APP.loggedIn) {
-                var authorEl = form.querySelector('#comment-author');
-                var emailEl = form.querySelector('#comment-email');
-                var author = (authorEl.value || '').trim();
-                var email = (emailEl.value || '').trim();
-                if (!author || !email) { feedback.textContent = '请填写昵称与邮箱。'; feedback.classList.add('is-error'); return; }
-                payload.author_name = author;
-                payload.author_email = email;
+    function submitCommentForm(postId, form, listEl, countEl, editId) {
+        var feedback = form.querySelector('.comment-feedback');
+        var submitBtn = form.querySelector('.comment-submit');
+        var textarea = form.querySelector('.comment-textarea');
+        var content = (textarea.value || '').trim();
+        var submitLabel = submitBtn.textContent;
+        feedback.className = 'comment-feedback';
+        if (!content) { feedback.textContent = '请输入评论内容。'; feedback.classList.add('is-error'); return; }
+
+        // Edit mode → PUT-style edit endpoint.
+        if (editId) {
+            postJson(ccEndpoint('/' + editId + '/edit'), { content: content }).then(function (r) {
+                if (!r.ok) { feedback.textContent = ccError(r); feedback.classList.add('is-error'); return; }
+                var textEl = listEl.querySelector('[data-cc-text="' + editId + '"]');
+                if (textEl && r.data.comment) {
+                    textEl.innerHTML = r.data.comment.content || '';
+                    textEl.removeAttribute('data-cc-folded');
+                    textEl.classList.remove('is-folded');
+                    textEl.style.maxHeight = '';
+                    var stale = textEl.parentNode.querySelector('.comment-fold-toggle');
+                    if (stale) stale.remove();
+                    applyFolding(listEl);
+                    // Mark edited.
+                    var head = textEl.parentNode.querySelector('.comment-sub');
+                    if (head && !head.querySelector('.comment-edited')) {
+                        head.insertAdjacentHTML('beforeend', '<button type="button" class="comment-edited" data-cc-history="' + editId + '">已编辑</button>');
+                    }
+                }
+                closeInlineForm(form);
+            });
+            return;
+        }
+
+        var parentId = parseInt(form.getAttribute('data-cc-parent'), 10) || 0;
+        var payload = { post: postId, content: content, parent: parentId };
+
+        if (!APP.loggedIn) {
+            var author = (form.querySelector('.comment-author').value || '').trim();
+            var email = (form.querySelector('.comment-email').value || '').trim();
+            if (!author || !email) { feedback.textContent = '请填写昵称与邮箱。'; feedback.classList.add('is-error'); return; }
+            payload.author_name = author;
+            payload.author_email = email;
+        }
+
+        var captchaInput = form.querySelector('.comment-captcha-input');
+        if (captchaInput) {
+            payload.captcha_token = captchaInput.getAttribute('data-cc-token') || '';
+            payload.captcha_answer = (captchaInput.value || '').trim();
+            if (!payload.captcha_answer) { feedback.textContent = '请回答验证码。'; feedback.classList.add('is-error'); return; }
+        }
+
+        var privateEl = form.querySelector('.comment-private');
+        if (privateEl && privateEl.checked) payload.is_private = 1;
+        var notifyEl = form.querySelector('.comment-notify');
+        if (notifyEl) payload.notify = notifyEl.checked ? 1 : 0;
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '提交中…';
+        feedback.textContent = '';
+
+        postJson(ccEndpoint(''), payload).then(function (r) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = submitLabel;
+            if (!r.ok) {
+                feedback.textContent = ccError(r);
+                feedback.classList.add('is-error');
+                if (captchaInput) loadCaptcha(form);
+                return;
+            }
+            textarea.value = '';
+            var c = r.data.comment;
+            if (r.data.status !== 'approved') {
+                feedback.textContent = '评论已提交，等待审核后显示。';
+                feedback.classList.add('is-success');
+                if (captchaInput) loadCaptcha(form);
+                return;
+            }
+            insertNewComment(c, parentId, listEl, countEl, form);
+            feedback.textContent = parentId ? '回复成功！' : '评论发表成功！';
+            feedback.classList.add('is-success');
+            if (captchaInput) loadCaptcha(form);
+        });
+    }
+
+    // Place a freshly-approved comment into the DOM.
+    function insertNewComment(c, parentId, listEl, countEl, form) {
+        var empty = listEl.querySelector('.comments-empty');
+        if (empty) empty.remove();
+        if (parentId) {
+            var parentLi = listEl.querySelector('.comment-item[data-cc-id="' + parentId + '"]');
+            // Replies always attach to the top-level ancestor's children list.
+            var rootLi = parentLi && parentLi.classList.contains('comment-item--child')
+                ? listEl.querySelector('.comment-item[data-cc-id="' + c.parent + '"]')
+                : parentLi;
+            if (rootLi) {
+                var childUl = rootLi.querySelector(':scope > .comment-children');
+                if (!childUl) {
+                    childUl = document.createElement('ul');
+                    childUl.className = 'comment-children';
+                    rootLi.appendChild(childUl);
+                }
+                childUl.insertAdjacentHTML('beforeend', buildCommentNode(c, true));
+            }
+            closeInlineForm(form);
+        } else {
+            listEl.insertAdjacentHTML('beforeend', buildCommentNode(c, false));
+        }
+        applyFolding(listEl);
+        var current = parseInt((countEl.textContent || '').replace(/\D/g, ''), 10) || 0;
+        countEl.textContent = '(' + (current + 1) + ')';
+    }
+
+    function closeInlineForm(form) {
+        var slot = form.closest('.comment-reply-slot');
+        if (slot) slot.innerHTML = '';
+    }
+
+    // Delegated handling for the whole list: like / reply / edit / pin / fold /
+    // pager / history.
+    function wireCommentList(postId, listEl, countEl) {
+        var section = dom.articleComments.querySelector('.comments-section');
+        section.addEventListener('click', function (e) {
+            var t = e.target;
+
+            var likeBtn = t.closest('[data-cc-like]');
+            if (likeBtn) {
+                var lid = likeBtn.getAttribute('data-cc-like');
+                postJson(ccEndpoint('/' + lid + '/like'), {}).then(function (r) {
+                    if (!r.ok) return;
+                    likeBtn.classList.toggle('is-liked', !!r.data.liked);
+                    var cnt = likeBtn.querySelector('.comment-like-count');
+                    if (cnt) cnt.textContent = r.data.likes;
+                });
+                return;
             }
 
-            submitBtn.disabled = true;
-            submitBtn.textContent = '提交中…';
-            feedback.textContent = '';
+            var pinBtn = t.closest('[data-cc-pin]');
+            if (pinBtn) {
+                var pid = pinBtn.getAttribute('data-cc-pin');
+                postJson(ccEndpoint('/' + pid + '/pin'), {}).then(function (r) {
+                    if (!r.ok) return;
+                    // Simplest correct refresh: reload from page 1.
+                    loadCommentPage(postId, 1, true, listEl, countEl);
+                });
+                return;
+            }
 
-            fetch(CONFIG.restBase + '/' + CONFIG.commentsEndpoint, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': APP.restNonce || '' },
-                body: JSON.stringify(payload)
-            }).then(function (res) {
-                return res.json().then(function (data) { return { ok: res.ok, data: data }; });
-            }).then(function (result) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '发表评论';
-                if (!result.ok) {
-                    var msg = (result.data && result.data.message) ? stripHtml(result.data.message) : '评论提交失败，请稍后再试。';
-                    feedback.textContent = msg;
-                    feedback.classList.add('is-error');
-                    return;
+            var replyBtn = t.closest('[data-cc-reply]');
+            if (replyBtn) {
+                openReplyForm(postId, replyBtn, listEl, countEl);
+                return;
+            }
+
+            var editBtn = t.closest('[data-cc-edit]');
+            if (editBtn) {
+                openEditForm(postId, editBtn, listEl, countEl);
+                return;
+            }
+
+            var foldBtn = t.closest('[data-cc-fold]');
+            if (foldBtn) {
+                var text = foldBtn.previousElementSibling;
+                if (text && text.classList.contains('comment-text')) {
+                    var expanded = text.classList.toggle('is-expanded');
+                    text.style.maxHeight = expanded ? 'none' : (CCFG.foldPx || 200) + 'px';
+                    foldBtn.textContent = expanded ? '收起' : '展开阅读全文';
                 }
-                var c = result.data;
-                contentEl.value = '';
-                if (c && c.status && c.status !== 'approved') {
-                    feedback.textContent = '评论已提交，等待审核后显示。';
-                    feedback.classList.add('is-success');
-                    return;
-                }
-                // Append the freshly approved comment and update the count.
-                var empty = listEl.querySelector('.comments-empty');
-                if (empty) listEl.innerHTML = '';
-                listEl.insertAdjacentHTML('beforeend', buildCommentItem(c));
-                var current = parseInt((countEl.textContent || '').replace(/\D/g, ''), 10) || 0;
-                countEl.textContent = '(' + (current + 1) + ')';
-                feedback.textContent = '评论发表成功！';
-                feedback.classList.add('is-success');
-            }).catch(function () {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '发表评论';
-                feedback.textContent = '网络错误，请稍后再试。';
-                feedback.classList.add('is-error');
-            });
+                return;
+            }
+
+            var histBtn = t.closest('[data-cc-history]');
+            if (histBtn) {
+                toggleHistory(histBtn);
+                return;
+            }
+
+            var pageBtn = t.closest('[data-cc-page]');
+            if (pageBtn) {
+                var pg = parseInt(pageBtn.getAttribute('data-cc-page'), 10) || 1;
+                var replace = (CCFG.pagination === 'paged');
+                loadCommentPage(postId, pg, replace, listEl, countEl);
+                return;
+            }
         });
+    }
+
+    function openReplyForm(postId, btn, listEl, countEl) {
+        var li = btn.closest('.comment-item');
+        var slot = li.querySelector(':scope > .comment-body > .comment-reply-slot');
+        if (!slot) return;
+        if (slot.innerHTML) { slot.innerHTML = ''; return; } // toggle off.
+        var name = btn.getAttribute('data-cc-name') || '';
+        slot.innerHTML = buildCommentFormHtml(parseInt(btn.getAttribute('data-cc-reply'), 10), name);
+        wireCommentForm(postId, slot.querySelector('.comment-form'), listEl, countEl);
+        var ta = slot.querySelector('.comment-textarea');
+        if (ta) ta.focus();
+    }
+
+    function openEditForm(postId, btn, listEl, countEl) {
+        var li = btn.closest('.comment-item');
+        var id = parseInt(btn.getAttribute('data-cc-edit'), 10);
+        var slot = li.querySelector(':scope > .comment-body > .comment-reply-slot');
+        if (!slot) return;
+        if (slot.innerHTML) { slot.innerHTML = ''; return; }
+        var textEl = li.querySelector(':scope > .comment-body > [data-cc-text="' + id + '"]');
+        var raw = (textEl && textEl.getAttribute('data-cc-raw')) || '';
+        // Edit form: a minimal textarea + save/cancel.
+        slot.innerHTML = ''
+            + '<form class="comment-form comment-form--edit" novalidate>'
+            +   '<textarea class="comment-textarea" rows="3"></textarea>'
+            + (CCFG.emojiPanel !== false ? '<button type="button" class="comment-emoji-btn" title="插入表情">😊</button><div class="comment-emoji-panel" hidden>' + EMOJI_LIST.map(function (em) { return '<button type="button" class="comment-emoji">' + em + '</button>'; }).join('') + '</div>' : '')
+            +   '<div class="comment-form-footer"><span class="comment-feedback"></span><button type="button" class="comment-edit-cancel comment-act">取消</button><button type="submit" class="comment-submit">保存</button></div>'
+            + '</form>';
+        var form = slot.querySelector('.comment-form');
+        var ta = form.querySelector('.comment-textarea');
+        ta.value = ccEditRaw[id] || raw || stripHtml(textEl ? textEl.innerHTML : '');
+        wireCommentForm(postId, form, listEl, countEl, id);
+        form.querySelector('.comment-edit-cancel').addEventListener('click', function () { slot.innerHTML = ''; });
+        ta.focus();
+    }
+
+    function toggleHistory(btn) {
+        var id = btn.getAttribute('data-cc-history');
+        var body = btn.closest('.comment-body');
+        var existing = body.querySelector('.comment-history');
+        if (existing) { existing.remove(); return; }
+        var hist = ccHistory[id];
+        var html = '<div class="comment-history">';
+        if (hist && hist.length) {
+            html += '<p class="comment-history-title">编辑记录</p>';
+            for (var i = 0; i < hist.length; i++) {
+                var d = hist[i].date ? formatDate(String(hist[i].date).split('T')[0]) : '';
+                html += '<div class="comment-history-item"><span class="comment-history-date">' + escapeHtml(d) + '</span>' + (hist[i].content || '') + '</div>';
+            }
+        } else {
+            html += '<p class="comment-history-empty">无可查看的编辑记录。</p>';
+        }
+        html += '</div>';
+        btn.closest('.comment-body').querySelector('.comment-text').insertAdjacentHTML('afterend', html);
+    }
+
+    // Caches keyed by comment id, populated as nodes are built.
+    var ccHistory = {};
+    var ccEditRaw = {};
+
+    // POST helper: JSON body + nonce, returns { ok, data }.
+    function postJson(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': APP.restNonce || '' },
+            body: JSON.stringify(payload || {})
+        }).then(function (res) {
+            return res.json().then(function (data) { return { ok: res.ok, data: data }; })
+                .catch(function () { return { ok: res.ok, data: {} }; });
+        }).catch(function () { return { ok: false, data: {} }; });
+    }
+
+    function ccError(r) {
+        if (r.data && r.data.message) return stripHtml(r.data.message);
+        return '操作失败，请稍后再试。';
     }
 
     // ---------------------------------------------------------------

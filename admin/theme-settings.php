@@ -87,6 +87,24 @@ function sphotography_get_default_settings() {
         'ai_model'            => '',
         'ai_vision_base_url'  => '',          // vision model (dual mode)
         'ai_vision_model'     => '',
+        // ⑪ Comments (v1.3.1). The comment system is served by the theme's own
+        // REST namespace (sphotography/v1/comments); these flags drive both the
+        // backend behaviour and the frontend UI (passed through wp_localize_script).
+        'comment_captcha'           => false,      // numeric-sum captcha (anonymous only)
+        'comment_allow_edit'        => true,       // commenter may re-edit own comment
+        'comment_allow_private'     => false,      // 悄悄话: thread visible only to author + admin
+        'comment_mail_notify'       => true,       // reply e-mail notifications (opt-in checkbox)
+        'comment_markdown'          => true,       // render a safe Markdown subset
+        'comment_emoji_panel'       => true,       // Unicode emoji picker
+        'comment_pagination'        => 'infinite', // infinite | paged
+        'comment_avatar_align'      => 'top',      // top | center
+        'comment_edit_history_view' => 'all',      // all | admin — who may read edit history
+        'comment_pin_enabled'       => true,       // admin may pin top-level comments
+        'comment_like_enabled'      => true,       // comment likes
+        'comment_ua_display'        => 'none',     // none|browser|browser_ver|platform_browser_ver|platform_browser|platform
+        'comment_text_avatar'       => true,       // generated text avatar when no Gravatar
+        'comment_fold_long'         => true,       // fold comments taller than a threshold
+        'comment_show_reply_to'     => true,       // show replied-to username in child comments
     );
 }
 
@@ -96,7 +114,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -208,6 +226,27 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['ai_model']         = sanitize_text_field( $input['ai_model'] );
     $sanitized['ai_vision_base_url'] = esc_url_raw( trim( (string) $input['ai_vision_base_url'] ), array( 'https' ) );
     $sanitized['ai_vision_model']  = sanitize_text_field( $input['ai_vision_model'] );
+
+    // ⑪ Comments (v1.3.1)
+    $sanitized['comment_captcha']       = ! empty( $input['comment_captcha'] ) ? 1 : 0;
+    $sanitized['comment_allow_edit']    = ! empty( $input['comment_allow_edit'] ) ? 1 : 0;
+    $sanitized['comment_allow_private'] = ! empty( $input['comment_allow_private'] ) ? 1 : 0;
+    $sanitized['comment_mail_notify']   = ! empty( $input['comment_mail_notify'] ) ? 1 : 0;
+    $sanitized['comment_markdown']      = ! empty( $input['comment_markdown'] ) ? 1 : 0;
+    $sanitized['comment_emoji_panel']   = ! empty( $input['comment_emoji_panel'] ) ? 1 : 0;
+    $sanitized['comment_pin_enabled']   = ! empty( $input['comment_pin_enabled'] ) ? 1 : 0;
+    $sanitized['comment_like_enabled']  = ! empty( $input['comment_like_enabled'] ) ? 1 : 0;
+    $sanitized['comment_text_avatar']   = ! empty( $input['comment_text_avatar'] ) ? 1 : 0;
+    $sanitized['comment_fold_long']     = ! empty( $input['comment_fold_long'] ) ? 1 : 0;
+    $sanitized['comment_show_reply_to'] = ! empty( $input['comment_show_reply_to'] ) ? 1 : 0;
+    $allowed_pagination = array( 'infinite', 'paged' );
+    $sanitized['comment_pagination'] = in_array( $input['comment_pagination'], $allowed_pagination, true ) ? $input['comment_pagination'] : $defaults['comment_pagination'];
+    $allowed_avatar_align = array( 'top', 'center' );
+    $sanitized['comment_avatar_align'] = in_array( $input['comment_avatar_align'], $allowed_avatar_align, true ) ? $input['comment_avatar_align'] : $defaults['comment_avatar_align'];
+    $allowed_edit_view = array( 'all', 'admin' );
+    $sanitized['comment_edit_history_view'] = in_array( $input['comment_edit_history_view'], $allowed_edit_view, true ) ? $input['comment_edit_history_view'] : $defaults['comment_edit_history_view'];
+    $allowed_ua = array( 'none', 'browser', 'browser_ver', 'platform_browser_ver', 'platform_browser', 'platform' );
+    $sanitized['comment_ua_display'] = in_array( $input['comment_ua_display'], $allowed_ua, true ) ? $input['comment_ua_display'] : $defaults['comment_ua_display'];
 
     return $sanitized;
 }
@@ -1127,6 +1166,163 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
+            <!-- Module 11: 评论 (v1.3.1) -->
+            <!-- ============================================ -->
+            <div class="sphotography-module" id="sp-mod-comments">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-admin-comments"></span>
+                    <h2><?php _e( '评论', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+
+                    <h3 class="sphotography-subhead"><?php _e( '评论功能', 'sphotography' ); ?></h3>
+
+                    <!-- Captcha -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_captcha]" value="1" <?php checked( $values['comment_captcha'], 1 ); ?>>
+                            <?php _e( '启用数字求和验证码', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，未登录访客发表评论前需回答一道随机数字加法题（如 3 + 5 = ?）。登录用户自动跳过。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Allow edit -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_allow_edit]" value="1" <?php checked( $values['comment_allow_edit'], 1 ); ?>>
+                            <?php _e( '允许评论者再次编辑评论', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论者可编辑自己发表的评论（依据登录身份或本浏览器）。每次编辑都会记录到编辑历史。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Private mode -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_allow_private]" value="1" <?php checked( $values['comment_allow_private'], 1 ); ?>>
+                            <?php _e( '允许悄悄话模式', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论者可将评论设为悄悄话。悄悄话评论及其下所有回复只有发送者和博主可见。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Mail notify -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_mail_notify]" value="1" <?php checked( $values['comment_mail_notify'], 1 ); ?>>
+                            <?php _e( '允许评论者接收回复邮件提醒', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论框显示"启用邮件通知"复选框（默认勾选）。评论有新回复且已通过审核时，通过站点邮件服务发送提醒。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Markdown -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_markdown]" value="1" <?php checked( $values['comment_markdown'], 1 ); ?>>
+                            <?php _e( '允许在评论中使用 Markdown 语法', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论支持安全的 Markdown 子集（粗体、斜体、删除线、链接、行内代码、代码块、引用、列表）。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Emoji panel -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_emoji_panel]" value="1" <?php checked( $values['comment_emoji_panel'], 1 ); ?>>
+                            <?php _e( '启用评论表情面板', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论输入框下显示表情键盘按钮，可插入 Unicode 表情。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-pagination"><?php _e( '评论分页方式', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-pagination" name="sphotography[comment_pagination]">
+                            <option value="infinite" <?php selected( $values['comment_pagination'], 'infinite' ); ?>><?php _e( '无限加载（滚动到底自动加载）', 'sphotography' ); ?></option>
+                            <option value="paged" <?php selected( $values['comment_pagination'], 'paged' ); ?>><?php _e( '分页加载（点击翻页）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '每批/每页 10 条顶层评论，子评论随其父评论一起加载。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <h3 class="sphotography-subhead"><?php _e( '评论区显示', 'sphotography' ); ?></h3>
+
+                    <!-- Avatar align -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-avatar-align"><?php _e( '评论头像垂直位置', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-avatar-align" name="sphotography[comment_avatar_align]">
+                            <option value="top" <?php selected( $values['comment_avatar_align'], 'top' ); ?>><?php _e( '居上', 'sphotography' ); ?></option>
+                            <option value="center" <?php selected( $values['comment_avatar_align'], 'center' ); ?>><?php _e( '居中', 'sphotography' ); ?></option>
+                        </select>
+                    </div>
+
+                    <!-- Edit history visibility -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-edit-history-view"><?php _e( '谁可以查看评论编辑记录', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-edit-history-view" name="sphotography[comment_edit_history_view]">
+                            <option value="all" <?php selected( $values['comment_edit_history_view'], 'all' ); ?>><?php _e( '所有人', 'sphotography' ); ?></option>
+                            <option value="admin" <?php selected( $values['comment_edit_history_view'], 'admin' ); ?>><?php _e( '仅博主', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择"所有人"时，被编辑过的评论会显示"已编辑"标记，任何人可点开查看历次版本。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Pin -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_pin_enabled]" value="1" <?php checked( $values['comment_pin_enabled'], 1 ); ?>>
+                            <?php _e( '开启评论置顶功能', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，博主可置顶顶层评论，置顶评论显示在评论区最前方。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Like -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_like_enabled]" value="1" <?php checked( $values['comment_like_enabled'], 1 ); ?>>
+                            <?php _e( '启用评论点赞', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，每条评论显示点赞按钮，同一访客可取消赞。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- UA display -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-ua-display"><?php _e( '评论者 UA 显示', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-ua-display" name="sphotography[comment_ua_display]">
+                            <option value="none" <?php selected( $values['comment_ua_display'], 'none' ); ?>><?php _e( '不显示', 'sphotography' ); ?></option>
+                            <option value="browser" <?php selected( $values['comment_ua_display'], 'browser' ); ?>><?php _e( '浏览器', 'sphotography' ); ?></option>
+                            <option value="browser_ver" <?php selected( $values['comment_ua_display'], 'browser_ver' ); ?>><?php _e( '浏览器 + 版本号', 'sphotography' ); ?></option>
+                            <option value="platform_browser_ver" <?php selected( $values['comment_ua_display'], 'platform_browser_ver' ); ?>><?php _e( '平台 + 浏览器 + 版本号', 'sphotography' ); ?></option>
+                            <option value="platform_browser" <?php selected( $values['comment_ua_display'], 'platform_browser' ); ?>><?php _e( '平台 + 浏览器', 'sphotography' ); ?></option>
+                            <option value="platform" <?php selected( $values['comment_ua_display'], 'platform' ); ?>><?php _e( '平台', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '仅解析并显示浏览器/平台，不记录访客 IP。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Text avatar -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_text_avatar]" value="1" <?php checked( $values['comment_text_avatar'], 1 ); ?>>
+                            <?php _e( '启用文字头像', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '评论者未设置 Gravatar 时自动生成文字头像，头像颜色由邮箱哈希计算。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Fold long -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_fold_long]" value="1" <?php checked( $values['comment_fold_long'], 1 ); ?>>
+                            <?php _e( '折叠过长评论', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，超过约 200px 高度的评论会被折叠，显示"展开阅读全文"。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Show reply-to -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_show_reply_to]" value="1" <?php checked( $values['comment_show_reply_to'], 1 ); ?>>
+                            <?php _e( '在子评论中显示被回复者用户名', 'sphotography' ); ?>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
             <!-- Module 10: 版本与更新 -->
             <!-- ============================================ -->
             <div class="sphotography-module" id="sp-mod-version">
@@ -1197,6 +1393,7 @@ function sphotography_render_settings_page() {
                         'sp-mod-mapstyle'  => __( '地图样式', 'sphotography' ),
                         'sp-mod-cdn'       => __( 'CDN 来源', 'sphotography' ),
                         'sp-mod-experimental' => __( '实验性功能', 'sphotography' ),
+                        'sp-mod-comments'  => __( '评论', 'sphotography' ),
                         'sp-mod-version'   => __( '版本与更新', 'sphotography' ),
                     );
                     foreach ( $toc_items as $anchor => $label ) :
