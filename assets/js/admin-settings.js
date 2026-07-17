@@ -25,7 +25,56 @@
         return false;
     }
 
+    // Shared across handlers below: flip the settings form to "dirty" so the
+    // unsaved-changes guard knows there is something worth warning about.
+    var markDirty = function () {};
+
     $(function () {
+        // ----- Unsaved-changes guard (v1.3.5) -----
+        // Once any option on the theme settings page is touched, warn before the
+        // user leaves without saving — via a confirm() on in-admin link clicks
+        // (menu, row actions, etc.) and the browser's native beforeunload prompt
+        // for tab close / refresh / back-forward. Saving (or resetting) clears
+        // the guard so the submit itself never triggers it.
+        var $settingsForm = $('#sphotography-settings-form');
+        if ($settingsForm.length) {
+            var formDirty = false;
+            var formLeaving = false;
+            markDirty = function () { formDirty = true; };
+
+            $settingsForm.on('input change', ':input', markDirty);
+            $settingsForm.on('submit', function () { formLeaving = true; });
+            $('#sphotography-reset-form').on('submit', function () { formLeaving = true; });
+
+            window.addEventListener('beforeunload', function (e) {
+                if (formDirty && !formLeaving) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                    return '';
+                }
+            });
+
+            // Capture-phase so we intercept before WordPress's own link handlers.
+            document.addEventListener('click', function (e) {
+                if (!formDirty || formLeaving) return;
+                var el = e.target;
+                var a = (el && el.closest) ? el.closest('a[href]') : null;
+                if (!a) return;
+                var href = a.getAttribute('href') || '';
+                if (!href || href.charAt(0) === '#' || href.toLowerCase().indexOf('javascript:') === 0) return;
+                if (a.target && a.target !== '_self') return;          // opens a new tab
+                if (a.classList.contains('sphotography-toc-link')) return; // in-page smooth scroll
+                if (!window.confirm(config.unsavedConfirm || '有未保存的修改，确定放弃并离开吗？')) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                } else {
+                    // Confirmed: allow this navigation and suppress the native
+                    // beforeunload prompt so the user isn't asked twice.
+                    formLeaving = true;
+                }
+            }, true);
+        }
+
         // ----- Live map preview (v1.2.6): debounced iframe reload -----
         var $preview = $('#sphotography-map-preview');
         var $frame = $('#sphotography-map-preview-frame');
@@ -72,6 +121,7 @@
         $('.sphotography-color-picker').wpColorPicker({
             change: function () {
                 $('.sphotography-preset-btn').removeClass('active');
+                markDirty();
                 reloadPreview();
             }
         });
@@ -81,6 +131,7 @@
             $('.sphotography-color-picker').iris('color', color).val(color);
             $('.sphotography-preset-btn').removeClass('active');
             $(this).addClass('active');
+            markDirty();
             reloadPreview();
         });
 

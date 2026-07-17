@@ -62,6 +62,7 @@ function sphotography_get_default_settings() {
         'reading_info'        => false,
         'reading_speed_cjk'   => 300,
         'reading_speed_latin' => 200,
+        'view_counter'        => true,      // 阅读量计数器（默认开）
         // ⑦ Map Style
         'map_style'           => 'auto',
         'map_style_custom_url' => '',
@@ -118,7 +119,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -185,6 +186,7 @@ function sphotography_sanitize_settings( $input ) {
 
     // ⑥ Reading Info
     $sanitized['reading_info'] = ! empty( $input['reading_info'] ) ? 1 : 0;
+    $sanitized['view_counter'] = ! empty( $input['view_counter'] ) ? 1 : 0;
     $sanitized['reading_speed_cjk'] = min( max( (int) $input['reading_speed_cjk'], 100 ), 1500 );
     if ( empty( $input['reading_speed_cjk'] ) ) {
         $sanitized['reading_speed_cjk'] = $defaults['reading_speed_cjk'];
@@ -844,6 +846,17 @@ function sphotography_render_settings_page() {
                             <?php _e( '显示字数与阅读时长', 'sphotography' ); ?>
                         </label>
                         <p class="sphotography-desc"><?php _e( '开启后，在文章展开页顶部的日期与分类之间显示「字数 · 约 N 分钟」。阅读时长根据下方阅读速度估算，中英文分别计算。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[view_counter]"
+                                   value="1"
+                                   <?php checked( $values['view_counter'], 1 ); ?>>
+                            <?php _e( '启用阅读量计数器', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，统计每篇文章的阅读量并显示在文章展开页顶部的日期行与边栏卡片上。同一浏览器对同一篇文章每天最多计一次。关闭后停止计数并隐藏阅读量（不影响字数显示）。默认开启。', 'sphotography' ); ?></p>
                     </div>
 
                     <div class="sphotography-field">
@@ -1996,6 +2009,7 @@ function sphotography_admin_enqueue_settings( $hook ) {
         'aiTestFail'     => __( '连接失败：', 'sphotography' ),
         'previewUrl'     => sphotography_map_preview_url(),
         'resetConfirm'   => __( '确定要重置所有设置为默认值吗？此操作不可撤销。', 'sphotography' ),
+        'unsavedConfirm' => __( '有未保存的修改，确定放弃并离开此页面吗？', 'sphotography' ),
         'updateConfirm'  => __( "确定从 master 分支下载并覆盖主题文件吗？\n\n配置数据存在数据库中，不受影响。\n更新后请重新激活主题。", 'sphotography' ),
     ) );
 }
