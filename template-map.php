@@ -177,6 +177,9 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
             <h3 id="article-title"></h3>
             <div id="article-meta" class="article-meta"></div>
         </div>
+        <div id="article-summary" class="article-summary" hidden>
+            <!-- AI full-text summary (v1.3.6), typewritten on first open -->
+        </div>
         <div id="article-content" class="article-content">
             <!-- WordPress formatted content loaded by JS -->
         </div>

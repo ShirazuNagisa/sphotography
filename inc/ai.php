@@ -665,25 +665,27 @@ function sphotography_ai_render_meta_box( $post ) {
             <!-- 文章补全 -->
             <div class="sphotography-ai-section">
                 <label class="sphotography-ai-label" for="sphotography-ai-keywords"><?php esc_html_e( '文章补全', 'sphotography' ); ?></label>
-                <p class="sphotography-ai-hint"><?php esc_html_e( '根据当前正文与图片补全文章，关键词可留空。', 'sphotography' ); ?></p>
+                <p class="sphotography-ai-hint"><?php esc_html_e( '根据当前正文与图片补全文章，关键词可留空。生成结果会在主编辑区以打字机预览，确认后再插入正文。', 'sphotography' ); ?></p>
                 <textarea id="sphotography-ai-keywords" rows="2" placeholder="<?php esc_attr_e( '可选关键词/提纲，如：京都, 秋天, 银杏', 'sphotography' ); ?>"></textarea>
                 <button type="button" class="button" id="sphotography-ai-complete-btn"><?php esc_html_e( '生成补全', 'sphotography' ); ?></button>
-                <div class="sphotography-ai-result" id="sphotography-ai-complete-result" hidden>
-                    <div class="sphotography-ai-preview" id="sphotography-ai-complete-preview"></div>
-                    <button type="button" class="button button-primary" id="sphotography-ai-insert-btn"><?php esc_html_e( '插入正文', 'sphotography' ); ?></button>
-                </div>
             </div>
 
             <!-- 润色 -->
             <div class="sphotography-ai-section">
                 <label class="sphotography-ai-label"><?php esc_html_e( '润色', 'sphotography' ); ?></label>
-                <p class="sphotography-ai-hint"><?php esc_html_e( '分析当前正文与图片并润色，保持篇幅、不增删内容。应用后将替换正文（可用 Ctrl+Z 撤销）。', 'sphotography' ); ?></p>
+                <p class="sphotography-ai-hint"><?php esc_html_e( '分析当前正文与图片并润色，保持篇幅、不增删内容。生成后会在主编辑区左右对比原文与润色，确认应用才替换正文（可用 Ctrl+Z 撤销）。', 'sphotography' ); ?></p>
                 <button type="button" class="button" id="sphotography-ai-polish-btn"><?php esc_html_e( '生成润色', 'sphotography' ); ?></button>
-                <div class="sphotography-ai-result" id="sphotography-ai-polish-result" hidden>
-                    <div class="sphotography-ai-preview" id="sphotography-ai-polish-preview"></div>
-                    <button type="button" class="button button-primary" id="sphotography-ai-apply-btn"><?php esc_html_e( '应用润色', 'sphotography' ); ?></button>
-                </div>
             </div>
+
+            <?php if ( sphotography_ai_summary_enabled() ) : ?>
+            <!-- AI 全文概述 -->
+            <div class="sphotography-ai-section">
+                <label class="sphotography-ai-label"><?php esc_html_e( 'AI 全文概述', 'sphotography' ); ?></label>
+                <p class="sphotography-ai-hint"><?php esc_html_e( '为全文生成一段简短概述，显示在前台文章页。发布/更新后会自动生成；如需立即更新可手动重新生成（需先保存草稿以持久化）。', 'sphotography' ); ?></p>
+                <button type="button" class="button" id="sphotography-ai-summary-btn"><?php esc_html_e( '重新生成概述', 'sphotography' ); ?></button>
+                <div class="sphotography-ai-summary-preview" id="sphotography-ai-summary-preview" hidden></div>
+            </div>
+            <?php endif; ?>
 
             <!-- AI 自动标签 -->
             <div class="sphotography-ai-section">
@@ -734,17 +736,31 @@ function sphotography_ai_enqueue_editor( $hook ) {
         'nonce'        => wp_create_nonce( 'sphotography_ai_action' ),
         'imageActive'  => sphotography_ai_image_analysis_active() ? 1 : 0,
         'maxImages'    => SPHOTOGRAPHY_AI_MAX_IMAGES,
+        'postId'       => isset( $_GET['post'] ) ? absint( $_GET['post'] ) : ( isset( $post->ID ) ? (int) $post->ID : 0 ),
+        'summaryOn'    => sphotography_ai_summary_enabled() ? 1 : 0,
         'i18n'         => array(
-            'working'     => __( '生成中，请稍候…', 'sphotography' ),
-            'tagWorking'  => __( '分析中…', 'sphotography' ),
-            'noContent'   => __( '请先在正文中写入文字或插入图片，或填写关键词。', 'sphotography' ),
-            'noBody'      => __( '正文内容太少，无法分析标签。', 'sphotography' ),
-            'noPolish'    => __( '正文为空，无法润色。', 'sphotography' ),
-            'inserted'    => __( '已插入正文末尾。', 'sphotography' ),
-            'applied'     => __( '已应用润色（Ctrl+Z 可撤销）。', 'sphotography' ),
-            'tagAdded'    => __( '已添加', 'sphotography' ),
-            'error'       => __( '出错了：', 'sphotography' ),
-            'imgNoteOff'  => __( '检测到 %d 张图片，但图片分析已关闭，本次仅使用文字。', 'sphotography' ),
+            'working'      => __( '生成中，请稍候…', 'sphotography' ),
+            'tagWorking'   => __( '分析中…', 'sphotography' ),
+            'summaryWorking' => __( '正在生成概述…', 'sphotography' ),
+            'noContent'    => __( '请先在正文中写入文字或插入图片，或填写关键词。', 'sphotography' ),
+            'noBody'       => __( '正文内容太少，无法分析标签。', 'sphotography' ),
+            'noPolish'     => __( '正文为空，无法润色。', 'sphotography' ),
+            'inserted'     => __( '已插入正文末尾。', 'sphotography' ),
+            'applied'      => __( '已应用润色（Ctrl+Z 可撤销）。', 'sphotography' ),
+            'discarded'    => __( '已放弃。', 'sphotography' ),
+            'summaryDone'  => __( '概述已生成并保存。', 'sphotography' ),
+            'tagAdded'     => __( '已添加', 'sphotography' ),
+            'error'        => __( '出错了：', 'sphotography' ),
+            'imgNoteOff'   => __( '检测到 %d 张图片，但图片分析已关闭，本次仅使用文字。', 'sphotography' ),
+            // Overlay UI
+            'reviewCompleteTitle' => __( 'AI 补全预览', 'sphotography' ),
+            'reviewPolishTitle'   => __( 'AI 润色对比', 'sphotography' ),
+            'paneBefore'   => __( '原文', 'sphotography' ),
+            'paneAfter'    => __( '润色', 'sphotography' ),
+            'confirmInsert' => __( '确认插入', 'sphotography' ),
+            'applyPolish'  => __( '应用润色', 'sphotography' ),
+            'discard'      => __( '放弃', 'sphotography' ),
+            'close'        => __( '关闭', 'sphotography' ),
         ),
     ) );
 }
@@ -828,6 +844,79 @@ function sphotography_ai_metabox_css() {
         #sphotography-ai .sphotography-ai-chip:hover { border-color: #4aa3df; color: #4aa3df !important; }
         #sphotography-ai .sphotography-ai-chip.is-added { background: rgba(70,180,80,0.15) !important; border-color: #46b450; color: #58c46a !important; cursor: default; }
         #sphotography-ai .sphotography-ai-status { font-size: 12px; margin-top: 8px; min-height: 1em; }
+        #sphotography-ai .sphotography-ai-summary-preview {
+            margin-top: 10px; font-size: 12px; line-height: 1.7; background: var(--ai-pre) !important;
+            border: 1px solid var(--ai-border); border-radius: 6px; padding: 10px; color: var(--ai-fg) !important;
+        }
+
+        /* ============================================
+           Main-editor AI review overlay (v1.3.6)
+           Mounted on <body>, centred over the editor. Scheme-aware tokens like
+           the meta box; a distinct "AI ink" colour marks model-written text.
+           ============================================ */
+        .sp-ai-overlay {
+            --ai-bg: #ffffff; --ai-fg: #1d2327; --ai-heading: #1d2327; --ai-border: #dcdcde;
+            --ai-muted: #757575; --ai-pre: #f6f7f7; --ai-ink: #6b4cf6; --ai-ink-bg: rgba(107,76,246,0.12);
+            --ai-del: #c0392b; --ai-del-bg: rgba(192,57,43,0.10);
+            position: fixed; inset: 0; z-index: 160000;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.55); padding: 24px;
+            opacity: 0; visibility: hidden; transition: opacity 180ms ease, visibility 180ms ease;
+        }
+        .sp-ai-overlay.is-open { opacity: 1; visibility: visible; }
+        body.sphotography-admin-global.sphotography-admin-scheme-dark .sp-ai-overlay,
+        .sp-ai-overlay.is-dark {
+            --ai-bg: #1c1c1c; --ai-fg: #ececec; --ai-heading: #ffffff; --ai-border: rgba(255,255,255,0.12);
+            --ai-muted: #9a9a9a; --ai-pre: #242424; --ai-ink: #b3a3ff; --ai-ink-bg: rgba(140,120,255,0.18);
+            --ai-del: #ff8a80; --ai-del-bg: rgba(255,120,110,0.16);
+        }
+        @media (prefers-color-scheme: dark) {
+            body.sphotography-admin-global.sphotography-admin-scheme-system .sp-ai-overlay {
+                --ai-bg: #1c1c1c; --ai-fg: #ececec; --ai-heading: #ffffff; --ai-border: rgba(255,255,255,0.12);
+                --ai-muted: #9a9a9a; --ai-pre: #242424; --ai-ink: #b3a3ff; --ai-ink-bg: rgba(140,120,255,0.18);
+                --ai-del: #ff8a80; --ai-del-bg: rgba(255,120,110,0.16);
+            }
+        }
+        .sp-ai-review {
+            display: flex; flex-direction: column;
+            width: min(920px, 96vw); max-height: min(84vh, 900px);
+            background: var(--ai-bg); color: var(--ai-fg);
+            border: 1px solid var(--ai-border); border-radius: 12px;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.45); overflow: hidden;
+            transform: translateY(10px) scale(0.99); transition: transform 200ms ease;
+        }
+        .sp-ai-overlay.is-open .sp-ai-review { transform: none; }
+        .sp-ai-review-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px; border-bottom: 1px solid var(--ai-border);
+        }
+        .sp-ai-review-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ai-heading); }
+        .sp-ai-review-close {
+            border: none; background: transparent; color: var(--ai-muted); cursor: pointer;
+            font-size: 22px; line-height: 1; padding: 2px 8px; border-radius: 6px;
+        }
+        .sp-ai-review-close:hover { color: var(--ai-fg); background: var(--ai-pre); }
+        .sp-ai-review-body { padding: 16px 18px; overflow: auto; }
+        .sp-ai-review-body.is-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 640px) { .sp-ai-review-body.is-split { grid-template-columns: 1fr; } }
+        .sp-ai-pane-title { font-size: 12px; font-weight: 600; color: var(--ai-muted); margin: 0 0 6px; }
+        .sp-ai-pane {
+            background: var(--ai-pre); border: 1px solid var(--ai-border); border-radius: 8px;
+            padding: 12px 14px; font-size: 13.5px; line-height: 1.8; white-space: pre-wrap; word-break: break-word;
+            min-height: 80px;
+        }
+        .sp-ai-ink { color: var(--ai-ink); }
+        .sp-ai-pane .sp-ai-diff-add { background: var(--ai-ink-bg); color: var(--ai-ink); border-radius: 3px; padding: 0 2px; }
+        .sp-ai-pane .sp-ai-diff-del { background: var(--ai-del-bg); color: var(--ai-del); border-radius: 3px; padding: 0 2px; text-decoration: line-through; }
+        .sp-ai-caret::after {
+            content: ""; display: inline-block; width: 2px; height: 1.05em; margin-left: 1px;
+            vertical-align: -0.18em; background: var(--ai-ink); animation: sp-ai-caret 1s steps(1) infinite;
+        }
+        @keyframes sp-ai-caret { 50% { opacity: 0; } }
+        .sp-ai-review-foot {
+            display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+            padding: 12px 18px; border-top: 1px solid var(--ai-border);
+        }
     ';
 }
 
@@ -1039,3 +1128,268 @@ function sphotography_ai_parse_tag_list( $text ) {
     }
     return array_slice( array_values( array_unique( $clean ) ), 0, 8 );
 }
+
+// ============================================
+// AI full-text summary (概述) — v1.3.6
+//
+// A short plain-text overview of the whole article, generated by the primary
+// (text) model from the body text only. Stored in post meta and shown on the
+// frontend article panel between the title/meta and the content, typewritten on
+// the reader's first open. Generation runs asynchronously (wp-cron single
+// event) so publishing/saving is never blocked by the model call; a stored
+// content hash lets us skip regeneration unless the body actually changed.
+// Gated by the `ai_summary` setting (default off) on top of the AI master
+// switch + a configured primary model.
+// ============================================
+
+if ( ! defined( 'SPHOTOGRAPHY_AI_SUMMARY_META' ) ) {
+    define( 'SPHOTOGRAPHY_AI_SUMMARY_META', '_sp_ai_summary' );
+}
+if ( ! defined( 'SPHOTOGRAPHY_AI_SUMMARY_HASH_META' ) ) {
+    define( 'SPHOTOGRAPHY_AI_SUMMARY_HASH_META', '_sp_ai_summary_hash' );
+}
+if ( ! defined( 'SPHOTOGRAPHY_AI_SUMMARY_HOOK' ) ) {
+    define( 'SPHOTOGRAPHY_AI_SUMMARY_HOOK', 'sphotography_ai_generate_summary_event' );
+}
+
+/** Feature on = AI master switch on AND the 概述 sub-toggle on. */
+function sphotography_ai_summary_enabled() {
+    return sphotography_ai_is_enabled() && (bool) sphotography_get_mod( 'ai_summary' );
+}
+
+/** Stored summary for a post ('' if none). */
+function sphotography_ai_get_summary( $post_id ) {
+    return (string) get_post_meta( (int) $post_id, SPHOTOGRAPHY_AI_SUMMARY_META, true );
+}
+
+/** Normalised, whitespace-collapsed plain body text used for hashing + prompts. */
+function sphotography_ai_summary_source_text( $post_id ) {
+    $post = get_post( (int) $post_id );
+    if ( ! $post ) {
+        return '';
+    }
+    $text = strip_shortcodes( (string) $post->post_content );
+    $text = preg_replace( '/<!--.*?-->/s', ' ', $text );
+    $text = wp_strip_all_tags( $text );
+    $text = html_entity_decode( $text, ENT_QUOTES, 'UTF-8' );
+    return trim( preg_replace( '/\s+/u', ' ', $text ) );
+}
+
+/** md5 of the source body text; '' when there is no meaningful text. */
+function sphotography_ai_summary_source_hash( $post_id ) {
+    $text = sphotography_ai_summary_source_text( $post_id );
+    return '' === $text ? '' : md5( $text );
+}
+
+/**
+ * Clean a model reply into a single plain-text paragraph: strip fences/tags,
+ * drop a leading「概述：」style label, collapse whitespace, hard-cap length.
+ */
+function sphotography_ai_clean_summary_text( $text ) {
+    $text = (string) $text;
+    $text = preg_replace( '/```[a-zA-Z]*\s*/', '', $text );
+    $text = str_replace( '```', '', $text );
+    $text = wp_strip_all_tags( $text );
+    $text = trim( $text );
+    // Remove a leading label the model sometimes adds.
+    $text = preg_replace( '/^\s*(全文)?(概述|摘要|简介)\s*[:：]\s*/u', '', $text );
+    // Strip wrapping quotes.
+    $text = trim( $text, " \t\n\r\0\x0B\"“”'‘’" );
+    // One paragraph.
+    $text = trim( preg_replace( '/\s+/u', ' ', $text ) );
+    if ( mb_strlen( $text ) > 200 ) {
+        $text = rtrim( mb_substr( $text, 0, 200 ) ) . '…';
+    }
+    return $text;
+}
+
+/**
+ * Ask the primary/text model for a summary of the given title + body text.
+ * Text-only (never sends images), 40–100 字 plain text.
+ *
+ * @return string|WP_Error Cleaned plain text on success.
+ */
+function sphotography_ai_generate_summary_from_text( $title, $text ) {
+    $text = trim( (string) $text );
+    if ( mb_strlen( $text ) < 20 ) {
+        return new WP_Error( 'sp_ai_summary_short', __( '正文内容太少，无法生成概述。', 'sphotography' ) );
+    }
+    $text = mb_substr( $text, 0, 6000 );
+
+    $messages = array(
+        array(
+            'role'    => 'system',
+            'content' => __( '你是一名中文博客编辑。请为文章写一段简短的全文概述，帮助读者在展开阅读前快速了解主旨。要求：40 到 100 字；只用一段纯文本；概括全文核心内容与看点；不要出现「概述」「摘要」等前缀，不要标题、不要引号、不要 Markdown、不要换行，只输出概述本身。', 'sphotography' ),
+        ),
+        array(
+            'role'    => 'user',
+            'content' => sprintf( __( "文章标题：%1\$s\n\n文章正文：\n%2\$s", 'sphotography' ), (string) $title, $text ),
+        ),
+    );
+
+    // Always the primary/text model, text-only — never the vision path.
+    $result = sphotography_ai_chat( $messages, array( 'temperature' => 0.5, 'max_tokens' => 300, 'timeout' => 60 ) );
+    if ( is_wp_error( $result ) ) {
+        return $result;
+    }
+    $clean = sphotography_ai_clean_summary_text( $result );
+    if ( '' === $clean ) {
+        return new WP_Error( 'sp_ai_summary_empty', __( '未能生成概述，请重试。', 'sphotography' ) );
+    }
+    return $clean;
+}
+
+/** Generate a summary for a post from its stored content. */
+function sphotography_ai_generate_summary_text( $post_id ) {
+    $post = get_post( (int) $post_id );
+    if ( ! $post ) {
+        return new WP_Error( 'sp_ai_summary_nopost', __( '文章不存在。', 'sphotography' ) );
+    }
+    return sphotography_ai_generate_summary_from_text( get_the_title( $post ), sphotography_ai_summary_source_text( $post_id ) );
+}
+
+/** Persist a summary + the source hash it was generated from. */
+function sphotography_ai_store_summary( $post_id, $summary ) {
+    $post_id = (int) $post_id;
+    $summary = trim( (string) $summary );
+    if ( '' === $summary ) {
+        return;
+    }
+    update_post_meta( $post_id, SPHOTOGRAPHY_AI_SUMMARY_META, $summary );
+    update_post_meta( $post_id, SPHOTOGRAPHY_AI_SUMMARY_HASH_META, sphotography_ai_summary_source_hash( $post_id ) );
+}
+
+/** A fresh summary is needed when there is none, or the body changed since. */
+function sphotography_ai_summary_is_stale( $post_id ) {
+    if ( '' === sphotography_ai_get_summary( $post_id ) ) {
+        return true;
+    }
+    $stored_hash = (string) get_post_meta( (int) $post_id, SPHOTOGRAPHY_AI_SUMMARY_HASH_META, true );
+    return $stored_hash !== sphotography_ai_summary_source_hash( $post_id );
+}
+
+/**
+ * Schedule async summary generation for a published post when enabled + ready
+ * and (unless forced) the current summary is stale. Deduplicated against an
+ * already-scheduled event for the same post.
+ */
+function sphotography_ai_maybe_schedule_summary( $post_id, $force = false ) {
+    $post_id = (int) $post_id;
+    if ( ! sphotography_ai_summary_enabled() || ! sphotography_ai_primary_ready() ) {
+        return;
+    }
+    $post = get_post( $post_id );
+    if ( ! $post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) {
+        return;
+    }
+    if ( ! $force && ! sphotography_ai_summary_is_stale( $post_id ) ) {
+        return;
+    }
+    if ( wp_next_scheduled( SPHOTOGRAPHY_AI_SUMMARY_HOOK, array( $post_id ) ) ) {
+        return;
+    }
+    // A few seconds out so publishing stays snappy.
+    wp_schedule_single_event( time() + 5, SPHOTOGRAPHY_AI_SUMMARY_HOOK, array( $post_id ) );
+}
+
+/** wp-cron callback: generate + store, guarded so config changes are respected. */
+function sphotography_ai_run_summary_job( $post_id ) {
+    $post_id = (int) $post_id;
+    if ( ! sphotography_ai_summary_enabled() || ! sphotography_ai_primary_ready() ) {
+        return;
+    }
+    $post = get_post( $post_id );
+    if ( ! $post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) {
+        return;
+    }
+    if ( ! sphotography_ai_summary_is_stale( $post_id ) ) {
+        return;
+    }
+    $summary = sphotography_ai_generate_summary_text( $post_id );
+    if ( is_wp_error( $summary ) ) {
+        return;
+    }
+    sphotography_ai_store_summary( $post_id, $summary );
+}
+add_action( SPHOTOGRAPHY_AI_SUMMARY_HOOK, 'sphotography_ai_run_summary_job' );
+
+/** On publish/update of a post, (re)schedule summary generation if the body changed. */
+function sphotography_ai_summary_on_save( $post_id, $post, $update ) {
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+        return;
+    }
+    if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+        return;
+    }
+    if ( ! $post instanceof WP_Post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) {
+        return;
+    }
+    sphotography_ai_maybe_schedule_summary( $post_id );
+}
+add_action( 'save_post', 'sphotography_ai_summary_on_save', 20, 3 );
+
+// ============================================
+// Summary REST field (auto in wp/v2/posts + single fetch). Old published posts
+// with no summary get one lazily scheduled the next time they are fetched
+// singly (the article-panel open), independent of the view counter.
+// ============================================
+function sphotography_ai_register_summary_rest() {
+    register_rest_field( 'post', 'sp_ai_summary', array(
+        'get_callback' => 'sphotography_ai_rest_summary_field',
+        'schema'       => array(
+            'description' => 'Sphotography AI full-text summary.',
+            'type'        => 'string',
+        ),
+    ) );
+}
+add_action( 'rest_api_init', 'sphotography_ai_register_summary_rest' );
+
+function sphotography_ai_rest_summary_field( $arr, $field_name, $request ) {
+    $post_id = (int) $arr['id'];
+    if ( ! sphotography_ai_summary_enabled() ) {
+        return '';
+    }
+    // Backfill only on a single-post fetch (article open), never on the list.
+    if ( is_object( $request ) && isset( $request['id'] ) && (int) $request['id'] === $post_id ) {
+        sphotography_ai_maybe_schedule_summary( $post_id );
+    }
+    return sphotography_ai_get_summary( $post_id );
+}
+
+// ============================================
+// AJAX: manual (re)generate from the editor's current content (synchronous so
+// the author sees the result immediately). Stores against the post.
+// ============================================
+function sphotography_ai_ajax_summary() {
+    if ( ! check_ajax_referer( 'sphotography_ai_action', 'nonce', false ) ) {
+        wp_send_json_error( __( '安全校验失败。', 'sphotography' ) );
+    }
+    if ( ! current_user_can( 'edit_posts' ) ) {
+        wp_send_json_error( __( '权限不足。', 'sphotography' ) );
+    }
+    if ( ! sphotography_ai_primary_ready() ) {
+        wp_send_json_error( __( 'AI 接口尚未配置完整。', 'sphotography' ) );
+    }
+
+    $post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
+    $title   = isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '';
+    $html    = isset( $_POST['text'] ) ? wp_kses_post( wp_unslash( $_POST['text'] ) ) : '';
+    $text    = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $html ) ) );
+
+    // Fall back to stored content when the editor sent nothing usable.
+    if ( mb_strlen( $text ) < 20 && $post_id ) {
+        $text  = sphotography_ai_summary_source_text( $post_id );
+        $title = '' !== $title ? $title : get_the_title( $post_id );
+    }
+
+    $summary = sphotography_ai_generate_summary_from_text( $title, $text );
+    if ( is_wp_error( $summary ) ) {
+        wp_send_json_error( $summary->get_error_message() );
+    }
+
+    if ( $post_id ) {
+        sphotography_ai_store_summary( $post_id, $summary );
+    }
+    wp_send_json_success( array( 'summary' => $summary ) );
+}
+add_action( 'wp_ajax_sphotography_ai_summary', 'sphotography_ai_ajax_summary' );

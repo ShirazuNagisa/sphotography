@@ -407,6 +407,7 @@
         dom.articleClose = document.getElementById('article-close');
         dom.articleTitle = document.getElementById('article-title');
         dom.articleMeta = document.getElementById('article-meta');
+        dom.articleSummary = document.getElementById('article-summary');
         dom.articleContent = document.getElementById('article-content');
         dom.articleShare = document.getElementById('article-share');
         dom.articleComments = document.getElementById('article-comments');
@@ -493,6 +494,59 @@
     // Small inline SVG icons (stroke = currentColor) reused across meta lines.
     var SP_ICON_EYE = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
     var SP_ICON_WORDS = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>';
+    // Sparkle mark for the AI summary card.
+    var SP_ICON_AI = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 2.5l1.6 4.3a4 4 0 0 0 2.35 2.35L20.25 10.75l-4.3 1.6a4 4 0 0 0-2.35 2.35L12 19l-1.6-4.3a4 4 0 0 0-2.35-2.35L3.75 10.75l4.3-1.6a4 4 0 0 0 2.35-2.35L12 2.5z"/><path d="M18.5 3.5l.55 1.45a1.4 1.4 0 0 0 .82.82L21.5 6.4l-1.45.55a1.4 1.4 0 0 0-.82.82L18.5 9.3l-.55-1.45a1.4 1.4 0 0 0-.82-.82L15.5 6.4l1.45-.55a1.4 1.4 0 0 0 .82-.82z"/></svg>';
+
+    // ---------------------------------------------------------------
+    // AI full-text summary card (v1.3.6). Shows post.sp_ai_summary between the
+    // header and the content; typewritten on the reader's FIRST open of a post
+    // (tracked per browser via localStorage), full text on later opens.
+    // ---------------------------------------------------------------
+    var summaryTypeTimer = null;
+    function renderArticleSummary(post) {
+        var el = dom.articleSummary;
+        if (!el) return;
+        if (summaryTypeTimer) { clearTimeout(summaryTypeTimer); summaryTypeTimer = null; }
+        el.classList.remove('is-typing');
+
+        var summary = (SETTINGS.aiSummary && post && typeof post.sp_ai_summary === 'string')
+            ? post.sp_ai_summary.trim() : '';
+        if (!summary) { el.hidden = true; el.innerHTML = ''; return; }
+
+        el.innerHTML =
+            '<div class="article-summary-label">' + SP_ICON_AI + '<span>AI 概述</span></div>' +
+            '<div class="article-summary-text"></div>';
+        el.hidden = false;
+        var textEl = el.querySelector('.article-summary-text');
+
+        var key = 'sp-summary-typed-' + (post.id || '');
+        var alreadyTyped = false;
+        try { alreadyTyped = !!localStorage.getItem(key); } catch (e) {}
+
+        if (alreadyTyped || prefersReducedMotion()) {
+            textEl.textContent = summary;
+            return;
+        }
+
+        // Typewriter reveal (Array.from keeps emoji/surrogate pairs intact).
+        el.classList.add('is-typing');
+        var chars = Array.from(summary);
+        var i = 0;
+        var pid = post.id;
+        function tick() {
+            if (state.openedPostId !== pid) { el.classList.remove('is-typing'); summaryTypeTimer = null; return; }
+            i += 1;
+            textEl.textContent = chars.slice(0, i).join('');
+            if (i < chars.length) {
+                summaryTypeTimer = setTimeout(tick, 38);
+            } else {
+                el.classList.remove('is-typing');
+                summaryTypeTimer = null;
+                try { localStorage.setItem(key, '1'); } catch (e) {}
+            }
+        }
+        summaryTypeTimer = setTimeout(tick, 260); // brief lead-in after the panel opens
+    }
 
     // Record + fire a view hit for a post, de-duplicated per browser/post/day
     // via localStorage. Calls back with the authoritative count when the server
@@ -1833,6 +1887,7 @@
             dom.articleMeta.textContent = '';
             dom.articleContent.innerHTML = '';
         }
+        if (dom.articleSummary) { dom.articleSummary.hidden = true; dom.articleSummary.innerHTML = ''; }
         if (dom.articleShare) { dom.articleShare.hidden = true; dom.articleShare.innerHTML = ''; }
         if (state.isMobile) closeSidebar(true);
 
@@ -1848,6 +1903,7 @@
                 dom.articleTitle.textContent = '文章加载失败';
                 dom.articleMeta.textContent = '';
                 dom.articleContent.innerHTML = '';
+                if (dom.articleSummary) { dom.articleSummary.hidden = true; dom.articleSummary.innerHTML = ''; }
                 if (dom.articleShare) { dom.articleShare.hidden = true; dom.articleShare.innerHTML = ''; }
                 dom.articlePanel.classList.add('active');
                 return;
@@ -1882,6 +1938,7 @@
                 }); });
             }
             dom.articleMeta.innerHTML = metaHtml;
+            renderArticleSummary(post);
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articlePanel.scrollTop = 0;
@@ -1921,6 +1978,7 @@
         var targetPostId = state.openedPostId;
         state.articleOpen = false;
         state.openedPostId = null;
+        hideArticleNav();
         // Photograph articles have no source card — fall back to a plain fade.
         if (targetPostId == null || !getPostCardGeometry(targetPostId)) {
             clearMotion();
@@ -2264,14 +2322,18 @@
     }
 
     // ---------------------------------------------------------------
-    // 10a-bis. Article panel scroll controls (v1.3.5)
+    // 10a-bis. Article panel scroll controls (v1.3.6)
     //
-    // The panel is itself the scroll container (position:fixed, overflow:auto)
-    // and always carries a transform while active, so position:fixed children
-    // are contained by the panel box and stay pinned as the content scrolls.
+    // The panel is the scroll container AND carries a transform + backdrop-filter
+    // while active, which makes position:fixed descendants scroll WITH the
+    // content (the v1.3.5 bug). Fix: the controls live in a body-mounted overlay
+    // that is NOT inside the panel, so it never scrolls; JS mirrors the overlay's
+    // box onto the panel's on-screen rect (getBoundingClientRect) on
+    // open/scroll/resize. The buttons are position:absolute within that
+    // non-transformed, non-scrolling overlay, so they stay pinned to the frame.
     //   • back-to-top — top-centre, appears once scrolled down
-    //   • bottom trio — to-bottom / reading-progress% / jump-to-comment,
-    //     centred at the panel bottom, visible only while article text still
+    //   • bottom trio — to-content-end / reading-progress% / jump-to-comment,
+    //     centred at the panel bottom, visible only while the article text still
     //     extends below the panel bottom.
     // ---------------------------------------------------------------
     var SP_NAV_SCROLL_MS = 640; // 中等偏快
@@ -2283,6 +2345,12 @@
         var upIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
         var downIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
         var commentIcon = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+
+        // Overlay wrapper: fixed to the viewport, geometry synced to the panel.
+        // pointer-events:none so it never blocks panel scroll/clicks; only the
+        // buttons re-enable pointer events.
+        var overlay = document.createElement('div');
+        overlay.className = 'article-nav-overlay';
 
         var top = document.createElement('button');
         top.type = 'button';
@@ -2335,9 +2403,11 @@
         bottom.appendChild(progress);
         bottom.appendChild(comment);
 
-        panel.appendChild(top);
-        panel.appendChild(bottom);
+        overlay.appendChild(top);
+        overlay.appendChild(bottom);
+        document.body.appendChild(overlay);
 
+        dom.articleNavOverlay = overlay;
         dom.articleNavTop = top;
         dom.articleNavBottom = bottom;
         dom.articleNavProgressNum = progress.querySelector('.article-nav-progress-num');
@@ -2349,10 +2419,29 @@
             requestAnimationFrame(function () { scheduled = false; updateArticleNav(); });
         });
         window.addEventListener('resize', function () {
-            if (state.articleOpen) updateArticleNav();
+            if (state.articleOpen) { syncArticleNavGeom(); updateArticleNav(); }
         });
 
         dom.articleNavBuilt = true;
+    }
+
+    // Mirror the overlay box onto the panel's current on-screen rect so the
+    // absolutely-positioned buttons resolve against the panel frame.
+    function syncArticleNavGeom() {
+        var panel = dom.articlePanel;
+        var overlay = dom.articleNavOverlay;
+        if (!panel || !overlay) return;
+        var r = panel.getBoundingClientRect();
+        overlay.style.left = r.left + 'px';
+        overlay.style.top = r.top + 'px';
+        overlay.style.width = r.width + 'px';
+        overlay.style.height = r.height + 'px';
+    }
+
+    function hideArticleNav() {
+        if (dom.articleNavOverlay) dom.articleNavOverlay.classList.remove('is-active');
+        if (dom.articleNavTop) dom.articleNavTop.classList.remove('is-visible');
+        if (dom.articleNavBottom) dom.articleNavBottom.classList.remove('is-visible');
     }
 
     // Absolute scrollTop that brings the bottom of #article-content level with
@@ -2387,6 +2476,7 @@
         var panel = dom.articlePanel;
         var content = dom.articleContent;
         if (!panel || !content) return;
+        syncArticleNavGeom();
         var panelRect = panel.getBoundingClientRect();
         var contentRect = content.getBoundingClientRect();
         var scrollTop = panel.scrollTop;
@@ -2408,11 +2498,21 @@
     }
 
     // Called once an article's content is in place: ensure controls exist, start
-    // at the top, and sync their state.
+    // at the top, and sync their state. Because the panel slides/scales in over
+    // ~openDuration, keep the overlay glued to it for the length of the entrance.
     function setupArticleNav() {
         buildArticleNav();
-        // Fresh content starts at the top unless a deep-link scroll is pending.
-        requestAnimationFrame(function () { updateArticleNav(); });
+        if (dom.articleNavOverlay) dom.articleNavOverlay.classList.add('is-active');
+        syncArticleNavGeom();
+        var until = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.openDuration ? ARTICLE_MOTION.openDuration : 600) + 80;
+        var t0 = null;
+        requestAnimationFrame(function loop(t) {
+            if (!state.articleOpen) return;
+            if (t0 === null) t0 = t;
+            syncArticleNavGeom();
+            if (t - t0 < until) requestAnimationFrame(loop);
+            else updateArticleNav();
+        });
     }
 
     // ---------------------------------------------------------------

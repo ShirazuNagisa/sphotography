@@ -360,6 +360,7 @@ function sphotography_localize_data() {
         'readingSpeedCjk'  => (int) sphotography_get_mod( 'reading_speed_cjk' ),
         'readingSpeedLatin' => (int) sphotography_get_mod( 'reading_speed_latin' ),
         'viewCounter'      => (bool) sphotography_get_mod( 'view_counter' ),
+        'aiSummary'        => function_exists( 'sphotography_ai_summary_enabled' ) ? sphotography_ai_summary_enabled() : false,
         'mapStyle'         => sphotography_get_mod( 'map_style' ),
         'mapStyleCustomUrl' => sphotography_get_mod( 'map_style_custom_url' ),
         // Motion personality (v1.2.5) — raw picker values; app.js resolves them.
