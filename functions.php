@@ -752,15 +752,14 @@ add_action( 'admin_menu', 'sphotography_register_admin_menu' );
 add_action( 'admin_enqueue_scripts', 'sphotography_admin_enqueue_settings' );
 
 // ============================================
-// 10. Remove admin bar margin for map template
+// 10. Hide the WordPress admin toolbar on the front-end
 // ============================================
-function sphotography_hide_admin_bar_on_map() {
-    if ( is_page_template( 'template-map.php' ) ) {
-        add_filter( 'show_admin_bar', '__return_false' );
-        echo '<style>html{margin-top:0!important}#wpadminbar{display:none!important}</style>';
-    }
-}
-add_action( 'init', 'sphotography_hide_admin_bar_on_map' );
+// The fullscreen map covers the viewport, so WP's admin toolbar (and the
+// html{margin-top:32px} bump it injects) pushes the map down and obscures the
+// top of the page for logged-in users. Disabling the bar on the front-end
+// stops the bump entirely — no CSS override needed. The wp-admin dashboard is
+// unaffected (the show_admin_bar filter isn't consulted there).
+add_filter( 'show_admin_bar', '__return_false' );
 
 // ============================================
 // 11. AJAX: Update theme from GitHub branch
