@@ -353,7 +353,73 @@ function sphotography_admin_global_css() {
     // Dark block-editor interface (sidebar, panels, inputs, meta boxes).
     $css .= sphotography_admin_editor_dark_css();
 
+    // Dark readability for WordPress's own settings-screen text.
+    $css .= sphotography_admin_native_dark_css();
+
     return $css;
+}
+
+/**
+ * Dark-scheme readability pass for WordPress core option/settings screens.
+ * Core pins a lot of copy to a dark ink (#1d2327 / #3c434a) with high
+ * specificity, which is invisible on the dark surface. Force the light text
+ * token on the native elements that the base rules don't already reach. Scoped
+ * to the dark class and the system-preference branch so light mode is
+ * untouched.
+ *
+ * @return string
+ */
+function sphotography_admin_native_dark_css() {
+	$rules = "
+		{P} #wpbody-content h1,
+		{P} #wpbody-content h2,
+		{P} #wpbody-content h3,
+		{P} .wrap .wp-heading-inline,
+		{P} .form-table th,
+		{P} .form-table td,
+		{P} .form-table label,
+		{P} .form-table td strong,
+		{P} #wpbody-content strong,
+		{P} #wpbody-content li,
+		{P} #wpbody-content p,
+		{P} #wpbody-content label,
+		{P} #wpbody-content legend,
+		{P} #wpbody-content abbr,
+		{P} .postbox .hndle,
+		{P} .postbox .hndle span,
+		{P} .postbox-header .hndle,
+		{P} .postbox h2,
+		{P} .postbox h3,
+		{P} .metabox-holder .postbox,
+		{P} .notice,
+		{P} .notice p,
+		{P} .updated,
+		{P} .updated p,
+		{P} .wp-list-table thead th,
+		{P} .wp-list-table thead td,
+		{P} .wp-list-table tfoot th,
+		{P} .subsubsub,
+		{P} .subsubsub a,
+		{P} .tablenav,
+		{P} .tablenav-pages,
+		{P} .displaying-num,
+		{P} #wpfooter,
+		{P} #wpfooter p { color: var(--sp-text); }
+		{P} #wpbody-content code,
+		{P} #wpbody-content kbd { background: var(--sp-surface-2); color: var(--sp-text); border-radius: 4px; }
+		{P} .notice,
+		{P} .updated,
+		{P} div.updated,
+		{P} div.error { background: var(--sp-surface); border: 1px solid var(--sp-border); }
+		{P} #screen-meta,
+		{P} #screen-meta-links .show-settings,
+		{P} .metabox-prefs label { color: var(--sp-text); }
+	";
+
+	$dark   = str_replace( '{P}', 'body.sphotography-admin-global.sphotography-admin-scheme-dark', $rules );
+	$system = str_replace( '{P}', 'body.sphotography-admin-global.sphotography-admin-scheme-system', $rules );
+
+	return $dark . "\n@media (prefers-color-scheme: dark) {\n" . $system . "\n}\n";
 }
 
 /**
@@ -423,6 +489,55 @@ function sphotography_admin_editor_dark_css() {
         {P} .components-menu-item__button { background-color: var(--sp-surface); color: var(--sp-text); }
         {P} .components-button.is-tertiary,
         {P} .components-button.is-secondary { color: var(--sp-text); }
+
+        /* v1.3.5 — remaining native block-editor text that WP core leaves at a
+           dark ink colour, unreadable on the dark chrome. Pin them to the light
+           text token. Kept off .is-primary buttons (those sit on the accent). */
+        {P} .components-button,
+        {P} .edit-post-header .components-button,
+        {P} .editor-header .components-button,
+        {P} .edit-post-fullscreen-mode-close,
+        {P} .editor-document-bar,
+        {P} .editor-document-bar__command,
+        {P} .editor-document-bar__title,
+        {P} .components-menu-item__item,
+        {P} .components-menu-item__shortcut,
+        {P} .components-dropdown-menu__menu-item,
+        {P} .block-editor-block-toolbar,
+        {P} .components-toolbar-group,
+        {P} .components-toolbar,
+        {P} .block-editor-list-view-leaf,
+        {P} .block-editor-list-view-leaf .components-button,
+        {P} .block-editor-block-card__title,
+        {P} .components-tab-panel__tabs-item,
+        {P} .block-editor-block-inspector__tabs button,
+        {P} .edit-post-sidebar__panel-tab,
+        {P} .components-radio-control__label,
+        {P} .components-checkbox-control__label,
+        {P} .components-toggle-control__label,
+        {P} .editor-post-taxonomies__hierarchical-terms-list label,
+        {P} .editor-post-taxonomies label,
+        {P} .editor-post-panel__row-label,
+        {P} .editor-post-card-panel__title,
+        {P} .components-truncate,
+        {P} .components-flex__item,
+        {P} .components-notice__content,
+        {P} .components-snackbar__content,
+        {P} .editor-post-publish-panel__header,
+        {P} .editor-post-publish-panel__prepublish,
+        {P} .editor-post-publish-panel__prepublish h4,
+        {P} .editor-post-publish-panel__prepublish p,
+        {P} .interface-complementary-area .components-button { color: var(--sp-text); }
+        {P} .block-editor-block-toolbar,
+        {P} .components-toolbar-group,
+        {P} .editor-document-bar,
+        {P} .components-notice,
+        {P} .editor-post-publish-panel__prepublish { background-color: var(--sp-surface); border-color: var(--sp-border); }
+        {P} .components-external-link,
+        {P} .components-button.is-link { color: var(--sp-accent); }
+        {P} .components-input-control__input::placeholder,
+        {P} .components-text-control__input::placeholder,
+        {P} .components-textarea-control__input::placeholder { color: var(--sp-text-muted); }
     ";
 
     $dark   = str_replace( '{P}', 'body.sphotography-admin-global.sphotography-admin-scheme-dark', $rules );

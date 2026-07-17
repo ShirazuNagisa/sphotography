@@ -469,6 +469,57 @@
         return { words: total, minutes: minutes };
     }
 
+    // Per-post metric accessors. Posts arrive either from wp/v2/posts (REST
+    // fields sp_word_count / sp_views) or the inline-data mirror (same keys
+    // populated in useInlineData). Returns null when unknown so callers can
+    // omit the unit rather than render "0".
+    function getPostWordCount(post) {
+        var n = post && post.sp_word_count;
+        return (typeof n === 'number' && n > 0) ? n : null;
+    }
+    function getPostViews(post) {
+        var n = post && post.sp_views;
+        return (typeof n === 'number' && n >= 0) ? n : null;
+    }
+
+    // Compact number for tight card lines: 1234 → "1.2k", 12345 → "1.2万".
+    function formatCount(n) {
+        n = Number(n) || 0;
+        if (n < 1000) return String(n);
+        if (n < 10000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1).replace(/\.0$/, '') + 'k';
+        return (n / 10000).toFixed(n % 10000 === 0 ? 0 : 1).replace(/\.0$/, '') + '万';
+    }
+
+    // Small inline SVG icons (stroke = currentColor) reused across meta lines.
+    var SP_ICON_EYE = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var SP_ICON_WORDS = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg>';
+
+    // Record + fire a view hit for a post, de-duplicated per browser/post/day
+    // via localStorage. Calls back with the authoritative count when the server
+    // increments. No-op when the feature is disabled.
+    function recordArticleView(postId, onCount) {
+        if (!SETTINGS.viewCounter) return;
+        var key = 'sp-viewed-' + postId;
+        var now = Date.now();
+        var dedup = false;
+        try {
+            var last = parseInt(window.localStorage.getItem(key) || '0', 10);
+            if (last && (now - last) < 86400000) { dedup = true; }
+        } catch (e) {}
+        if (dedup) return;
+        try { window.localStorage.setItem(key, String(now)); } catch (e) {}
+        fetch(CONFIG.restBase + '/sphotography/v1/view/' + postId, {
+            method: 'POST',
+            headers: { 'X-WP-Nonce': (APP.restNonce || '') },
+            credentials: 'same-origin'
+        }).then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (data && typeof data.views === 'number' && typeof onCount === 'function') {
+                onCount(data.views);
+            }
+        }).catch(function () {});
+    }
+
     function formatDate(dateStr) {
         if (!dateStr) return '';
         var parts = dateStr.split('-');
@@ -1334,6 +1385,18 @@
 
             var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
 
+            // Word count (always, when known) and view count (only when the
+            // counter is enabled) sit on the same line as the date.
+            var metaExtra = '';
+            var wc = getPostWordCount(post);
+            if (wc != null) {
+                metaExtra += '<span class="post-card-words" title="字数">' + SP_ICON_WORDS + formatCount(wc) + '</span>';
+            }
+            if (SETTINGS.viewCounter) {
+                var pv = getPostViews(post);
+                metaExtra += '<span class="post-card-views" title="阅读量">' + SP_ICON_EYE + '<span class="post-card-views-num">' + (pv != null ? formatCount(pv) : '0') + '</span></span>';
+            }
+
             // Large cards add the article excerpt beneath the title.
             var excerptHtml = '';
             if (isLarge) {
@@ -1348,7 +1411,7 @@
                 + '<div class="post-card-body">'
                 + '<div class="post-card-title">' + escapeHtml(post.title.rendered || '') + '</div>'
                 + excerptHtml
-                + '<div class="post-card-date"><svg width=12 height=12 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + escapeHtml(dateStr) + '</div>'
+                + '<div class="post-card-date"><span class="post-card-date-item"><svg width=12 height=12 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + escapeHtml(dateStr) + '</span>' + metaExtra + '</div>'
                 + '</div>';
 
             card.addEventListener('click', function(e) {
@@ -1793,6 +1856,10 @@
             dom.articleTitle.textContent = post.title.rendered || '';
             var metaHtml = '';
             if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
+            if (SETTINGS.viewCounter) {
+                var vc = getPostViews(post);
+                metaHtml += '<span class="article-views" title="阅读量">' + SP_ICON_EYE + '<span class="article-views-num">' + (vc != null ? vc.toLocaleString('en-US') : '—') + '</span></span>';
+            }
             if (post.sp_write_location) {
                 metaHtml += '<span class="article-wloc" title="撰写地点"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' + escapeHtml(post.sp_write_location) + '</span>';
             }
@@ -1817,11 +1884,25 @@
             dom.articleMeta.innerHTML = metaHtml;
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
             dom.articleContent.innerHTML = articleHtml;
+            dom.articlePanel.scrollTop = 0;
             dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
             wireArticleImages();
             renderShareBar(post);
             renderComments(requestPostId, post.comment_status);
             animateWindowsOpen(requestPostId);
+            setupArticleNav();
+            // Count the view (de-duplicated client-side) and reflect the fresh
+            // number in the meta line once the server confirms.
+            recordArticleView(requestPostId, function (n) {
+                if (state.openedPostId !== requestPostId) return;
+                var numEl = dom.articleMeta.querySelector('.article-views-num');
+                if (numEl) numEl.textContent = Number(n).toLocaleString('en-US');
+                // Keep the sidebar card (if present) in sync.
+                var card = dom.sidebarPosts && dom.sidebarPosts.querySelector('.post-card[data-post-id="' + requestPostId + '"] .post-card-views-num');
+                if (card) card.textContent = formatCount(n);
+                var sp = state.allPosts && state.allPosts.filter(function (p) { return p.id === requestPostId; })[0];
+                if (sp) sp.sp_views = n;
+            });
             // Desktop (Feature 1): once the window-scale open settles, glide
             // the panel to the paragraph that holds the clicked photo.
             if (options && (options.scrollToImageId != null || options.scrollToImageUrl)) {
@@ -1887,10 +1968,10 @@
 
     function copyShareLink(url, btn) {
         var done = function () {
-            var prev = btn.getAttribute('data-label') || btn.textContent;
+            var prevHtml = btn.getAttribute('data-icon') || btn.innerHTML;
             btn.classList.add('is-copied');
-            btn.textContent = '已复制';
-            setTimeout(function () { btn.classList.remove('is-copied'); btn.textContent = prev; }, 1600);
+            btn.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+            setTimeout(function () { btn.classList.remove('is-copied'); btn.innerHTML = prevHtml; }, 1600);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(url).then(done, function () { fallbackCopy(url); done(); });
@@ -1913,48 +1994,68 @@
         } catch (e) {}
     }
 
+    // Monochrome brand glyphs (single <path>, filled with currentColor so they
+    // follow the theme primary). Copy uses a stroked link icon to match the
+    // theme's line-icon set.
+    var SHARE_ICONS = {
+        wechat:   '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.89c-.135-.01-.27-.027-.407-.03zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"/></svg>',
+        qq:       '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673"/></svg>',
+        qzone:    '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M23.9868 9.2012c-.032-.099-.127-.223-.334-.258-.207-.036-7.352-1.4063-7.352-1.4063s-.105-.022-.198-.07c-.092-.047-.127-.167-.127-.167S12.4472.954 12.3491.7679c-.099-.187-.245-.238-.349-.238-.104 0-.251.051-.349.238C11.5531.954 8.0245 7.3 8.0245 7.3s-.035.12-.128.167c-.092.047-.197.07-.197.07S.5546 8.9071.3466 8.9421c-.208.036-.302.16-.333.258a.477.477 0 00.125.4491L5.5013 15.14s.072.08.119.172c.016.104.005.21.005.21s-1.1891 7.243-1.2201 7.451c-.031.208.075.369.159.4301.083.062.233.106.421.013.189-.093 6.813-3.2614 6.813-3.2614s.098-.044.201-.061c.103-.017.201.061.201.061s6.624 3.1684 6.813 3.2614c.188.094.338.049.421-.013a.463.463 0 00.159-.43c-.021-.14-.93-5.6778-.93-5.6778.876-.5401 1.4251-1.0392 1.8492-1.7473-2.5944.9692-6.0069 1.7173-9.4163 1.8663-.9152.041-2.4104.097-3.4735-.015-.6781-.071-1.1702-.144-1.2432-.438-.053-.2151.054-.4601.5451-.8312a2640.8625 2640.8625 0 012.8614-2.1553c1.2852-.9681 3.5595-2.4703 3.5595-2.7314 0-.285-2.1443-.781-4.0376-.781-1.9452 0-2.2753.132-2.8114.168-.488.034-.769.005-.804-.138-.06-.2481.183-.3891.588-.5682.7091-.314 1.8603-.594 1.9843-.626.194-.052 3.0824-.8051 5.6188-.5351 1.3181.14 3.2444.668 3.2444 1.2762 0 .342-1.7212 1.4942-3.2254 2.5973-1.1492.8431-2.2173 1.5612-2.2173 1.6883 0 .342 3.5334 1.2411 6.6899 1.01l.003-.022c.048-.092.119-.172.119-.172l5.3627-5.4907a.477.477 0 00.127-.449z"/></svg>',
+        weibo:    '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M10.098 20.323c-3.977.391-7.414-1.406-7.672-4.02-.259-2.609 2.759-5.047 6.74-5.441 3.979-.394 7.413 1.404 7.671 4.018.259 2.6-2.759 5.049-6.737 5.439l-.002.004zM9.05 17.219c-.384.616-1.208.884-1.829.602-.612-.279-.793-.991-.406-1.593.379-.595 1.176-.861 1.793-.601.622.263.82.972.442 1.592zm1.27-1.627c-.141.237-.449.353-.689.253-.236-.09-.313-.361-.177-.586.138-.227.436-.346.672-.24.239.09.315.36.18.601l.014-.028zm.176-2.719c-1.893-.493-4.033.45-4.857 2.118-.836 1.704-.026 3.591 1.886 4.21 1.983.64 4.318-.341 5.132-2.179.8-1.793-.201-3.642-2.161-4.149zm7.563-1.224c-.346-.105-.57-.18-.405-.615.375-.977.42-1.804 0-2.404-.781-1.112-2.915-1.053-5.364-.03 0 0-.766.331-.571-.271.376-1.217.315-2.224-.27-2.809-1.338-1.337-4.869.045-7.888 3.08C1.309 10.87 0 13.273 0 15.348c0 3.981 5.099 6.395 10.086 6.395 6.536 0 10.888-3.801 10.888-6.82 0-1.822-1.547-2.854-2.915-3.284v.01zm1.908-5.092c-.766-.856-1.908-1.187-2.96-.962-.436.09-.706.511-.616.932.09.42.511.691.932.602.511-.105 1.067.044 1.442.465.376.421.466.977.316 1.473-.136.406.089.856.51.992.405.119.857-.105.992-.512.33-1.021.12-2.178-.646-3.035l.03.045zm2.418-2.195c-1.576-1.757-3.905-2.419-6.054-1.968-.496.104-.812.587-.706 1.081.104.496.586.813 1.082.707 1.532-.331 3.185.15 4.296 1.383 1.112 1.246 1.429 2.943.947 4.416-.165.48.106 1.007.586 1.157.479.165.991-.104 1.157-.586.675-2.088.241-4.478-1.338-6.235l.03.045z"/></svg>',
+        twitter:  '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg>',
+        facebook: '<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>',
+        copy:     '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+    };
+
     function renderShareBar(post) {
         var bar = dom.articleShare;
         if (!bar) return;
         var url = post.link || (window.location.origin + '/?p=' + post.id);
         var title = (post.title && post.title.rendered) ? htmlToText(post.title.rendered) : (APP.siteName || '');
 
-        var btns = [
-            { k: 'wechat',   label: '微信' },
-            { k: 'qq',       label: 'QQ' },
-            { k: 'qzone',    label: '空间' },
-            { k: 'weibo',    label: '微博' },
-            { k: 'twitter',  label: 'X' },
-            { k: 'facebook', label: 'f' },
-            { k: 'copy',     label: '链接' }
-        ];
+        var order = ['wechat', 'qq', 'qzone', 'weibo', 'twitter', 'facebook', 'copy'];
         var titles = { wechat: '微信', qq: 'QQ', qzone: 'QQ 空间', weibo: '微博', twitter: 'Twitter / X', facebook: 'Facebook', copy: '复制链接' };
 
-        var html = '<div class="share-bar">'
-            + '<span class="share-bar-label">分享</span>'
-            + '<div class="share-bar-buttons">';
-        btns.forEach(function (b) {
-            html += '<button type="button" class="share-btn share-' + b.k + '" data-share="' + b.k + '" data-label="' + b.label + '" title="' + escapeHtml(titles[b.k]) + '" aria-label="' + escapeHtml(titles[b.k]) + '">' + b.label + '</button>';
+        var buttonsHtml = '';
+        order.forEach(function (k) {
+            var btn = '<button type="button" class="share-btn share-' + k + '" data-share="' + k + '" data-icon=\'' + SHARE_ICONS[k] + '\' title="' + escapeHtml(titles[k]) + '" aria-label="' + escapeHtml(titles[k]) + '">' + SHARE_ICONS[k] + '</button>';
+            if (k === 'wechat') {
+                // Wrap so the QR popover can float above the button on hover
+                // without taking layout space.
+                btn = '<span class="share-wechat-wrap">' + btn
+                    + '<div class="share-qr" hidden><div class="share-qr-code"></div><p class="share-qr-hint">微信扫码打开</p></div>'
+                    + '</span>';
+            }
+            buttonsHtml += btn;
         });
-        html += '</div>'
-            + '<div class="share-qr" hidden><div class="share-qr-code"></div><p class="share-qr-hint">微信扫码打开</p></div>'
+
+        bar.innerHTML = '<div class="share-bar">'
+            + '<span class="share-bar-label">分享</span>'
+            + '<div class="share-bar-buttons">' + buttonsHtml + '</div>'
             + '</div>';
-        bar.innerHTML = html;
         bar.hidden = false;
 
         var urls = shareTargetUrls(url, title);
+        var wechatWrap = bar.querySelector('.share-wechat-wrap');
         var qrWrap = bar.querySelector('.share-qr');
         var qrCode = bar.querySelector('.share-qr-code');
         var qrBuilt = false;
+        function ensureQr() { if (!qrBuilt) { makeShareQr(qrCode, url); qrBuilt = true; } }
+
+        // WeChat: QR floats in on hover, out on leave. Click toggles it too so
+        // touch devices (no hover) can still reach it.
+        if (wechatWrap && qrWrap) {
+            wechatWrap.addEventListener('mouseenter', function () { ensureQr(); qrWrap.hidden = false; });
+            wechatWrap.addEventListener('mouseleave', function () { qrWrap.hidden = true; });
+        }
 
         bar.querySelectorAll('.share-btn').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 var k = btn.getAttribute('data-share');
                 if (k === 'wechat') {
-                    var show = qrWrap.hidden;
-                    if (show && !qrBuilt) { makeShareQr(qrCode, url); qrBuilt = true; }
-                    qrWrap.hidden = !show;
+                    ensureQr();
+                    qrWrap.hidden = !qrWrap.hidden;
                     return;
                 }
                 if (k === 'copy') { copyShareLink(url, btn); return; }
@@ -2160,6 +2261,158 @@
         var max = panel.scrollHeight - panel.clientHeight;
         target = Math.max(0, Math.min(target, max));
         animateScroll(panel, current, target, 650);
+    }
+
+    // ---------------------------------------------------------------
+    // 10a-bis. Article panel scroll controls (v1.3.5)
+    //
+    // The panel is itself the scroll container (position:fixed, overflow:auto)
+    // and always carries a transform while active, so position:fixed children
+    // are contained by the panel box and stay pinned as the content scrolls.
+    //   • back-to-top — top-centre, appears once scrolled down
+    //   • bottom trio — to-bottom / reading-progress% / jump-to-comment,
+    //     centred at the panel bottom, visible only while article text still
+    //     extends below the panel bottom.
+    // ---------------------------------------------------------------
+    var SP_NAV_SCROLL_MS = 640; // 中等偏快
+    function buildArticleNav() {
+        if (dom.articleNavBuilt) return;
+        var panel = dom.articlePanel;
+        if (!panel) return;
+
+        var upIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
+        var downIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+        var commentIcon = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+
+        var top = document.createElement('button');
+        top.type = 'button';
+        top.className = 'article-nav-btn article-nav-top';
+        top.setAttribute('aria-label', '回到顶部');
+        top.title = '回到顶部';
+        top.innerHTML = upIcon;
+        top.addEventListener('click', function (e) {
+            e.stopPropagation();
+            animateScroll(panel, panel.scrollTop, 0, SP_NAV_SCROLL_MS);
+        });
+
+        var bottom = document.createElement('div');
+        bottom.className = 'article-nav-bottom';
+
+        var toBottom = document.createElement('button');
+        toBottom.type = 'button';
+        toBottom.className = 'article-nav-btn article-nav-to-bottom';
+        toBottom.setAttribute('aria-label', '到文章末尾');
+        toBottom.title = '到文章末尾';
+        toBottom.innerHTML = downIcon;
+        toBottom.addEventListener('click', function (e) {
+            e.stopPropagation();
+            animateScroll(panel, panel.scrollTop, articleTextEndScrollTop(), SP_NAV_SCROLL_MS);
+        });
+
+        var progress = document.createElement('div');
+        progress.className = 'article-nav-btn article-nav-progress';
+        progress.setAttribute('aria-hidden', 'true');
+        progress.title = '阅读进度';
+        progress.innerHTML = '<span class="article-nav-progress-num">0%</span>';
+
+        var comment = document.createElement('button');
+        comment.type = 'button';
+        comment.className = 'article-nav-btn article-nav-comment';
+        comment.setAttribute('aria-label', '跳到评论');
+        comment.title = '跳到评论';
+        comment.innerHTML = commentIcon;
+        comment.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var target = articleCommentsScrollTop();
+            animateScroll(panel, panel.scrollTop, target, SP_NAV_SCROLL_MS);
+            setTimeout(function () {
+                var ta = dom.articleComments && dom.articleComments.querySelector('.comment-textarea');
+                if (ta) { try { ta.focus({ preventScroll: true }); } catch (err) { ta.focus(); } }
+            }, SP_NAV_SCROLL_MS + 40);
+        });
+
+        bottom.appendChild(toBottom);
+        bottom.appendChild(progress);
+        bottom.appendChild(comment);
+
+        panel.appendChild(top);
+        panel.appendChild(bottom);
+
+        dom.articleNavTop = top;
+        dom.articleNavBottom = bottom;
+        dom.articleNavProgressNum = progress.querySelector('.article-nav-progress-num');
+
+        var scheduled = false;
+        panel.addEventListener('scroll', function () {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(function () { scheduled = false; updateArticleNav(); });
+        });
+        window.addEventListener('resize', function () {
+            if (state.articleOpen) updateArticleNav();
+        });
+
+        dom.articleNavBuilt = true;
+    }
+
+    // Absolute scrollTop that brings the bottom of #article-content level with
+    // the bottom of the panel viewport (i.e. the last line of text sits at the
+    // panel bottom). Clamped to the scrollable range.
+    function articleTextEndScrollTop() {
+        var panel = dom.articlePanel;
+        var content = dom.articleContent;
+        if (!panel || !content) return 0;
+        var panelRect = panel.getBoundingClientRect();
+        var contentRect = content.getBoundingClientRect();
+        var target = panel.scrollTop + (contentRect.bottom - panelRect.bottom);
+        var max = panel.scrollHeight - panel.clientHeight;
+        return Math.max(0, Math.min(target, max));
+    }
+
+    function articleCommentsScrollTop() {
+        var panel = dom.articlePanel;
+        var el = dom.articleComments;
+        if (!panel || !el) return panel ? panel.scrollHeight : 0;
+        var panelRect = panel.getBoundingClientRect();
+        var rect = el.getBoundingClientRect();
+        var target = panel.scrollTop + (rect.top - panelRect.top) - 24;
+        var max = panel.scrollHeight - panel.clientHeight;
+        return Math.max(0, Math.min(target, max));
+    }
+
+    // Recompute button visibility + progress readout. Cheap; called on rAF from
+    // the panel scroll handler and on open/resize.
+    function updateArticleNav() {
+        if (!dom.articleNavBuilt || !state.articleOpen) return;
+        var panel = dom.articlePanel;
+        var content = dom.articleContent;
+        if (!panel || !content) return;
+        var panelRect = panel.getBoundingClientRect();
+        var contentRect = content.getBoundingClientRect();
+        var scrollTop = panel.scrollTop;
+
+        // Back-to-top: once the reader has scrolled down a little.
+        dom.articleNavTop.classList.toggle('is-visible', scrollTop > 120);
+
+        // Bottom trio: visible while the article text still extends below the
+        // panel bottom (its end has not yet risen above the viewport bottom).
+        var deltaToTextEnd = contentRect.bottom - panelRect.bottom;
+        var trioVisible = deltaToTextEnd > 2;
+        dom.articleNavBottom.classList.toggle('is-visible', trioVisible);
+
+        // Reading progress: how far the reader is toward the text end resting at
+        // the panel bottom (0 → 100%).
+        var textEnd = scrollTop + deltaToTextEnd;
+        var pct = textEnd > 4 ? Math.round(Math.max(0, Math.min(1, scrollTop / textEnd)) * 100) : 100;
+        if (dom.articleNavProgressNum) dom.articleNavProgressNum.textContent = pct + '%';
+    }
+
+    // Called once an article's content is in place: ensure controls exist, start
+    // at the top, and sync their state.
+    function setupArticleNav() {
+        buildArticleNav();
+        // Fresh content starts at the top unless a deep-link scroll is pending.
+        requestAnimationFrame(function () { updateArticleNav(); });
     }
 
     // ---------------------------------------------------------------
@@ -3555,6 +3808,8 @@
                     title: { rendered: p.title },
                     date: p.date,
                     excerpt: { rendered: p.excerpt },
+                    sp_word_count: p.wordCount,
+                    sp_views: p.views,
                     _embedded: {
                         'wp:featuredmedia': p.thumb ? [{ source_url: p.thumb, media_details: { sizes: { thumbnail: { source_url: p.thumb } } } }] : [],
                         'wp:term': [p.terms || []],

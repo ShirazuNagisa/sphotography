@@ -22,6 +22,7 @@ require_once get_template_directory() . '/inc/region-index.php';
 require_once get_template_directory() . '/inc/ai.php';
 require_once get_template_directory() . '/inc/ip-region.php';
 require_once get_template_directory() . '/inc/article-location.php';
+require_once get_template_directory() . '/inc/post-metrics.php';
 require_once get_template_directory() . '/inc/comments.php';
 
 // ============================================

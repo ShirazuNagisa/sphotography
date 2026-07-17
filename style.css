@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.3.4
+Version: 1.3.5
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -503,8 +503,23 @@ body.sidebar-collapsed .sidebar {
     color: var(--text-muted);
     display: flex;
     align-items: center;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 4px 10px;
 }
+
+/* v1.3.5 — date / 字数 / 阅读量 share one line; each item pairs its icon with
+   its value, and long lines wrap gracefully on narrow sidebars. */
+.post-card-date-item,
+.post-card-words,
+.post-card-views {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+.post-card-words svg,
+.post-card-views svg,
+.post-card-date-item svg { flex: 0 0 auto; opacity: 0.85; }
 
 /* Large article card variant — title + full excerpt, vertical size ~2x the
    small card (small ≈ 76px → large min 152px). Toggled by the backend
@@ -922,6 +937,78 @@ body.sidebar-collapsed .sidebar-expand-btn {
     pointer-events: auto;
 }
 
+/* ============================================
+   Article scroll controls (v1.3.5)
+   The panel carries a transform while active, so these position:fixed children
+   are contained by (and pinned to) the panel box while its content scrolls.
+   ============================================ */
+.article-nav-btn {
+    position: fixed;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 50%;
+    border: var(--panel-border);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    box-shadow: var(--shadow-elevated);
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 220ms var(--ease-out-expo, ease),
+                transform 220ms var(--ease-out-expo, ease),
+                filter 160ms ease;
+}
+.article-nav-btn:hover { filter: brightness(1.08); }
+button.article-nav-btn:active { transform: scale(0.94); }
+
+/* Back-to-top: pinned to the top-centre of the panel, over the text. Hidden
+   until the reader scrolls down. */
+.article-nav-top {
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+}
+.article-nav-top.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+/* Bottom trio: centred at the panel bottom. */
+.article-nav-bottom {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+    transition: opacity 220ms var(--ease-out-expo, ease),
+                transform 220ms var(--ease-out-expo, ease);
+}
+.article-nav-bottom.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+.article-nav-bottom .article-nav-btn { position: static; }
+.article-nav-progress { cursor: default; pointer-events: none; }
+.article-nav-progress-num { font-variant-numeric: tabular-nums; }
+
 .article-panel-header {
     margin-bottom: 20px;
     padding-right: 32px;
@@ -961,6 +1048,14 @@ body.sidebar-collapsed .sidebar-expand-btn {
     color: var(--text-muted);
 }
 .article-wloc svg { opacity: 0.75; }
+/* View-count chip in the article meta line (v1.3.5) */
+.article-views {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+}
+.article-views svg { opacity: 0.75; }
 
 .article-content {
     font-size: 0.9375rem;
@@ -1010,38 +1105,57 @@ body.sidebar-collapsed .sidebar-expand-btn {
     border-radius: 50%;
     border: 1px solid var(--color-border);
     background: var(--color-surface);
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1;
+    /* v1.3.5 — monochrome icons that follow the theme colour. */
+    color: var(--primary);
+    line-height: 0;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: transform 160ms var(--ease-out-expo), border-color 160ms ease, color 160ms ease, background 160ms ease;
+    padding: 0;
+    transition: transform 160ms var(--ease-out-expo), border-color 160ms ease, background 160ms ease, filter 160ms ease;
 }
-.share-btn:hover { transform: translateY(-2px); }
-.share-wechat:hover   { border-color: #07c160; color: #07c160; }
-.share-qq:hover       { border-color: #12b7f5; color: #12b7f5; }
-.share-qzone:hover    { border-color: #fdbe3d; color: #e0a013; }
-.share-weibo:hover    { border-color: #e6162d; color: #e6162d; }
-.share-twitter:hover  { border-color: #1d9bf0; color: #1d9bf0; }
-.share-facebook:hover { border-color: #1877f2; color: #1877f2; }
-.share-copy:hover     { border-color: var(--primary); color: var(--primary); }
+.share-btn svg { display: block; }
+.share-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 10%, var(--color-surface));
+}
 .share-btn.is-copied {
     border-color: var(--primary);
     color: #fff;
     background: var(--primary);
-    width: auto;
-    padding: 0 12px;
-    border-radius: 999px;
 }
+/* WeChat QR: floats above the button on hover; absolutely positioned so it
+   never pushes the share row around. */
+.share-wechat-wrap { position: relative; display: inline-flex; }
 .share-qr {
-    margin-top: 14px;
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+}
+.share-qr[hidden] { display: none; }
+.share-qr::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 7px solid transparent;
+    border-top-color: var(--glass-elevated-bg);
 }
 .share-qr-code {
     background: #fff;

@@ -359,6 +359,7 @@ function sphotography_localize_data() {
         'readingInfo'      => (bool) sphotography_get_mod( 'reading_info' ),
         'readingSpeedCjk'  => (int) sphotography_get_mod( 'reading_speed_cjk' ),
         'readingSpeedLatin' => (int) sphotography_get_mod( 'reading_speed_latin' ),
+        'viewCounter'      => (bool) sphotography_get_mod( 'view_counter' ),
         'mapStyle'         => sphotography_get_mod( 'map_style' ),
         'mapStyleCustomUrl' => sphotography_get_mod( 'map_style_custom_url' ),
         // Motion personality (v1.2.5) — raw picker values; app.js resolves them.
@@ -429,6 +430,8 @@ function sphotography_localize_data() {
             'terms'   => $terms_data,
             'link'    => get_permalink( $p->ID ),
             'writeLocation' => function_exists( 'sphotography_wloc_get' ) ? sphotography_wloc_get( $p->ID ) : '',
+            'wordCount' => function_exists( 'sphotography_post_word_count' ) ? sphotography_post_word_count( $p->ID ) : 0,
+            'views'   => function_exists( 'sphotography_get_views' ) ? sphotography_get_views( $p->ID ) : 0,
         );
     }
 
