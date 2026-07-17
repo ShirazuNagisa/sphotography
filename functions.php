@@ -20,6 +20,7 @@ require_once get_template_directory() . '/inc/theme-mods-applier.php';
 require_once get_template_directory() . '/inc/region-tag-color.php';
 require_once get_template_directory() . '/inc/region-index.php';
 require_once get_template_directory() . '/inc/ai.php';
+require_once get_template_directory() . '/inc/comments.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"
@@ -677,7 +678,9 @@ function sphotography_enqueue_scripts() {
             'restNonce'       => wp_create_nonce( 'wp_rest' ),
             'loggedIn'        => is_user_logged_in(),
             'currentUserName' => is_user_logged_in() ? $sp_current_user->display_name : '',
+            'currentUserEmail' => is_user_logged_in() ? $sp_current_user->user_email : '',
             'commentsClosedText' => __( '评论已关闭。', 'sphotography' ),
+            'comments'        => function_exists( 'sphotography_comment_config' ) ? sphotography_comment_config() : array(),
         )
     );
 }
