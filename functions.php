@@ -20,6 +20,8 @@ require_once get_template_directory() . '/inc/theme-mods-applier.php';
 require_once get_template_directory() . '/inc/region-tag-color.php';
 require_once get_template_directory() . '/inc/region-index.php';
 require_once get_template_directory() . '/inc/ai.php';
+require_once get_template_directory() . '/inc/ip-region.php';
+require_once get_template_directory() . '/inc/article-location.php';
 require_once get_template_directory() . '/inc/comments.php';
 
 // ============================================
@@ -660,10 +662,20 @@ function sphotography_enqueue_scripts() {
         true
     );
 
+    // Offline QR generator (qrcode-generator, MIT) — powers the WeChat share
+    // QR code without any runtime network request.
+    wp_enqueue_script(
+        'sphotography-qrcode',
+        get_template_directory_uri() . '/assets/js/qrcode.js',
+        array(),
+        '1.4.4',
+        true
+    );
+
     wp_enqueue_script(
         'sphotography-app',
         get_template_directory_uri() . '/assets/js/app.js',
-        array( 'maplibre-gl' ),
+        array( 'maplibre-gl', 'sphotography-qrcode' ),
         SPHOTOGRAPHY_VERSION,
         true
     );

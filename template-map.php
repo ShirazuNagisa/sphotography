@@ -180,6 +180,9 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
         <div id="article-content" class="article-content">
             <!-- WordPress formatted content loaded by JS -->
         </div>
+        <div id="article-share" class="article-share" hidden>
+            <!-- Social share bar built by JS (after content, before comments) -->
+        </div>
         <div id="article-comments" class="article-comments" aria-live="polite">
             <!-- Comment list + form loaded by JS -->
         </div>

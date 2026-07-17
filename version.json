@@ -1,6 +1,6 @@
 {
-  "version": "1.3.3",
-  "changelog": "1、修复：前台 WordPress 管理工具栏（顶部黑条）在部分环境下仍未隐藏的问题。原先仅用 show_admin_bar 过滤器，会被插件或用户「显示工具栏」偏好在更晚的优先级上覆盖而失效；现改为三重强制隐藏——PHP_INT_MAX 优先级过滤器 + wp 钩子上再次 show_admin_bar(false) + 前台 <head> 内 CSS 兜底（归零布局位移并隐藏 #wpadminbar），后台仪表盘不受影响。",
+  "version": "1.3.4",
+  "changelog": "1、评论新增「IP 属地」显示（后台开关，默认关闭）：开启后按需从仓库 ip-data 分支下载离线 IP 库到 uploads，在服务器本地把评论 IP 解析为归属地（国内到省、国外到国家），不显示完整 IP 地址；历史评论在浏览时懒加载补全并缓存。2、文章新增「撰写地点」（文章编辑页每篇可选，默认关闭）：用浏览器定位取坐标，由主题内置离线 geo 引擎反解析为行政区，前台文章元信息栏显示。3、后台配色修复：浅色模式下 WordPress 原生选项文字对比度过低看不清、深色模式文章列表黑白交叉条纹导致白底看不清白字、深色模式下区块编辑器（含侧边栏输入框与 AI 模块）统一转为深底亮字。4、文章正文后、评论前新增社交分享栏（始终显示）：微信（内置离线二维码，扫码打开）、QQ、QQ空间、微博、Twitter/X、Facebook、复制链接。",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
   "check_url": "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
 }

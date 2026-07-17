@@ -408,6 +408,7 @@
         dom.articleTitle = document.getElementById('article-title');
         dom.articleMeta = document.getElementById('article-meta');
         dom.articleContent = document.getElementById('article-content');
+        dom.articleShare = document.getElementById('article-share');
         dom.articleComments = document.getElementById('article-comments');
         dom.photoPanels = document.getElementById('photo-panels');
         dom.detailSheet = document.getElementById('detail-sheet');
@@ -1769,6 +1770,7 @@
             dom.articleMeta.textContent = '';
             dom.articleContent.innerHTML = '';
         }
+        if (dom.articleShare) { dom.articleShare.hidden = true; dom.articleShare.innerHTML = ''; }
         if (state.isMobile) closeSidebar(true);
 
         var fetchPromise = fetchFromRest(CONFIG.postsEndpoint + '/' + requestPostId, { _embed: '1' });
@@ -1783,6 +1785,7 @@
                 dom.articleTitle.textContent = '文章加载失败';
                 dom.articleMeta.textContent = '';
                 dom.articleContent.innerHTML = '';
+                if (dom.articleShare) { dom.articleShare.hidden = true; dom.articleShare.innerHTML = ''; }
                 dom.articlePanel.classList.add('active');
                 return;
             }
@@ -1790,6 +1793,9 @@
             dom.articleTitle.textContent = post.title.rendered || '';
             var metaHtml = '';
             if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
+            if (post.sp_write_location) {
+                metaHtml += '<span class="article-wloc" title="撰写地点"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' + escapeHtml(post.sp_write_location) + '</span>';
+            }
             if (SETTINGS.readingInfo && post.content && post.content.rendered) {
                 var ri = computeReadingInfo(post.content.rendered);
                 if (ri) {
@@ -1813,6 +1819,7 @@
             dom.articleContent.innerHTML = articleHtml;
             dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
             wireArticleImages();
+            renderShareBar(post);
             renderComments(requestPostId, post.comment_status);
             animateWindowsOpen(requestPostId);
             // Desktop (Feature 1): once the window-scale open settles, glide
@@ -1840,6 +1847,120 @@
             return;
         }
         animateWindowsClose(targetPostId);
+    }
+
+    // ---------------------------------------------------------------
+    // 10b. Social share bar (after content, before comments)
+    // ---------------------------------------------------------------
+    function htmlToText(s) {
+        var d = document.createElement('div');
+        d.innerHTML = String(s || '');
+        return (d.textContent || d.innerText || '').trim();
+    }
+
+    function shareTargetUrls(url, title) {
+        var u = encodeURIComponent(url);
+        var t = encodeURIComponent(title);
+        return {
+            qq:       'https://connect.qq.com/widget/shareqq/index.html?url=' + u + '&title=' + t,
+            qzone:    'https://sns.qzone.qq.com/cgi-bin/qzshare/cgi_qzshare_onekey?url=' + u + '&title=' + t,
+            weibo:    'https://service.weibo.com/share/share.php?url=' + u + '&title=' + t,
+            twitter:  'https://twitter.com/intent/tweet?url=' + u + '&text=' + t,
+            facebook: 'https://www.facebook.com/sharer/sharer.php?u=' + u
+        };
+    }
+
+    function makeShareQr(el, text) {
+        if (typeof qrcode === 'undefined') { el.textContent = text; return; }
+        try {
+            if (qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) {
+                qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+            }
+            var qr = qrcode(0, 'M');
+            qr.addData(text);
+            qr.make();
+            el.innerHTML = qr.createImgTag(4, 8, 'QR');
+        } catch (e) {
+            el.textContent = text;
+        }
+    }
+
+    function copyShareLink(url, btn) {
+        var done = function () {
+            var prev = btn.getAttribute('data-label') || btn.textContent;
+            btn.classList.add('is-copied');
+            btn.textContent = '已复制';
+            setTimeout(function () { btn.classList.remove('is-copied'); btn.textContent = prev; }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(done, function () { fallbackCopy(url); done(); });
+        } else {
+            fallbackCopy(url);
+            done();
+        }
+    }
+
+    function fallbackCopy(text) {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch (e) {}
+    }
+
+    function renderShareBar(post) {
+        var bar = dom.articleShare;
+        if (!bar) return;
+        var url = post.link || (window.location.origin + '/?p=' + post.id);
+        var title = (post.title && post.title.rendered) ? htmlToText(post.title.rendered) : (APP.siteName || '');
+
+        var btns = [
+            { k: 'wechat',   label: '微信' },
+            { k: 'qq',       label: 'QQ' },
+            { k: 'qzone',    label: '空间' },
+            { k: 'weibo',    label: '微博' },
+            { k: 'twitter',  label: 'X' },
+            { k: 'facebook', label: 'f' },
+            { k: 'copy',     label: '链接' }
+        ];
+        var titles = { wechat: '微信', qq: 'QQ', qzone: 'QQ 空间', weibo: '微博', twitter: 'Twitter / X', facebook: 'Facebook', copy: '复制链接' };
+
+        var html = '<div class="share-bar">'
+            + '<span class="share-bar-label">分享</span>'
+            + '<div class="share-bar-buttons">';
+        btns.forEach(function (b) {
+            html += '<button type="button" class="share-btn share-' + b.k + '" data-share="' + b.k + '" data-label="' + b.label + '" title="' + escapeHtml(titles[b.k]) + '" aria-label="' + escapeHtml(titles[b.k]) + '">' + b.label + '</button>';
+        });
+        html += '</div>'
+            + '<div class="share-qr" hidden><div class="share-qr-code"></div><p class="share-qr-hint">微信扫码打开</p></div>'
+            + '</div>';
+        bar.innerHTML = html;
+        bar.hidden = false;
+
+        var urls = shareTargetUrls(url, title);
+        var qrWrap = bar.querySelector('.share-qr');
+        var qrCode = bar.querySelector('.share-qr-code');
+        var qrBuilt = false;
+
+        bar.querySelectorAll('.share-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var k = btn.getAttribute('data-share');
+                if (k === 'wechat') {
+                    var show = qrWrap.hidden;
+                    if (show && !qrBuilt) { makeShareQr(qrCode, url); qrBuilt = true; }
+                    qrWrap.hidden = !show;
+                    return;
+                }
+                if (k === 'copy') { copyShareLink(url, btn); return; }
+                if (urls[k]) { window.open(urls[k], '_blank', 'width=620,height=520,noopener'); }
+            });
+        });
     }
 
     // ---------------------------------------------------------------
@@ -2099,6 +2220,7 @@
         }
         var date = c.date ? formatDate(String(c.date).split('T')[0]) : '';
         var ua = c.ua ? '<span class="comment-ua">' + escapeHtml(c.ua) + '</span>' : '';
+        var loc = (CCFG.ipLocation && c.ip_region) ? '<span class="comment-ip-loc" title="IP 属地">' + escapeHtml(c.ip_region) + '</span>' : '';
         var edited = c.edited ? '<button type="button" class="comment-edited" data-cc-history="' + c.id + '">已编辑</button>' : '';
         return ''
             + '<div class="comment-head">'
@@ -2108,7 +2230,7 @@
             + '</div>'
             + '<div class="comment-sub">'
             +   (date ? '<span class="comment-date">' + escapeHtml(date) + '</span>' : '')
-            +   ua + edited
+            +   loc + ua + edited
             + '</div>';
     }
 

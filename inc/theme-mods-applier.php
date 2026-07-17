@@ -427,6 +427,8 @@ function sphotography_localize_data() {
             'excerpt' => strip_tags( $p->post_excerpt ?: wp_trim_words( $p->post_content, 30 ) ),
             'thumb'   => $thumb_p,
             'terms'   => $terms_data,
+            'link'    => get_permalink( $p->ID ),
+            'writeLocation' => function_exists( 'sphotography_wloc_get' ) ? sphotography_wloc_get( $p->ID ) : '',
         );
     }
 

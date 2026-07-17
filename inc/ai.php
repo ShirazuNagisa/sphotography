@@ -723,9 +723,10 @@ function sphotography_ai_enqueue_editor( $hook ) {
         true
     );
 
-    // Meta-box styles — attach to WP admin's always-present "common" handle. The
-    // editor has no dark mode, so the box is pinned to light styling even when
-    // the global admin dark scheme is active (requirement: no dark/light clash).
+    // Meta-box styles — attached to WP admin's always-present "common" handle.
+    // The box is scheme-aware (v1.3.4): light by default, dark when the global
+    // Sphotography admin dark scheme is active, so the whole editor stays
+    // consistent (deep background, bright text) instead of a light island.
     wp_add_inline_style( 'common', sphotography_ai_metabox_css() );
 
     wp_localize_script( 'sphotography-ai-metabox', 'SphotographyAI', array(
@@ -750,62 +751,82 @@ function sphotography_ai_enqueue_editor( $hook ) {
 add_action( 'admin_enqueue_scripts', 'sphotography_ai_enqueue_editor' );
 
 /**
- * Editor meta-box CSS. Pinned to light regardless of admin scheme by scoping
- * explicit light colours to #sphotography-ai (the postbox) with high enough
- * specificity to beat the global dark .postbox rules in admin-style.php.
+ * Editor meta-box CSS (v1.3.4: scheme-aware).
+ *
+ * The box uses locally-scoped --ai-* tokens that default to a light card and
+ * switch to dark values under the global Sphotography dark scheme (explicit
+ * dark class or system-preference), matching the rest of the dark editor rather
+ * than standing out as a light island.
  */
 function sphotography_ai_metabox_css() {
     return '
-        /* Force the AI box to a light card even under the global dark scheme,
-           since the block editor canvas around it has no dark mode. */
+        /* Scheme tokens — light by default. */
+        #sphotography-ai {
+            --ai-bg: #ffffff; --ai-fg: #2c3338; --ai-heading: #1d2327;
+            --ai-border: #dcdcde; --ai-muted: #757575; --ai-field: #ffffff;
+            --ai-field-border: #c3c4c7; --ai-pre: #f6f7f7; --ai-divider: #eee;
+        }
+        body.sphotography-admin-global.sphotography-admin-scheme-dark #sphotography-ai {
+            --ai-bg: #1c1c1c; --ai-fg: #ececec; --ai-heading: #ffffff;
+            --ai-border: rgba(255,255,255,0.10); --ai-muted: #9a9a9a; --ai-field: #242424;
+            --ai-field-border: rgba(255,255,255,0.14); --ai-pre: #242424; --ai-divider: rgba(255,255,255,0.08);
+        }
+        @media (prefers-color-scheme: dark) {
+            body.sphotography-admin-global.sphotography-admin-scheme-system #sphotography-ai {
+                --ai-bg: #1c1c1c; --ai-fg: #ececec; --ai-heading: #ffffff;
+                --ai-border: rgba(255,255,255,0.10); --ai-muted: #9a9a9a; --ai-field: #242424;
+                --ai-field-border: rgba(255,255,255,0.14); --ai-pre: #242424; --ai-divider: rgba(255,255,255,0.08);
+            }
+        }
+
         body #sphotography-ai.postbox,
         body.sphotography-admin-global #sphotography-ai.postbox {
-            background: #ffffff !important;
-            border: 1px solid #dcdcde !important;
-            color: #2c3338 !important;
+            background: var(--ai-bg) !important;
+            border: 1px solid var(--ai-border) !important;
+            color: var(--ai-fg) !important;
             box-shadow: none !important;
         }
         body #sphotography-ai .postbox-header,
         body #sphotography-ai .hndle,
         body.sphotography-admin-global #sphotography-ai .postbox-header,
         body.sphotography-admin-global #sphotography-ai .hndle {
-            background: #ffffff !important;
-            color: #1d2327 !important;
-            border-bottom: 1px solid #dcdcde !important;
+            background: var(--ai-bg) !important;
+            color: var(--ai-heading) !important;
+            border-bottom: 1px solid var(--ai-border) !important;
         }
         #sphotography-ai .sphotography-ai-box,
-        #sphotography-ai .sphotography-ai-box * { color: #2c3338; }
+        #sphotography-ai .sphotography-ai-box * { color: var(--ai-fg); }
         #sphotography-ai .sphotography-ai-warning {
             font-size: 12px; line-height: 1.6; color: #8a5a00 !important;
             background: #fff8e5; border: 1px solid #ffe1a8;
             border-radius: 6px; padding: 8px 10px; margin: 0 0 12px;
         }
-        #sphotography-ai .sphotography-ai-notready { font-size: 12px; color: #b32d2e !important; }
-        #sphotography-ai .sphotography-ai-controls { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+        #sphotography-ai .sphotography-ai-notready { font-size: 12px; color: #d63638 !important; }
+        #sphotography-ai .sphotography-ai-controls { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--ai-divider); }
         #sphotography-ai .sphotography-ai-controls select { flex: 1 1 40%; min-width: 90px; }
-        #sphotography-ai .sphotography-ai-section { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #eee; }
+        #sphotography-ai .sphotography-ai-section { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--ai-divider); }
         #sphotography-ai .sphotography-ai-section:last-of-type { border-bottom: none; }
-        #sphotography-ai .sphotography-ai-label { display: block; font-weight: 600; margin-bottom: 6px; color: #1d2327; }
-        #sphotography-ai .sphotography-ai-hint { font-size: 11px; color: #757575 !important; margin: 0 0 8px; }
-        #sphotography-ai .sphotography-ai-imgnote { font-size: 11px; color: #2271b1 !important; margin: 8px 0 0; }
+        #sphotography-ai .sphotography-ai-label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--ai-heading); }
+        #sphotography-ai .sphotography-ai-hint { font-size: 11px; color: var(--ai-muted) !important; margin: 0 0 8px; }
+        #sphotography-ai .sphotography-ai-imgnote { font-size: 11px; color: #4aa3df !important; margin: 8px 0 0; }
         #sphotography-ai textarea, #sphotography-ai select {
-            width: 100%; background: #fff !important; color: #2c3338 !important;
-            border: 1px solid #c3c4c7 !important; border-radius: 4px;
+            width: 100%; background: var(--ai-field) !important; color: var(--ai-fg) !important;
+            border: 1px solid var(--ai-field-border) !important; border-radius: 4px;
         }
         #sphotography-ai textarea { margin-bottom: 8px; }
         #sphotography-ai .sphotography-ai-result { margin-top: 10px; }
         #sphotography-ai .sphotography-ai-preview {
             max-height: 220px; overflow: auto; white-space: pre-wrap;
-            font-size: 12px; line-height: 1.7; background: #f6f7f7 !important;
-            border: 1px solid #dcdcde; border-radius: 6px; padding: 10px; margin-bottom: 8px; color: #2c3338 !important;
+            font-size: 12px; line-height: 1.7; background: var(--ai-pre) !important;
+            border: 1px solid var(--ai-border); border-radius: 6px; padding: 10px; margin-bottom: 8px; color: var(--ai-fg) !important;
         }
         #sphotography-ai .sphotography-ai-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
         #sphotography-ai .sphotography-ai-chip {
-            border: 1px solid #c3c4c7; background: #fff !important; color: #2c3338 !important;
+            border: 1px solid var(--ai-field-border); background: var(--ai-field) !important; color: var(--ai-fg) !important;
             border-radius: 14px; padding: 3px 10px; font-size: 12px; cursor: pointer;
         }
-        #sphotography-ai .sphotography-ai-chip:hover { border-color: #2271b1; color: #2271b1 !important; }
-        #sphotography-ai .sphotography-ai-chip.is-added { background: #edfaf1 !important; border-color: #46b450; color: #46b450 !important; cursor: default; }
+        #sphotography-ai .sphotography-ai-chip:hover { border-color: #4aa3df; color: #4aa3df !important; }
+        #sphotography-ai .sphotography-ai-chip.is-added { background: rgba(70,180,80,0.15) !important; border-color: #46b450; color: #58c46a !important; cursor: default; }
         #sphotography-ai .sphotography-ai-status { font-size: 12px; margin-top: 8px; min-height: 1em; }
     ';
 }
