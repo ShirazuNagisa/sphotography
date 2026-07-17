@@ -1,9 +1,14 @@
 /**
- * Sphotography AI meta box (experimental).
+ * Sphotography AI meta box (experimental) — v1.3.0
  *
- * Powers the post-editor box: keyword expansion (preview → manual insert) and
- * AI tag suggestions (chips → click to add to the post's tags). All model
- * calls go through admin-ajax; the API key stays server-side.
+ * Editor panel actions:
+ *   - 文章补全: post text + images (+ optional keywords, style, length) → HTML,
+ *     previewed then appended as native blocks.
+ *   - 润色: post text + images (+ style) → HTML, previewed then replaces content.
+ *   - AI 自动标签: text-only tag suggestions → chips → add to post tags.
+ *
+ * All model calls go through admin-ajax; keys stay server-side. Images are sent
+ * as {id,url} references; PHP reads/downscales/base64s them.
  */
 (function ($) {
     'use strict';
@@ -11,7 +16,11 @@
     var cfg = window.SphotographyAI || {};
     var i18n = cfg.i18n || {};
 
-    // --- Editor content bridge (works for both classic + block editor) ---
+    // ---- Editor bridges (block editor + classic) ----
+    function hasBlockEditor() {
+        return !!(window.wp && wp.data && wp.data.select('core/block-editor'));
+    }
+
     function getTitle() {
         try {
             if (window.wp && wp.data && wp.data.select('core/editor')) {
@@ -22,7 +31,7 @@
         return el ? el.value : '';
     }
 
-    function getContent() {
+    function getContentHtml() {
         try {
             if (window.wp && wp.data && wp.data.select('core/editor')) {
                 return wp.data.select('core/editor').getEditedPostAttribute('content') || '';
@@ -36,140 +45,240 @@
         return ta ? ta.value : '';
     }
 
-    // Append plain text (as paragraphs) to the end of the post body.
-    function appendContent(text) {
-        var paras = String(text).split(/\n{2,}/).map(function (p) {
-            return p.trim();
-        }).filter(Boolean);
+    function getContentText() {
+        var html = getContentHtml();
+        var div = document.createElement('div');
+        div.innerHTML = html;
+        return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
+    }
 
-        try {
-            if (window.wp && wp.data && wp.data.select('core/editor') && wp.blocks && wp.blocks.createBlock) {
-                var newBlocks = paras.map(function (p) {
-                    return wp.blocks.createBlock('core/paragraph', { content: p.replace(/\n/g, '<br>') });
+    // Gather images referenced in the post as {id,url}.
+    function getImages() {
+        var acc = [];
+        if (hasBlockEditor()) {
+            var walk = function (blocks) {
+                (blocks || []).forEach(function (b) {
+                    if (b.name === 'core/image') {
+                        acc.push({ id: b.attributes.id || 0, url: b.attributes.url || '' });
+                    }
+                    if (b.innerBlocks && b.innerBlocks.length) { walk(b.innerBlocks); }
                 });
-                var existing = wp.data.select('core/block-editor').getBlocks();
-                wp.data.dispatch('core/block-editor').insertBlocks(newBlocks, existing.length);
-                return true;
-            }
-        } catch (e) {}
+            };
+            try { walk(wp.data.select('core/block-editor').getBlocks()); } catch (e) {}
+        }
+        if (!acc.length) {
+            // Classic editor / fallback: parse <img> from the content HTML.
+            var div = document.createElement('div');
+            div.innerHTML = getContentHtml();
+            div.querySelectorAll('img').forEach(function (img) {
+                var id = 0;
+                var m = (img.className || '').match(/wp-image-(\d+)/);
+                if (m) { id = parseInt(m[1], 10); }
+                acc.push({ id: id, url: img.getAttribute('src') || '' });
+            });
+        }
+        // De-dupe and cap.
+        var seen = {}, out = [];
+        acc.forEach(function (im) {
+            var key = (im.id || 0) + '|' + (im.url || '');
+            if (!seen[key] && (im.id || im.url)) { seen[key] = 1; out.push(im); }
+        });
+        return out.slice(0, cfg.maxImages || 6);
+    }
 
-        var html = paras.map(function (p) { return '<p>' + escapeHtml(p).replace(/\n/g, '<br>') + '</p>'; }).join('\n');
+    var TEXT_BLOCKS = ['core/paragraph', 'core/heading', 'core/list', 'core/list-item', 'core/quote', 'core/preformatted', 'core/pullquote'];
+    function isTextBlock(name) { return TEXT_BLOCKS.indexOf(name) >= 0; }
+
+    // Insert HTML into the editor. mode: 'append' | 'replace'.
+    // For 'replace' (polish) in the block editor, non-text blocks (images,
+    // galleries, embeds…) are PRESERVED — only text blocks are rewritten — so
+    // polishing never silently deletes the post's media.
+    function applyHtml(html, mode) {
+        if (hasBlockEditor() && wp.blocks && wp.blocks.rawHandler) {
+            var blocks = wp.blocks.rawHandler({ HTML: html });
+            if (!blocks || !blocks.length) { return false; }
+            var dispatch = wp.data.dispatch('core/block-editor');
+            if (mode === 'replace') {
+                var existing = wp.data.select('core/block-editor').getBlocks();
+                var result = [];
+                var inserted = false;
+                existing.forEach(function (b) {
+                    if (isTextBlock(b.name)) {
+                        if (!inserted) { result = result.concat(blocks); inserted = true; }
+                        // drop the old text block
+                    } else {
+                        result.push(b); // keep media / other blocks
+                    }
+                });
+                if (!inserted) { result = result.concat(blocks); }
+                dispatch.resetBlocks(result);
+            } else {
+                var all = wp.data.select('core/block-editor').getBlocks();
+                dispatch.insertBlocks(blocks, all.length);
+            }
+            return true;
+        }
+        // Classic editor / textarea.
         if (window.tinymce) {
             var ed = window.tinymce.get('content');
             if (ed && !ed.isHidden()) {
-                ed.setContent(ed.getContent() + '\n' + html);
+                ed.setContent(mode === 'replace' ? html : (ed.getContent() + '\n' + html));
                 ed.save();
                 return true;
             }
         }
         var ta = document.getElementById('content');
         if (ta) {
-            ta.value = ta.value + (ta.value ? '\n\n' : '') + paras.join('\n\n');
+            ta.value = mode === 'replace' ? html : (ta.value + (ta.value ? '\n\n' : '') + html);
             return true;
         }
         return false;
     }
 
     function addPostTag(tag) {
-        // Classic editor: the tags box uses a comma field named tax_input[post_tag].
         var $field = $('#new-tag-post_tag');
         if ($field.length) {
             var $add = $('.tagadd').first();
             $field.val(tag);
             if ($add.length) { $add.trigger('click'); return true; }
         }
-        // Block editor: use the data store's flat-term selector.
         try {
             if (window.wp && wp.data && wp.data.dispatch('core/editor')) {
-                var sel = wp.data.select('core/editor');
-                var current = sel.getEditedPostAttribute('tags') || [];
-                var reg = wp.data.select('core');
-                // Resolve or create the term id.
-                return wp.apiFetch({
-                    path: '/wp/v2/tags',
-                    method: 'POST',
-                    data: { name: tag }
-                }).then(function (t) {
-                    wp.data.dispatch('core/editor').editPost({ tags: current.concat([t.id]) });
-                    return true;
-                }).catch(function (err) {
-                    // Term likely exists already — look it up.
-                    return wp.apiFetch({ path: '/wp/v2/tags?search=' + encodeURIComponent(tag) }).then(function (list) {
-                        if (list && list.length) {
-                            wp.data.dispatch('core/editor').editPost({ tags: current.concat([list[0].id]) });
-                            return true;
-                        }
-                        return false;
+                var current = wp.data.select('core/editor').getEditedPostAttribute('tags') || [];
+                return wp.apiFetch({ path: '/wp/v2/tags', method: 'POST', data: { name: tag } })
+                    .then(function (t) {
+                        wp.data.dispatch('core/editor').editPost({ tags: current.concat([t.id]) });
+                        return true;
+                    })
+                    .catch(function () {
+                        return wp.apiFetch({ path: '/wp/v2/tags?search=' + encodeURIComponent(tag) }).then(function (list) {
+                            if (list && list.length) {
+                                wp.data.dispatch('core/editor').editPost({ tags: current.concat([list[0].id]) });
+                                return true;
+                            }
+                            return false;
+                        });
                     });
-                });
             }
         } catch (e) {}
         return false;
     }
 
-    function escapeHtml(s) {
-        return String(s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
+    function setStatus(msg, isError) {
+        $('#sphotography-ai-status').text(msg || '').css('color', isError ? '#e05a4d' : '#757575');
     }
 
-    function setStatus(msg, isError) {
-        var $s = $('#sphotography-ai-status');
-        $s.text(msg || '').css('color', isError ? '#e05a4d' : '');
+    // Show a note when images exist but analysis is off.
+    function refreshImageNote() {
+        var $note = $('#sphotography-ai-imgnote');
+        if (!$note.length) { return; }
+        if (cfg.imageActive) { $note.prop('hidden', true).text(''); return; }
+        var n = getImages().length;
+        if (n > 0 && i18n.imgNoteOff) {
+            $note.prop('hidden', false).text(i18n.imgNoteOff.replace('%d', n));
+        } else {
+            $note.prop('hidden', true).text('');
+        }
     }
 
     $(function () {
-        var $expandBtn = $('#sphotography-ai-expand-btn');
-        if (!$expandBtn.length) { return; }
+        if (!$('#sphotography-ai-box').length) { return; }
 
-        var lastExpansion = '';
+        // Length only affects 补全; make that explicit.
+        $('#sphotography-ai-length-hint').prop('hidden', false)
+            .text('长度仅影响「文章补全」，润色保持原篇幅。');
 
-        // ----- Keyword expansion -----
-        $expandBtn.on('click', function () {
-            var kw = $('#sphotography-ai-keywords').val();
-            if (!kw || !kw.trim()) { setStatus(i18n.noContent, true); return; }
+        refreshImageNote();
 
-            $expandBtn.prop('disabled', true);
+        var lastComplete = '';
+        var lastPolish = '';
+
+        // ----- 文章补全 -----
+        $('#sphotography-ai-complete-btn').on('click', function () {
+            var btn = $(this);
+            var kw = $('#sphotography-ai-keywords').val() || '';
+            var text = getContentText();
+            var images = getImages();
+            if (!text && !kw.trim() && !images.length) {
+                setStatus(i18n.noContent, true);
+                return;
+            }
+            btn.prop('disabled', true);
             setStatus(i18n.working, false);
-
             $.post(cfg.ajaxUrl, {
-                action: 'sphotography_ai_expand',
+                action: 'sphotography_ai_complete',
                 nonce: cfg.nonce,
+                text: getContentHtml(),
                 keywords: kw,
-                title: getTitle()
+                style: $('#sphotography-ai-style').val(),
+                length: $('#sphotography-ai-length').val(),
+                images: images
             }).done(function (res) {
                 if (res && res.success) {
-                    lastExpansion = res.data.content || '';
-                    $('#sphotography-ai-expand-preview').text(lastExpansion);
-                    $('#sphotography-ai-expand-result').prop('hidden', false);
+                    lastComplete = res.data.html || '';
+                    $('#sphotography-ai-complete-preview').text($('<div>').html(lastComplete).text());
+                    $('#sphotography-ai-complete-result').prop('hidden', false);
                     setStatus('', false);
                 } else {
-                    setStatus((i18n.error) + ((res && res.data) || ''), true);
+                    setStatus(i18n.error + ((res && res.data) || ''), true);
                 }
             }).fail(function () {
                 setStatus(i18n.error + 'request failed', true);
             }).always(function () {
-                $expandBtn.prop('disabled', false);
+                btn.prop('disabled', false);
             });
         });
 
         $('#sphotography-ai-insert-btn').on('click', function () {
-            if (lastExpansion && appendContent(lastExpansion)) {
+            if (lastComplete && applyHtml(lastComplete, 'append')) {
                 setStatus(i18n.inserted, false);
+                $('#sphotography-ai-complete-result').prop('hidden', true);
             }
         });
 
-        // ----- Auto tags -----
-        var $tagsBtn = $('#sphotography-ai-tags-btn');
-        $tagsBtn.on('click', function () {
-            var body = getContent().replace(/<[^>]+>/g, ' ');
-            if (body.replace(/\s+/g, '').length < 20 && !getTitle()) {
-                setStatus(i18n.noBody, true);
-                return;
-            }
-            $tagsBtn.prop('disabled', true);
-            setStatus(i18n.tagWorking, false);
+        // ----- 润色 -----
+        $('#sphotography-ai-polish-btn').on('click', function () {
+            var btn = $(this);
+            var text = getContentText();
+            if (!text) { setStatus(i18n.noPolish, true); return; }
+            btn.prop('disabled', true);
+            setStatus(i18n.working, false);
+            $.post(cfg.ajaxUrl, {
+                action: 'sphotography_ai_polish',
+                nonce: cfg.nonce,
+                text: getContentHtml(),
+                style: $('#sphotography-ai-style').val(),
+                images: getImages()
+            }).done(function (res) {
+                if (res && res.success) {
+                    lastPolish = res.data.html || '';
+                    $('#sphotography-ai-polish-preview').text($('<div>').html(lastPolish).text());
+                    $('#sphotography-ai-polish-result').prop('hidden', false);
+                    setStatus('', false);
+                } else {
+                    setStatus(i18n.error + ((res && res.data) || ''), true);
+                }
+            }).fail(function () {
+                setStatus(i18n.error + 'request failed', true);
+            }).always(function () {
+                btn.prop('disabled', false);
+            });
+        });
 
+        $('#sphotography-ai-apply-btn').on('click', function () {
+            if (lastPolish && applyHtml(lastPolish, 'replace')) {
+                setStatus(i18n.applied, false);
+                $('#sphotography-ai-polish-result').prop('hidden', true);
+            }
+        });
+
+        // ----- AI 自动标签 -----
+        $('#sphotography-ai-tags-btn').on('click', function () {
+            var btn = $(this);
+            var body = getContentText();
+            if (body.length < 20 && !getTitle()) { setStatus(i18n.noBody, true); return; }
+            btn.prop('disabled', true);
+            setStatus(i18n.tagWorking, false);
             $.post(cfg.ajaxUrl, {
                 action: 'sphotography_ai_tags',
                 nonce: cfg.nonce,
@@ -185,7 +294,7 @@
             }).fail(function () {
                 setStatus(i18n.error + 'request failed', true);
             }).always(function () {
-                $tagsBtn.prop('disabled', false);
+                btn.prop('disabled', false);
             });
         });
 
@@ -195,7 +304,6 @@
                 var $chip = $('<button type="button" class="sphotography-ai-chip"></button>').text('+ ' + tag);
                 $chip.on('click', function () {
                     var ok = addPostTag(tag);
-                    // addPostTag may return a promise (block editor).
                     if (ok && typeof ok.then === 'function') {
                         ok.then(function () { markAdded($chip); });
                     } else if (ok) {

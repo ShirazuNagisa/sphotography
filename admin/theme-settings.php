@@ -77,12 +77,16 @@ function sphotography_get_default_settings() {
         'footer_content'      => '',
         // ⑨ CDN
         'cdn_source'          => 'jsdelivr',
-        // ⑩ Experimental features (v1.2.9). The API key is NOT stored here — it
-        // lives encrypted in its own option (see inc/ai.php). Master toggle is
-        // off by default: experimental features are opt-in.
+        // ⑩ Experimental features (v1.2.9 / v1.3.0). API keys are NOT stored here
+        // — they live encrypted in their own options (see inc/ai.php). Master
+        // toggle is off by default: experimental features are opt-in.
         'ai_enabled'          => false,
-        'ai_base_url'         => '',
+        'ai_model_mode'       => 'single',   // single | dual (vision + text)
+        'ai_image_enabled'    => false,       // single-mode: model is multimodal
+        'ai_base_url'         => '',          // primary / text / single model
         'ai_model'            => '',
+        'ai_vision_base_url'  => '',          // vision model (dual mode)
+        'ai_vision_model'     => '',
     );
 }
 
@@ -92,7 +96,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -196,9 +200,14 @@ function sphotography_sanitize_settings( $input ) {
     // ⑩ Experimental (v1.2.9). Require https on the base URL to avoid leaking
     // the bearer token over plain http. The API key is handled separately in
     // the save handler (encrypted), never through this array.
-    $sanitized['ai_enabled']  = ! empty( $input['ai_enabled'] ) ? 1 : 0;
-    $sanitized['ai_base_url'] = esc_url_raw( trim( (string) $input['ai_base_url'] ), array( 'https' ) );
-    $sanitized['ai_model']    = sanitize_text_field( $input['ai_model'] );
+    $sanitized['ai_enabled']       = ! empty( $input['ai_enabled'] ) ? 1 : 0;
+    $allowed_ai_mode               = array( 'single', 'dual' );
+    $sanitized['ai_model_mode']    = in_array( $input['ai_model_mode'], $allowed_ai_mode, true ) ? $input['ai_model_mode'] : $defaults['ai_model_mode'];
+    $sanitized['ai_image_enabled'] = ! empty( $input['ai_image_enabled'] ) ? 1 : 0;
+    $sanitized['ai_base_url']      = esc_url_raw( trim( (string) $input['ai_base_url'] ), array( 'https' ) );
+    $sanitized['ai_model']         = sanitize_text_field( $input['ai_model'] );
+    $sanitized['ai_vision_base_url'] = esc_url_raw( trim( (string) $input['ai_vision_base_url'] ), array( 'https' ) );
+    $sanitized['ai_vision_model']  = sanitize_text_field( $input['ai_vision_model'] );
 
     return $sanitized;
 }
@@ -228,12 +237,22 @@ function sphotography_handle_save_settings() {
     // theme_mod. The field is masked: an empty value keeps the existing key,
     // ticking "clear" removes it, a new value replaces it (encrypted).
     if ( function_exists( 'sphotography_ai_store_key' ) ) {
+        // Primary / text / single model key.
         if ( ! empty( $_POST['sphotography_ai_api_key_clear'] ) ) {
             sphotography_ai_store_key( '' );
         } elseif ( isset( $_POST['sphotography_ai_api_key'] ) ) {
             $new_key = trim( (string) wp_unslash( $_POST['sphotography_ai_api_key'] ) );
             if ( '' !== $new_key ) {
                 sphotography_ai_store_key( $new_key );
+            }
+        }
+        // Vision model key (dual mode).
+        if ( ! empty( $_POST['sphotography_ai_vision_key_clear'] ) ) {
+            sphotography_ai_store_vision_key( '' );
+        } elseif ( isset( $_POST['sphotography_ai_vision_key'] ) ) {
+            $new_vkey = trim( (string) wp_unslash( $_POST['sphotography_ai_vision_key'] ) );
+            if ( '' !== $new_vkey ) {
+                sphotography_ai_store_vision_key( $new_vkey );
             }
         }
     }
@@ -990,8 +1009,33 @@ function sphotography_render_settings_page() {
                                    <?php checked( $values['ai_enabled'], 1 ); ?>>
                             <?php _e( '启用 AI 功能', 'sphotography' ); ?>
                         </label>
-                        <p class="sphotography-desc"><?php _e( '总开关。开启后，文章编辑页会出现「Sphotography AI」面板，可根据关键词扩写正文、自动建议标签。默认关闭。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '总开关。开启后，文章编辑页会出现「Sphotography AI」面板，可补全正文、润色、自动建议标签。默认关闭。', 'sphotography' ); ?></p>
                     </div>
+
+                    <!-- Model mode (v1.3.0) -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-ai-model-mode"><?php _e( '运行模式', 'sphotography' ); ?></label>
+                        <select id="sphotography-ai-model-mode" name="sphotography[ai_model_mode]">
+                            <option value="single" <?php selected( $values['ai_model_mode'], 'single' ); ?>><?php _e( '单模型（一个模型完成全部任务）', 'sphotography' ); ?></option>
+                            <option value="dual" <?php selected( $values['ai_model_mode'], 'dual' ); ?>><?php _e( '双模型（识图模型 + 文案模型，分别配置）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '「单模型」用同一个模型处理文字与图片（分析图片需该模型支持多模态）；「双模型」先用识图模型分析图片生成描述，再交由文案模型写作。图片分析强制需要多模态能力。默认单模型。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Single-mode: image analysis toggle -->
+                    <div class="sphotography-field sphotography-field-checkbox sp-ai-mode-field" data-sp-ai-mode="single">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[ai_image_enabled]"
+                                   value="1"
+                                   <?php checked( $values['ai_image_enabled'], 1 ); ?>>
+                            <?php _e( '启用图片分析（单模型为多模态时勾选）', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '仅单模型模式：勾选表示你的单模型支持多模态，补全/润色会把文章图片一并发送分析。若你的模型不支持图片，请保持关闭——此时图片相关分析停用，仅使用文字，其余功能照常。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Primary / text / single model -->
+                    <h3 class="sphotography-subhead"><?php _e( '文案输出模型（单模型模式下即为唯一模型）', 'sphotography' ); ?></h3>
 
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-ai-base-url"><?php _e( 'API Base URL', 'sphotography' ); ?></label>
@@ -1027,7 +1071,47 @@ function sphotography_render_settings_page() {
                                name="sphotography[ai_model]"
                                value="<?php echo esc_attr( $values['ai_model'] ); ?>"
                                placeholder="gpt-4o-mini">
-                        <p class="sphotography-desc"><?php _e( '要调用的模型 ID，如 gpt-4o-mini、deepseek-chat、moonshot-v1-8k 等，以你的服务商文档为准。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '要调用的模型 ID，如 gpt-4o-mini、deepseek-chat、moonshot-v1-8k 等，以你的服务商文档为准。单模型模式若要分析图片，此模型需支持多模态。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Dual-mode: vision model -->
+                    <h3 class="sphotography-subhead sp-ai-mode-field" data-sp-ai-mode="dual"><?php _e( '识图模型（仅双模型模式，需支持多模态）', 'sphotography' ); ?></h3>
+
+                    <div class="sphotography-field sp-ai-mode-field" data-sp-ai-mode="dual">
+                        <label class="sphotography-label" for="sphotography-ai-vision-base-url"><?php _e( '识图 API Base URL', 'sphotography' ); ?></label>
+                        <input type="url"
+                               id="sphotography-ai-vision-base-url"
+                               name="sphotography[ai_vision_base_url]"
+                               value="<?php echo esc_attr( $values['ai_vision_base_url'] ); ?>"
+                               placeholder="https://api.openai.com/v1">
+                        <p class="sphotography-desc"><?php _e( '识图模型的 OpenAI 兼容接口地址（必须为 https）。可与文案模型相同或不同服务商。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field sp-ai-mode-field" data-sp-ai-mode="dual">
+                        <label class="sphotography-label" for="sphotography-ai-vision-key"><?php _e( '识图 API Key', 'sphotography' ); ?></label>
+                        <input type="password"
+                               id="sphotography-ai-vision-key"
+                               name="sphotography_ai_vision_key"
+                               value=""
+                               autocomplete="new-password"
+                               placeholder="<?php echo sphotography_ai_has_vision_key() ? esc_attr__( '••••••（已保存，留空则保持不变）', 'sphotography' ) : esc_attr__( 'sk-...', 'sphotography' ); ?>">
+                        <?php if ( sphotography_ai_has_vision_key() ) : ?>
+                        <label class="sphotography-desc" style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+                            <input type="checkbox" name="sphotography_ai_vision_key_clear" value="1">
+                            <?php _e( '清除已保存的识图 API Key', 'sphotography' ); ?>
+                        </label>
+                        <?php endif; ?>
+                        <p class="sphotography-desc"><?php _e( '同样以 AES-256 加密存储，从不回显。留空表示保持现有 Key 不变。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field sp-ai-mode-field" data-sp-ai-mode="dual">
+                        <label class="sphotography-label" for="sphotography-ai-vision-model"><?php _e( '识图模型名称', 'sphotography' ); ?></label>
+                        <input type="text"
+                               id="sphotography-ai-vision-model"
+                               name="sphotography[ai_vision_model]"
+                               value="<?php echo esc_attr( $values['ai_vision_model'] ); ?>"
+                               placeholder="gpt-4o">
+                        <p class="sphotography-desc"><?php _e( '支持图片输入的多模态模型 ID，如 gpt-4o、qwen-vl-max、glm-4v 等。', 'sphotography' ); ?></p>
                     </div>
 
                     <div class="sphotography-field">
@@ -1037,7 +1121,7 @@ function sphotography_render_settings_page() {
                             <?php _e( '测试连接', 'sphotography' ); ?>
                         </button>
                         <span id="sphotography-ai-test-status" style="margin-left:12px;font-size:0.8125rem;"></span>
-                        <p class="sphotography-desc"><?php _e( '发送一次极小的测试请求，验证 Base URL、API Key 与模型是否可用。请先保存设置，再测试已保存的配置。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '发送极小的测试请求验证配置是否可用：单模型测试该模型，双模型分别测试识图模型与文案模型。请先保存设置，再测试已保存的配置。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
@@ -1655,6 +1739,15 @@ function sphotography_admin_enqueue_settings( $hook ) {
             line-height: 1.7;
         }
         .sphotography-ai-risk li { margin: 0 0 2px 0; }
+        /* v1.3.0 — sub-heading inside the experimental module */
+        .sphotography-subhead {
+            margin: 8px 0 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--sp-border);
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--sp-text);
+        }
     ";
 
     wp_add_inline_style( 'wp-color-picker', $settings_css );
