@@ -43,6 +43,9 @@ function sphotography_get_default_settings() {
         'author_nickname'     => '',
         'avatar_url'          => '',
         'bio'                 => '',
+        // Custom personal links for the expanded profile view (v1.3.2).
+        // One per line, "名称|链接" (e.g. "GitHub|https://github.com/xxx").
+        'custom_links'        => '',
         // ⑤ Animation
         'preloader_style'     => 'aperture',
         'smooth_scroll'       => 'enabled',
@@ -155,6 +158,9 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['author_nickname'] = sanitize_text_field( $input['author_nickname'] );
     $sanitized['avatar_url'] = esc_url_raw( $input['avatar_url'] );
     $sanitized['bio'] = sanitize_textarea_field( $input['bio'] );
+    // Custom links: keep as a raw multiline string; each line is parsed and
+    // URL-escaped at render time by sphotography_parse_profile_links().
+    $sanitized['custom_links'] = isset( $input['custom_links'] ) ? sanitize_textarea_field( $input['custom_links'] ) : '';
 
     // ⑤ Animation
     $allowed_preloader = array( 'off', 'aperture', 'flythrough' );
@@ -683,6 +689,15 @@ function sphotography_render_settings_page() {
                                   rows="4"
                                   placeholder="<?php esc_attr_e( '行走于街巷与山野，用镜头收集人间烟火与自然纹理。', 'sphotography' ); ?>"><?php echo esc_textarea( $values['bio'] ); ?></textarea>
                         <p class="sphotography-desc"><?php _e( '留空则自动隐藏简介行（卡片其余部分仍显示）。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-custom-links"><?php _e( '自定义个人链接', 'sphotography' ); ?></label>
+                        <textarea id="sphotography-custom-links"
+                                  name="sphotography[custom_links]"
+                                  rows="4"
+                                  placeholder="GitHub|https://github.com/xxx&#10;微博|https://weibo.com/xxx&#10;邮箱|mailto:me@example.com"><?php echo esc_textarea( $values['custom_links'] ); ?></textarea>
+                        <p class="sphotography-desc"><?php _e( '一行一个，格式「名称|链接」。展开个人信息时按顺序显示，每行一个可点击链接。留空则不显示链接。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>

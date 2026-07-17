@@ -32,6 +32,11 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
 ?>
 <body <?php body_class( $sphotography_body_classes ); ?>>
 <?php wp_body_open(); ?>
+<script>
+/* Night-mode override (v1.3.2): apply the remembered light/dark/system choice
+   to the body class before paint so there is no flash of the backend default. */
+(function(){try{var v=localStorage.getItem('sp-night-mode');if(v!=='light'&&v!=='dark'&&v!=='system')return;var b=document.body;b.classList.remove('sphotography-night-force-dark','sphotography-night-force-light','sphotography-night-system');b.classList.add(v==='dark'?'sphotography-night-force-dark':v==='light'?'sphotography-night-force-light':'sphotography-night-system');}catch(e){}})();
+</script>
 
     <?php $sphotography_preloader = sphotography_get_mod( 'preloader_style' ); ?>
     <?php if ( 'aperture' === $sphotography_preloader ) : ?>
@@ -117,13 +122,26 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
             }
             $sp_initial = function_exists( 'mb_substr' ) ? mb_substr( $sp_name, 0, 1 ) : substr( $sp_name, 0, 1 );
         ?>
-        <div class="sidebar-profile">
-            <?php if ( $sp_avatar ) : ?>
-                <img src="<?php echo esc_url( $sp_avatar ); ?>" alt="" class="sidebar-profile-avatar">
-            <?php else : ?>
-                <span class="sidebar-profile-avatar sidebar-profile-avatar--placeholder"><?php echo esc_html( $sp_initial ); ?></span>
-            <?php endif; ?>
-            <span class="sidebar-profile-name"><?php echo esc_html( $sp_name ); ?></span>
+        <?php $sp_bio = get_theme_mod( 'sphotography_bio', '' ); ?>
+        <div class="sidebar-profile" id="sidebar-profile">
+            <div class="sidebar-profile-panel" id="sidebar-profile-panel" aria-hidden="true">
+                <?php
+                sphotography_render_profile_expand( array(
+                    'avatar'  => $sp_avatar,
+                    'name'    => $sp_name,
+                    'bio'     => $sp_bio,
+                    'initial' => $sp_initial,
+                ) );
+                ?>
+            </div>
+            <button type="button" class="sidebar-profile-row" id="sidebar-profile-toggle" aria-expanded="false" aria-controls="sidebar-profile-panel" aria-label="<?php esc_attr_e( '展开个人信息', 'sphotography' ); ?>">
+                <?php if ( $sp_avatar ) : ?>
+                    <img src="<?php echo esc_url( $sp_avatar ); ?>" alt="" class="sidebar-profile-avatar">
+                <?php else : ?>
+                    <span class="sidebar-profile-avatar sidebar-profile-avatar--placeholder"><?php echo esc_html( $sp_initial ); ?></span>
+                <?php endif; ?>
+                <span class="sidebar-profile-name"><?php echo esc_html( $sp_name ); ?></span>
+            </button>
         </div>
         <?php endif; ?>
 
@@ -199,19 +217,21 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
     <!-- About Card — 常驻右下角个人信息卡片              -->
     <!-- ============================================ -->
     <?php if ( 'card' === sphotography_get_mod( 'profile_display' ) ) : ?>
-    <div id="about-card" class="about-card glass-panel">
-        <?php
-        $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
-        $author_name = get_theme_mod( 'sphotography_author_nickname', '' );
-        $bio = get_theme_mod( 'sphotography_bio', '' );
-        $hitokoto_enabled = get_theme_mod( 'sphotography_enable_hitokoto', false );
+    <?php
+    $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
+    $author_name = get_theme_mod( 'sphotography_author_nickname', '' );
+    $bio = get_theme_mod( 'sphotography_bio', '' );
+    $hitokoto_enabled = get_theme_mod( 'sphotography_enable_hitokoto', false );
 
-        if ( empty( $author_name ) ) {
-            $author_name = __( 'Shirazu Nagisa', 'sphotography' );
-        }
-        // Bio is intentionally NOT given a fallback: leaving it empty in the
-        // backend hides the bio line so the card adapts to minimal setups.
-        ?>
+    if ( empty( $author_name ) ) {
+        $author_name = __( 'Shirazu Nagisa', 'sphotography' );
+    }
+    // Bio is intentionally NOT given a fallback: leaving it empty in the
+    // backend hides the bio line so the card adapts to minimal setups.
+    $about_stats = sphotography_profile_stats();
+    $about_links = sphotography_parse_profile_links();
+    ?>
+    <div id="about-card" class="about-card glass-panel" role="button" tabindex="0" aria-expanded="false" aria-label="<?php esc_attr_e( '展开个人信息', 'sphotography' ); ?>">
         <?php if ( $avatar_url ) : ?>
             <img src="<?php echo esc_url( $avatar_url ); ?>" alt="" class="about-avatar">
         <?php endif; ?>
@@ -224,6 +244,23 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
                 <span id="hitokoto-text">Loading...</span>
             </div>
         <?php endif; ?>
+        <!-- Expanded-only content: stats + custom links (v1.3.2). -->
+        <div class="about-card-expand" aria-hidden="true">
+            <div class="profile-expand-stats">
+                <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['posts']; ?></span><span class="profile-stat-label"><?php esc_html_e( '文章', 'sphotography' ); ?></span></div>
+                <span class="profile-stat-sep" aria-hidden="true"></span>
+                <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['categories']; ?></span><span class="profile-stat-label"><?php esc_html_e( '分类', 'sphotography' ); ?></span></div>
+                <span class="profile-stat-sep" aria-hidden="true"></span>
+                <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['regions']; ?></span><span class="profile-stat-label"><?php esc_html_e( '地块', 'sphotography' ); ?></span></div>
+            </div>
+            <?php if ( ! empty( $about_links ) ) : ?>
+                <div class="profile-expand-links">
+                    <?php foreach ( $about_links as $about_link ) : ?>
+                        <a class="profile-expand-link" href="<?php echo esc_url( $about_link['url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $about_link['name'] ); ?></a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
     <?php endif; ?>
 
