@@ -36,7 +36,10 @@ function sphotography_get_default_settings() {
         'sidebar_default_open' => false,
         'article_card_size'   => 'small',
         'enable_hitokoto'     => false,
-        'about_card_enabled'  => true,
+        // Personal-info display mode (v1.2.9). Replaces the old about_card_enabled
+        // boolean: sidebar — one-line avatar+name in the sidebar (default);
+        // card — the classic bottom-right about card; off — hidden.
+        'profile_display'     => 'sidebar',
         'author_nickname'     => '',
         'avatar_url'          => '',
         'bio'                 => '',
@@ -74,6 +77,12 @@ function sphotography_get_default_settings() {
         'footer_content'      => '',
         // ⑨ CDN
         'cdn_source'          => 'jsdelivr',
+        // ⑩ Experimental features (v1.2.9). The API key is NOT stored here — it
+        // lives encrypted in its own option (see inc/ai.php). Master toggle is
+        // off by default: experimental features are opt-in.
+        'ai_enabled'          => false,
+        'ai_base_url'         => '',
+        'ai_model'            => '',
     );
 }
 
@@ -83,7 +92,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'about_card_enabled', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -119,7 +128,8 @@ function sphotography_sanitize_settings( $input ) {
     $allowed_card_size = array( 'small', 'large' );
     $sanitized['article_card_size'] = in_array( $input['article_card_size'], $allowed_card_size, true ) ? $input['article_card_size'] : $defaults['article_card_size'];
     $sanitized['enable_hitokoto'] = ! empty( $input['enable_hitokoto'] ) ? 1 : 0;
-    $sanitized['about_card_enabled'] = ! empty( $input['about_card_enabled'] ) ? 1 : 0;
+    $allowed_profile = array( 'sidebar', 'card', 'off' );
+    $sanitized['profile_display'] = in_array( $input['profile_display'], $allowed_profile, true ) ? $input['profile_display'] : $defaults['profile_display'];
     $sanitized['author_nickname'] = sanitize_text_field( $input['author_nickname'] );
     $sanitized['avatar_url'] = esc_url_raw( $input['avatar_url'] );
     $sanitized['bio'] = sanitize_textarea_field( $input['bio'] );
@@ -183,6 +193,13 @@ function sphotography_sanitize_settings( $input ) {
         ? $input['cdn_source']
         : $defaults['cdn_source'];
 
+    // ⑩ Experimental (v1.2.9). Require https on the base URL to avoid leaking
+    // the bearer token over plain http. The API key is handled separately in
+    // the save handler (encrypted), never through this array.
+    $sanitized['ai_enabled']  = ! empty( $input['ai_enabled'] ) ? 1 : 0;
+    $sanitized['ai_base_url'] = esc_url_raw( trim( (string) $input['ai_base_url'] ), array( 'https' ) );
+    $sanitized['ai_model']    = sanitize_text_field( $input['ai_model'] );
+
     return $sanitized;
 }
 
@@ -207,6 +224,20 @@ function sphotography_handle_save_settings() {
         set_theme_mod( 'sphotography_' . $key, $value );
     }
 
+    // API key (experimental AI) — handled separately so it is never stored as a
+    // theme_mod. The field is masked: an empty value keeps the existing key,
+    // ticking "clear" removes it, a new value replaces it (encrypted).
+    if ( function_exists( 'sphotography_ai_store_key' ) ) {
+        if ( ! empty( $_POST['sphotography_ai_api_key_clear'] ) ) {
+            sphotography_ai_store_key( '' );
+        } elseif ( isset( $_POST['sphotography_ai_api_key'] ) ) {
+            $new_key = trim( (string) wp_unslash( $_POST['sphotography_ai_api_key'] ) );
+            if ( '' !== $new_key ) {
+                sphotography_ai_store_key( $new_key );
+            }
+        }
+    }
+
     // Redirect back with success message
     wp_safe_redirect( add_query_arg( 'settings-updated', 'true', wp_get_referer() ) );
     exit;
@@ -227,6 +258,23 @@ function sphotography_migrate_marker_mode() {
     }
 }
 add_action( 'admin_init', 'sphotography_migrate_marker_mode' );
+
+// ============================================
+// One-time migration (v1.2.9): fold the old about_card_enabled boolean into the
+// new profile_display selector so upgrading sites keep their current look —
+// card enabled → 'card', disabled → 'off'. Fresh installs default to 'sidebar'.
+// ============================================
+function sphotography_migrate_profile_display() {
+    if ( null !== get_theme_mod( 'sphotography_profile_display', null ) ) {
+        return;
+    }
+    $old = get_theme_mod( 'sphotography_about_card_enabled', null );
+    if ( null === $old ) {
+        return; // truly fresh install → default 'sidebar' applies.
+    }
+    set_theme_mod( 'sphotography_profile_display', $old ? 'card' : 'off' );
+}
+add_action( 'admin_init', 'sphotography_migrate_profile_display' );
 
 // ============================================
 // Handle form submission: Reset
@@ -540,15 +588,14 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '开启后，在左侧栏底部显示来自一言 API 的随机格言。', 'sphotography' ); ?></p>
                     </div>
 
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox"
-                                   name="sphotography[about_card_enabled]"
-                                   value="1"
-                                   <?php checked( $values['about_card_enabled'], 1 ); ?>>
-                            <?php _e( '显示右下角个人信息卡片', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，地图右下角常驻显示个人信息卡片（头像、昵称、简介、一言）。关闭则完全隐藏该卡片。默认开启。', 'sphotography' ); ?></p>
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-profile-display"><?php _e( '个人信息展示方式', 'sphotography' ); ?></label>
+                        <select id="sphotography-profile-display" name="sphotography[profile_display]">
+                            <option value="sidebar" <?php selected( $values['profile_display'], 'sidebar' ); ?>><?php _e( '边栏一行（默认，头像 + 昵称）', 'sphotography' ); ?></option>
+                            <option value="card" <?php selected( $values['profile_display'], 'card' ); ?>><?php _e( '右下角卡片（头像、昵称、简介、一言）', 'sphotography' ); ?></option>
+                            <option value="off" <?php selected( $values['profile_display'], 'off' ); ?>><?php _e( '不显示', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择个人信息的展示方式。「边栏一行」在左侧栏底部（收起按钮上方）以一行显示头像与昵称，不含简介与一言，观感更简洁，为默认方式；「右下角卡片」为经典右下角常驻卡片，含简介与一言；「不显示」完全隐藏。默认「边栏一行」。', 'sphotography' ); ?></p>
                     </div>
 
                     <div class="sphotography-field">
@@ -916,6 +963,86 @@ function sphotography_render_settings_page() {
             </div>
 
             <!-- ============================================ -->
+            <!-- Module 9b: 实验性功能 (v1.2.9) -->
+            <!-- ============================================ -->
+            <div class="sphotography-module" id="sp-mod-experimental">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-buddicons-activity"></span>
+                    <h2><?php _e( '实验性功能', 'sphotography' ); ?></h2>
+                </div>
+                <div class="sphotography-module-body">
+
+                    <div class="sphotography-ai-risk">
+                        <strong><?php _e( '风险提示', 'sphotography' ); ?></strong>
+                        <ul>
+                            <li><?php _e( 'AI 生成的内容可能不准确、不完整，甚至凭空捏造，请务必人工核对后再发布。', 'sphotography' ); ?></li>
+                            <li><?php _e( '这是实验性功能，仍在完善中，行为与效果可能随版本变化。', 'sphotography' ); ?></li>
+                            <li><?php _e( '启用后，你的文章内容与关键词会被发送到你所配置的第三方 AI 服务商，并可能按其计费规则产生费用。', 'sphotography' ); ?></li>
+                            <li><?php _e( 'API Key 加密存储于本站数据库、仅在服务器端使用，不会输出到前端；但请仍妥善保管，避免在不受信任的环境中填写。', 'sphotography' ); ?></li>
+                        </ul>
+                    </div>
+
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[ai_enabled]"
+                                   value="1"
+                                   <?php checked( $values['ai_enabled'], 1 ); ?>>
+                            <?php _e( '启用 AI 功能', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '总开关。开启后，文章编辑页会出现「Sphotography AI」面板，可根据关键词扩写正文、自动建议标签。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-ai-base-url"><?php _e( 'API Base URL', 'sphotography' ); ?></label>
+                        <input type="url"
+                               id="sphotography-ai-base-url"
+                               name="sphotography[ai_base_url]"
+                               value="<?php echo esc_attr( $values['ai_base_url'] ); ?>"
+                               placeholder="https://api.openai.com/v1">
+                        <p class="sphotography-desc"><?php _e( '兼容 OpenAI 的接口地址（必须为 https），填写到 /v1 即可，无需带 /chat/completions。支持 OpenAI、DeepSeek、Moonshot、智谱、硅基流动等一切提供 OpenAI 兼容接口的服务商。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-ai-api-key"><?php _e( 'API Key', 'sphotography' ); ?></label>
+                        <input type="password"
+                               id="sphotography-ai-api-key"
+                               name="sphotography_ai_api_key"
+                               value=""
+                               autocomplete="new-password"
+                               placeholder="<?php echo sphotography_ai_has_key() ? esc_attr__( '••••••（已保存，留空则保持不变）', 'sphotography' ) : esc_attr__( 'sk-...', 'sphotography' ); ?>">
+                        <?php if ( sphotography_ai_has_key() ) : ?>
+                        <label class="sphotography-desc" style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+                            <input type="checkbox" name="sphotography_ai_api_key_clear" value="1">
+                            <?php _e( '清除已保存的 API Key', 'sphotography' ); ?>
+                        </label>
+                        <?php endif; ?>
+                        <p class="sphotography-desc"><?php _e( 'API Key 使用 AES-256 加密后存储，且从不回显到页面。留空表示保持现有 Key 不变。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-ai-model"><?php _e( '模型名称', 'sphotography' ); ?></label>
+                        <input type="text"
+                               id="sphotography-ai-model"
+                               name="sphotography[ai_model]"
+                               value="<?php echo esc_attr( $values['ai_model'] ); ?>"
+                               placeholder="gpt-4o-mini">
+                        <p class="sphotography-desc"><?php _e( '要调用的模型 ID，如 gpt-4o-mini、deepseek-chat、moonshot-v1-8k 等，以你的服务商文档为准。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label"><?php _e( '连接测试', 'sphotography' ); ?></label>
+                        <button type="button" id="sphotography-ai-test" class="button button-secondary" style="display:inline-flex;align-items:center;gap:4px;">
+                            <span class="dashicons dashicons-admin-plugins" style="font-size:16px;width:16px;height:16px;"></span>
+                            <?php _e( '测试连接', 'sphotography' ); ?>
+                        </button>
+                        <span id="sphotography-ai-test-status" style="margin-left:12px;font-size:0.8125rem;"></span>
+                        <p class="sphotography-desc"><?php _e( '发送一次极小的测试请求，验证 Base URL、API Key 与模型是否可用。请先保存设置，再测试已保存的配置。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================ -->
             <!-- Module 10: 版本与更新 -->
             <!-- ============================================ -->
             <div class="sphotography-module" id="sp-mod-version">
@@ -985,6 +1112,7 @@ function sphotography_render_settings_page() {
                         'sp-mod-footer'    => __( '页脚设置', 'sphotography' ),
                         'sp-mod-mapstyle'  => __( '地图样式', 'sphotography' ),
                         'sp-mod-cdn'       => __( 'CDN 来源', 'sphotography' ),
+                        'sp-mod-experimental' => __( '实验性功能', 'sphotography' ),
                         'sp-mod-version'   => __( '版本与更新', 'sphotography' ),
                     );
                     foreach ( $toc_items as $anchor => $label ) :
@@ -1505,6 +1633,28 @@ function sphotography_admin_enqueue_settings( $hook ) {
             animation: sphotographyPreviewSpin 0.7s linear infinite;
         }
         @keyframes sphotographyPreviewSpin { to { transform: rotate(360deg); } }
+        /* v1.2.9 — experimental AI risk banner */
+        .sphotography-ai-risk {
+            border: 1px solid rgba(224,90,77,0.35);
+            background: rgba(224,90,77,0.08);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 20px;
+        }
+        .sphotography-ai-risk strong {
+            display: block;
+            color: #e05a4d;
+            margin-bottom: 8px;
+            font-size: 0.9375rem;
+        }
+        .sphotography-ai-risk ul {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--sp-text-muted);
+            font-size: 0.8125rem;
+            line-height: 1.7;
+        }
+        .sphotography-ai-risk li { margin: 0 0 2px 0; }
     ";
 
     wp_add_inline_style( 'wp-color-picker', $settings_css );
@@ -1524,6 +1674,10 @@ function sphotography_admin_enqueue_settings( $hook ) {
         'releaseUrl'     => 'https://github.com/ShirazuNagisa/sphotography/releases',
         'updateNonce'    => wp_create_nonce( 'sphotography_update_nonce' ),
         'geoRebuildNonce' => wp_create_nonce( 'sphotography_geo_rebuild' ),
+        'aiTestNonce'    => wp_create_nonce( 'sphotography_ai_test' ),
+        'aiTesting'      => __( '测试中…', 'sphotography' ),
+        'aiTestOk'       => __( '连接成功', 'sphotography' ),
+        'aiTestFail'     => __( '连接失败：', 'sphotography' ),
         'previewUrl'     => sphotography_map_preview_url(),
         'resetConfirm'   => __( '确定要重置所有设置为默认值吗？此操作不可撤销。', 'sphotography' ),
         'updateConfirm'  => __( "确定从 master 分支下载并覆盖主题文件吗？\n\n配置数据存在数据库中，不受影响。\n更新后请重新激活主题。", 'sphotography' ),

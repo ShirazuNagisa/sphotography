@@ -280,5 +280,27 @@
                 btn.prop('disabled', false).text('从 master 分支更新主题');
             });
         });
+
+        // ----- Experimental AI: test connection (v1.2.9) -----
+        $('#sphotography-ai-test').on('click', function () {
+            var btn = $(this);
+            var status = $('#sphotography-ai-test-status');
+            btn.prop('disabled', true);
+            status.text(config.aiTesting || 'Testing…').css('color', 'var(--sp-text-muted)');
+            $.post(config.ajaxUrl, {
+                action: 'sphotography_ai_test',
+                nonce: config.aiTestNonce
+            }).done(function (response) {
+                if (response && response.success) {
+                    status.text('✓ ' + (config.aiTestOk || 'OK')).css('color', '#2ecc71');
+                } else {
+                    status.text('✗ ' + (config.aiTestFail || '') + $('<div>').text((response && response.data) || '').html()).css('color', '#e05a4d');
+                }
+            }).fail(function () {
+                status.text('✗ ' + (config.aiTestFail || '') + 'request failed').css('color', '#e05a4d');
+            }).always(function () {
+                btn.prop('disabled', false);
+            });
+        });
     });
 })(jQuery);

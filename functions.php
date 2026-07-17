@@ -19,6 +19,7 @@ require_once get_template_directory() . '/admin/admin-style.php';
 require_once get_template_directory() . '/inc/theme-mods-applier.php';
 require_once get_template_directory() . '/inc/region-tag-color.php';
 require_once get_template_directory() . '/inc/region-index.php';
+require_once get_template_directory() . '/inc/ai.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"

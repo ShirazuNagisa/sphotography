@@ -105,6 +105,28 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
             <!-- Dynamically populated by JS -->
         </div>
 
+        <?php
+        // Personal-info — sidebar one-line mode (v1.2.9). Sits just above the
+        // footer row (collapse button / brand / GitHub). Avatar + nickname only,
+        // no bio / hitokoto. Empty avatar falls back to a letter circle.
+        if ( 'sidebar' === sphotography_get_mod( 'profile_display' ) ) :
+            $sp_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
+            $sp_name   = get_theme_mod( 'sphotography_author_nickname', '' );
+            if ( '' === $sp_name ) {
+                $sp_name = __( 'Shirazu Nagisa', 'sphotography' );
+            }
+            $sp_initial = function_exists( 'mb_substr' ) ? mb_substr( $sp_name, 0, 1 ) : substr( $sp_name, 0, 1 );
+        ?>
+        <div class="sidebar-profile">
+            <?php if ( $sp_avatar ) : ?>
+                <img src="<?php echo esc_url( $sp_avatar ); ?>" alt="" class="sidebar-profile-avatar">
+            <?php else : ?>
+                <span class="sidebar-profile-avatar sidebar-profile-avatar--placeholder"><?php echo esc_html( $sp_initial ); ?></span>
+            <?php endif; ?>
+            <span class="sidebar-profile-name"><?php echo esc_html( $sp_name ); ?></span>
+        </div>
+        <?php endif; ?>
+
         <!-- Bottom: collapse button + branding -->
         <div class="sidebar-footer">
             <button id="sidebar-toggle" class="sidebar-toggle-mini" aria-label="<?php esc_attr_e( 'Toggle sidebar', 'sphotography' ); ?>">
@@ -176,7 +198,7 @@ if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
     <!-- ============================================ -->
     <!-- About Card — 常驻右下角个人信息卡片              -->
     <!-- ============================================ -->
-    <?php if ( sphotography_get_mod( 'about_card_enabled' ) ) : ?>
+    <?php if ( 'card' === sphotography_get_mod( 'profile_display' ) ) : ?>
     <div id="about-card" class="about-card glass-panel">
         <?php
         $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
