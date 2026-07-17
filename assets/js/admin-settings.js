@@ -292,7 +292,8 @@
                 nonce: config.aiTestNonce
             }).done(function (response) {
                 if (response && response.success) {
-                    status.text('✓ ' + (config.aiTestOk || 'OK')).css('color', '#2ecc71');
+                    var msg = (response.data && response.data.message) ? response.data.message : (config.aiTestOk || 'OK');
+                    status.text('✓ ' + msg).css('color', '#2ecc71');
                 } else {
                     status.text('✗ ' + (config.aiTestFail || '') + $('<div>').text((response && response.data) || '').html()).css('color', '#e05a4d');
                 }
@@ -302,5 +303,19 @@
                 btn.prop('disabled', false);
             });
         });
+
+        // ----- Experimental AI: show/hide fields by model mode (v1.3.0) -----
+        var $aiMode = $('#sphotography-ai-model-mode');
+        if ($aiMode.length) {
+            var syncAiMode = function () {
+                var mode = $aiMode.val();
+                $('.sp-ai-mode-field').each(function () {
+                    var forMode = $(this).data('sp-ai-mode');
+                    $(this).toggle(String(forMode) === String(mode));
+                });
+            };
+            $aiMode.on('change', syncAiMode);
+            syncAiMode();
+        }
     });
 })(jQuery);
