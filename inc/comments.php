@@ -82,6 +82,7 @@ function sphotography_comment_config() {
 		'foldLong'       => (bool) sphotography_comment_setting( 'comment_fold_long' ),
 		'foldPx'         => SPHOTOGRAPHY_COMMENT_FOLD_PX,
 		'showReplyTo'    => (bool) sphotography_comment_setting( 'comment_show_reply_to' ),
+		'ipLocation'     => (bool) sphotography_comment_setting( 'comment_ip_location' ),
 		'perPage'        => SPHOTOGRAPHY_COMMENTS_PER_PAGE,
 		'isAdmin'        => sphotography_is_blog_admin(),
 	);
@@ -574,6 +575,7 @@ function sphotography_prepare_comment( $comment ) {
 		'edited'          => (bool) ( $edited && $can_see_history ),
 		'history'         => $history,
 		'ua'              => sphotography_format_comment_ua( $comment ),
+		'ip_region'       => function_exists( 'sphotography_comment_ip_region' ) ? sphotography_comment_ip_region( $comment ) : '',
 	);
 }
 

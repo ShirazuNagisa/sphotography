@@ -108,6 +108,7 @@ function sphotography_get_default_settings() {
         'comment_text_avatar'       => true,       // generated text avatar when no Gravatar
         'comment_fold_long'         => true,       // fold comments taller than a threshold
         'comment_show_reply_to'     => true,       // show replied-to username in child comments
+        'comment_ip_location'       => false,      // show IP-derived region (省/国) — needs on-demand IP db download
     );
 }
 
@@ -117,7 +118,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -245,6 +246,7 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['comment_text_avatar']   = ! empty( $input['comment_text_avatar'] ) ? 1 : 0;
     $sanitized['comment_fold_long']     = ! empty( $input['comment_fold_long'] ) ? 1 : 0;
     $sanitized['comment_show_reply_to'] = ! empty( $input['comment_show_reply_to'] ) ? 1 : 0;
+    $sanitized['comment_ip_location']   = ! empty( $input['comment_ip_location'] ) ? 1 : 0;
     $allowed_pagination = array( 'infinite', 'paged' );
     $sanitized['comment_pagination'] = in_array( $input['comment_pagination'], $allowed_pagination, true ) ? $input['comment_pagination'] : $defaults['comment_pagination'];
     $allowed_avatar_align = array( 'top', 'center' );
@@ -1306,7 +1308,16 @@ function sphotography_render_settings_page() {
                             <option value="platform_browser" <?php selected( $values['comment_ua_display'], 'platform_browser' ); ?>><?php _e( '平台 + 浏览器', 'sphotography' ); ?></option>
                             <option value="platform" <?php selected( $values['comment_ua_display'], 'platform' ); ?>><?php _e( '平台', 'sphotography' ); ?></option>
                         </select>
-                        <p class="sphotography-desc"><?php _e( '仅解析并显示浏览器/平台，不记录访客 IP。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '仅解析并显示浏览器/平台。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- IP location -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_ip_location]" value="1" <?php checked( $values['comment_ip_location'], 1 ); ?>>
+                            <?php _e( '显示评论者 IP 属地', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论旁显示由 IP 解析的归属地（国内到省、国外到国家），不显示完整 IP 地址。首次开启会按需从数据分支下载离线 IP 库到 uploads 目录，在服务器本地解析。历史评论会在下次浏览时自动补全属地。', 'sphotography' ); ?></p>
                     </div>
 
                     <!-- Text avatar -->

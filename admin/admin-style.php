@@ -298,7 +298,192 @@ function sphotography_admin_global_css() {
         color: var(--sp-accent);
     }
     body.sphotography-admin-global a { color: var(--sp-accent); }
+
+    /* ---- v1.3.4: list-table row striping ----
+       WordPress core paints .striped odd rows a light grey (#f6f7f7) with high
+       specificity, which under the dark scheme became a white band swallowing
+       the light row text. Neutralise the core row/cell backgrounds and paint a
+       subtle scheme-aware stripe from our own surfaces instead. */
+    body.sphotography-admin-global .wp-list-table td,
+    body.sphotography-admin-global .wp-list-table th,
+    body.sphotography-admin-global .wp-list-table > tbody > tr,
+    body.sphotography-admin-global .wp-list-table.striped > tbody > tr:nth-child(odd),
+    body.sphotography-admin-global .wp-list-table > tbody > tr.alternate,
+    body.sphotography-admin-global .striped > tbody > tr:nth-child(odd) {
+        background: transparent !important;
+        color: var(--sp-text);
+    }
+    body.sphotography-admin-global .wp-list-table.striped > tbody > tr:nth-child(even),
+    body.sphotography-admin-global .wp-list-table.widefat > tbody > tr:nth-child(even) {
+        background: var(--sp-surface-2) !important;
+    }
+    body.sphotography-admin-global .wp-list-table > tbody > tr:hover,
+    body.sphotography-admin-global .wp-list-table > tbody > tr:hover > * {
+        background: var(--sp-surface-2) !important;
+    }
+    body.sphotography-admin-global .wp-list-table a.row-title,
+    body.sphotography-admin-global .wp-list-table .column-title strong,
+    body.sphotography-admin-global .wp-list-table strong { color: var(--sp-text); }
+    body.sphotography-admin-global .wp-list-table a.row-title:hover { color: var(--sp-accent); }
+    body.sphotography-admin-global .wp-list-table .row-actions,
+    body.sphotography-admin-global .wp-list-table .row-actions a { color: var(--sp-text-muted); }
+    body.sphotography-admin-global .wp-list-table .row-actions a:hover { color: var(--sp-accent); }
+
+    /* ---- v1.3.4: light-mode contrast for native WP option text ----
+       Core leaves much of its settings-screen copy at a pale grey that is hard
+       to read on our cream light surface. Darken the muted token in light mode
+       and pin native form/description text to a readable colour. */
+    body.sphotography-admin-global:not(.sphotography-admin-scheme-dark) { --sp-text-muted: #57514a; }
+    @media (prefers-color-scheme: light) {
+        body.sphotography-admin-global.sphotography-admin-scheme-system { --sp-text-muted: #57514a; }
+    }
+    body.sphotography-admin-global #wpbody-content,
+    body.sphotography-admin-global .form-table th,
+    body.sphotography-admin-global .form-table td,
+    body.sphotography-admin-global .form-wrap label,
+    body.sphotography-admin-global fieldset label,
+    body.sphotography-admin-global .wrap li,
+    body.sphotography-admin-global .wrap p { color: var(--sp-text); }
+    body.sphotography-admin-global .description,
+    body.sphotography-admin-global p.description,
+    body.sphotography-admin-global .form-table .description,
+    body.sphotography-admin-global .howto { color: var(--sp-text-muted); }
     ";
+
+    // Dark block-editor interface (sidebar, panels, inputs, meta boxes).
+    $css .= sphotography_admin_editor_dark_css();
 
     return $css;
 }
+
+/**
+ * Dark theming for the block-editor interface chrome (header, sidebars,
+ * inspector panels, form inputs, meta-box area) when the global style is on and
+ * the dark scheme is active. Emitted under both the explicit dark class and the
+ * system-preference branch so it never leaks into light mode.
+ *
+ * The rules reference the --sp-* tokens, which already resolve to dark values
+ * under these selectors, so a single rule body serves both branches.
+ *
+ * @return string
+ */
+function sphotography_admin_editor_dark_css() {
+    $rules = "
+        {P} .edit-post-header,
+        {P} .editor-header,
+        {P} .edit-post-header__toolbar,
+        {P} .edit-post-header__settings,
+        {P} .editor-document-tools,
+        {P} .edit-post-editor-regions__header { background: var(--sp-surface); color: var(--sp-text); border-color: var(--sp-border); }
+        {P} .interface-interface-skeleton__body,
+        {P} .interface-interface-skeleton__content,
+        {P} .edit-post-visual-editor,
+        {P} .edit-post-layout__metaboxes { background: var(--sp-bg); }
+        {P} .interface-complementary-area,
+        {P} .interface-interface-skeleton__sidebar,
+        {P} .editor-sidebar,
+        {P} .edit-post-sidebar { background: var(--sp-surface); color: var(--sp-text); }
+        {P} .components-panel,
+        {P} .components-panel__body,
+        {P} .components-panel__header,
+        {P} .block-editor-block-inspector,
+        {P} .editor-sidebar .components-panel { background: var(--sp-surface); color: var(--sp-text); border-color: var(--sp-border); }
+        {P} .components-panel__body-title,
+        {P} .components-panel__body-title .components-button,
+        {P} .block-editor-block-card__title,
+        {P} .interface-complementary-area h2,
+        {P} .interface-complementary-area h3,
+        {P} .components-base-control__label,
+        {P} .components-base-control__help,
+        {P} .block-editor-block-card__description,
+        {P} .edit-post-sidebar label,
+        {P} .components-toggle-control__label,
+        {P} .components-panel label { color: var(--sp-text); }
+        {P} .components-text-control__input,
+        {P} .components-textarea-control__input,
+        {P} .components-select-control__input,
+        {P} .components-input-control__input,
+        {P} .block-editor-plain-text,
+        {P} .components-form-token-field__input,
+        {P} .components-form-token-field {
+            background: var(--sp-surface-2) !important;
+            color: var(--sp-text) !important;
+            border-color: var(--sp-border) !important;
+        }
+        {P} .editor-post-title__input,
+        {P} .wp-block-post-title { color: var(--sp-text) !important; }
+        {P} .edit-post-meta-boxes-area .postbox,
+        {P} .metabox-location-side .postbox,
+        {P} #poststuff .postbox { background: var(--sp-surface); color: var(--sp-text); border-color: var(--sp-border); }
+        {P} #poststuff .postbox .hndle,
+        {P} #poststuff .postbox-header { color: var(--sp-text); border-color: var(--sp-border); }
+        {P} .components-popover__content,
+        {P} .components-dropdown-menu__menu,
+        {P} .components-menu-group,
+        {P} .components-menu-item__button { background-color: var(--sp-surface); color: var(--sp-text); }
+        {P} .components-button.is-tertiary,
+        {P} .components-button.is-secondary { color: var(--sp-text); }
+    ";
+
+    $dark   = str_replace( '{P}', 'body.sphotography-admin-global.sphotography-admin-scheme-dark', $rules );
+    $system = str_replace( '{P}', 'body.sphotography-admin-global.sphotography-admin-scheme-system', $rules );
+
+    return $dark . "\n@media (prefers-color-scheme: dark) {\n" . $system . "\n}\n";
+}
+
+// ============================================
+// Dark editor canvas (iframed content in WP 6.3+)
+//
+// The rules above style the editor chrome, which lives in the main admin
+// document. The writing canvas is rendered in its own iframe, so its dark
+// styling must be enqueued via enqueue_block_assets (which WordPress injects
+// into the canvas iframe). Guarded to the admin, the global style, and dark
+// mode; the system branch is resolved with a media query because the iframe
+// body carries no scheme class.
+// ============================================
+function sphotography_admin_block_canvas_dark() {
+    if ( ! is_admin() || ! sphotography_admin_global_enabled() ) {
+        return;
+    }
+    $mode = sphotography_admin_night_mode();
+    if ( 'light' === $mode ) {
+        return; // Editor stays light in light mode.
+    }
+
+    $primary = sphotography_admin_primary_color();
+    $body = "
+        .editor-styles-wrapper,
+        .block-editor-writing-flow {
+            background-color: #121212 !important;
+            color: #ececec !important;
+        }
+        .editor-styles-wrapper .wp-block,
+        .editor-styles-wrapper p,
+        .editor-styles-wrapper li,
+        .editor-styles-wrapper h1,
+        .editor-styles-wrapper h2,
+        .editor-styles-wrapper h3,
+        .editor-styles-wrapper h4,
+        .editor-styles-wrapper h5,
+        .editor-styles-wrapper h6,
+        .editor-styles-wrapper .wp-block-post-title { color: #ececec !important; }
+        .editor-styles-wrapper a { color: {$primary} !important; }
+        .editor-styles-wrapper .wp-block-quote,
+        .editor-styles-wrapper .wp-block-code,
+        .editor-styles-wrapper pre { background-color: #1c1c1c !important; color: #ececec !important; }
+        .editor-styles-wrapper .block-editor-default-block-appender__content,
+        .editor-styles-wrapper .wp-block-paragraph[data-empty=\"true\"]:before { color: #9a9a9a !important; }
+    ";
+
+    if ( 'dark' === $mode ) {
+        $css = $body;
+    } else {
+        // system
+        $css = "@media (prefers-color-scheme: dark) {\n{$body}\n}\n";
+    }
+
+    wp_register_style( 'sphotography-editor-canvas-dark', false, array(), SPHOTOGRAPHY_VERSION );
+    wp_enqueue_style( 'sphotography-editor-canvas-dark' );
+    wp_add_inline_style( 'sphotography-editor-canvas-dark', $css );
+}
+add_action( 'enqueue_block_assets', 'sphotography_admin_block_canvas_dark' );
