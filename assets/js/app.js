@@ -2038,13 +2038,15 @@
         var friendIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
         var msgIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
         var extIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+        var wallIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
 
         var bar = document.createElement('div');
         bar.id = 'page-links-bar';
         bar.className = 'page-links-bar';
         var html = ''
             + '<button type="button" class="page-link-btn" data-sp-panel="friend"><span class="page-link-ico">' + friendIcon + '</span><span class="page-link-txt">友链</span></button>'
-            + '<button type="button" class="page-link-btn" data-sp-panel="guestbook"><span class="page-link-ico">' + msgIcon + '</span><span class="page-link-txt">留言</span></button>';
+            + '<button type="button" class="page-link-btn" data-sp-panel="guestbook"><span class="page-link-ico">' + msgIcon + '</span><span class="page-link-txt">留言</span></button>'
+            + '<button type="button" class="page-link-btn" data-sp-panel="photowall"><span class="page-link-ico">' + wallIcon + '</span><span class="page-link-txt">照片墙</span></button>';
         var ext = Array.isArray(APP.externalLinks) ? APP.externalLinks : [];
         ext.forEach(function (e) {
             if (!e || !e.url) return;
@@ -2065,6 +2067,7 @@
         if (sidePanels.built) return;
         sidePanels.friend = buildSidePanel('friend', '友链');
         sidePanels.guestbook = buildSidePanel('guestbook', '留言');
+        sidePanels.photowall = buildSidePanel('photowall', '照片墙');
         sidePanels.built = true;
     }
 
@@ -2125,8 +2128,14 @@
             if (onDone) onDone();
             return;
         }
-        var shrunk = { transform: collapseTransform(srcRect, dst), opacity: 0.15, borderRadius: '999px' };
-        var full = { transform: 'translate(0,0) scale(1,1)', opacity: 1, borderRadius: window.getComputedStyle(panel).borderRadius };
+        // Only animate transform + opacity. We deliberately do NOT animate
+        // borderRadius: a filled (fill:both) close animation used to keep
+        // holding borderRadius:999px, and the next open read that back via
+        // getComputedStyle as its target radius → the panel opened as a pill /
+        // circle (v1.3.8 bug). The radius now always stays the panel's CSS
+        // --panel-radius.
+        var shrunk = { transform: collapseTransform(srcRect, dst), opacity: 0.15 };
+        var full = { transform: 'translate(0,0) scale(1,1)', opacity: 1 };
         var frames = opening ? [shrunk, full] : [full, shrunk];
         if (panel._flip) { panel._flip.cancel(); panel._flip = null; }
         panel.style.transformOrigin = 'top left';
@@ -2137,11 +2146,14 @@
         });
         panel._flip = anim;
         anim.onfinish = function () {
-            panel._flip = null;
+            if (panel._flip !== anim) return; // superseded by a newer flip
             panel.style.transform = '';
             panel.style.transformOrigin = '';
             if (!opening) panel.classList.remove('active');
             panel.classList.remove('side-panel--instant');
+            // Cancel so no fill:both state lingers on the element.
+            anim.cancel();
+            panel._flip = null;
             if (onDone) onDone();
         };
     }
@@ -2154,7 +2166,9 @@
             var panel = sidePanels[which];
             panel._srcRect = srcRect; // remember origin so outside-close can shrink back
             flipSidePanel(panel, srcRect, true);
-            if (which === 'friend') { loadFriendPanel(panel); } else { loadGuestbookPanel(panel); }
+            if (which === 'friend') { loadFriendPanel(panel); }
+            else if (which === 'guestbook') { loadGuestbookPanel(panel); }
+            else if (which === 'photowall') { loadPhotoWallPanel(panel); }
         };
         // 友链 / 留言 share the right slot: collapse the other one first.
         if (sidePanels.open && sidePanels.open !== which) {
@@ -2489,6 +2503,261 @@
             fb.textContent = '留言成功！';
             fb.classList.add('is-success');
         });
+    }
+
+    // ---------------------------------------------------------------
+    // 10a3. 照片墙 (photo wall) panel — grid grouped by shot day, infinite
+    // scroll, per-photo popup (article / detail / location) + full-panel
+    // detail view, and a three-case "view location" map fly. (v1.3.9)
+    // ---------------------------------------------------------------
+    var PW = { page: 0, perPage: (APP.photoWall && APP.photoWall.perPage) || 30, loading: false, hasMore: true, lastGroup: null, curGrid: null, items: [], scrollEl: null, panel: null };
+
+    function pwGroupLabel(group) {
+        if (group === 'pinned') return '置顶';
+        if (group === 'unknown' || !group) return '未知日期';
+        return formatDate(group);
+    }
+
+    function loadPhotoWallPanel(panel) {
+        PW = { page: 0, perPage: (APP.photoWall && APP.photoWall.perPage) || 30, loading: false, hasMore: true, lastGroup: null, curGrid: null, items: [], scrollEl: null, panel: panel, detailIndex: -1 };
+        var openDetail = panel.querySelector('.pw-detail');
+        if (openDetail) openDetail.classList.remove('is-open'); // reset stale detail overlay
+        var scroll = panel.querySelector('.side-panel-scroll');
+        PW.scrollEl = scroll;
+        scroll.scrollTop = 0;
+        scroll.innerHTML = ''
+            + '<header class="side-panel-header"><h3>照片墙</h3></header>'
+            + '<div class="pw-container" id="pw-container"></div>'
+            + '<div class="pw-more" id="pw-more"></div>';
+
+        if (!panel._pwWired) {
+            panel._pwWired = true;
+            // Infinite scroll: prefetch the next page as the bottom approaches.
+            var scheduled = false;
+            scroll.addEventListener('scroll', function () {
+                if (scheduled) return;
+                scheduled = true;
+                requestAnimationFrame(function () {
+                    scheduled = false;
+                    if (PW.loading || !PW.hasMore) return;
+                    if (scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 600) {
+                        loadPhotoWallPage();
+                    }
+                });
+            });
+            // Delegated clicks: open the per-photo popup / act on its options.
+            scroll.addEventListener('click', function (e) { onPhotoWallClick(e, scroll); });
+        }
+
+        loadPhotoWallPage();
+    }
+
+    function loadPhotoWallPage() {
+        if (PW.loading || !PW.hasMore) return;
+        PW.loading = true;
+        var moreEl = PW.scrollEl.querySelector('#pw-more');
+        if (moreEl) moreEl.textContent = '加载中…';
+        fetchFromRest('sphotography/v1/wall-photos', { page: PW.page + 1, per_page: PW.perPage }).then(function (data) {
+            PW.loading = false;
+            if (sidePanels.open !== 'photowall') return;
+            if (!data) { if (moreEl) moreEl.textContent = '加载失败'; return; }
+            PW.page = data.page || (PW.page + 1);
+            PW.hasMore = !!data.has_more;
+            var items = Array.isArray(data.items) ? data.items : [];
+            var container = PW.scrollEl.querySelector('#pw-container');
+            if (PW.items.length === 0 && items.length === 0) {
+                container.innerHTML = '<p class="pw-empty">还没有照片。</p>';
+            }
+            items.forEach(function (it) {
+                var idx = PW.items.length;
+                PW.items.push(it);
+                if (it.group !== PW.lastGroup || !PW.curGrid) {
+                    PW.lastGroup = it.group;
+                    var grp = document.createElement('div');
+                    grp.className = 'pw-group';
+                    grp.innerHTML = '<div class="pw-group-header">' + escapeHtml(pwGroupLabel(it.group)) + '</div><div class="pw-group-grid"></div>';
+                    container.appendChild(grp);
+                    PW.curGrid = grp.querySelector('.pw-group-grid');
+                }
+                var cell = document.createElement('button');
+                cell.type = 'button';
+                cell.className = 'pw-cell';
+                cell.setAttribute('data-pw-idx', idx);
+                cell.innerHTML = '<img class="pw-img" src="' + escapeHtml(it.thumbnail || it.full || '') + '" alt="' + escapeHtml(it.title || '') + '" loading="lazy">';
+                PW.curGrid.appendChild(cell);
+            });
+            if (moreEl) moreEl.textContent = PW.hasMore ? '' : '';
+        });
+    }
+
+    function closePhotoWallPopup() {
+        var p = PW.scrollEl && PW.scrollEl.querySelector('.pw-popup');
+        if (p) p.remove();
+    }
+
+    function onPhotoWallClick(e, scroll) {
+        var actBtn = e.target.closest('[data-pw-act]');
+        if (actBtn) {
+            e.stopPropagation();
+            var idx = parseInt(actBtn.getAttribute('data-pw-idx'), 10);
+            var act = actBtn.getAttribute('data-pw-act');
+            closePhotoWallPopup();
+            if (act === 'article') photoWallViewArticle(PW.items[idx]);
+            else if (act === 'detail') openPhotoWallDetail(idx);
+            else if (act === 'location') photoWallViewLocation(PW.items[idx]);
+            return;
+        }
+        var cell = e.target.closest('.pw-cell');
+        if (cell) {
+            e.stopPropagation();
+            var i = parseInt(cell.getAttribute('data-pw-idx'), 10);
+            togglePhotoWallPopup(cell, i);
+            return;
+        }
+        // Click elsewhere in the scroll area closes any open popup.
+        closePhotoWallPopup();
+    }
+
+    function togglePhotoWallPopup(cell, idx) {
+        var existing = PW.scrollEl.querySelector('.pw-popup');
+        var wasForThis = existing && existing.getAttribute('data-for') === String(idx);
+        closePhotoWallPopup();
+        if (wasForThis) return; // second click on same photo → just close
+        var it = PW.items[idx];
+        var hasGeo = it && it.lat !== '' && it.lat != null && it.lng !== '' && it.lng != null;
+        var pop = document.createElement('div');
+        pop.className = 'pw-popup';
+        pop.setAttribute('data-for', String(idx));
+        pop.innerHTML = ''
+            + '<button type="button" class="pw-popup-opt" data-pw-act="article" data-pw-idx="' + idx + '">查看对应文章</button>'
+            + '<button type="button" class="pw-popup-opt" data-pw-act="detail" data-pw-idx="' + idx + '">查看照片详情</button>'
+            + (hasGeo ? '<button type="button" class="pw-popup-opt" data-pw-act="location" data-pw-idx="' + idx + '">查看照片位置</button>' : '');
+        // Insert right after the clicked cell so it sits below the photo.
+        cell.parentNode.insertBefore(pop, cell.nextSibling);
+    }
+
+    function photoWallViewArticle(it) {
+        if (!it || !it.postId) return;
+        openSidebar();
+        openArticle(it.postId, { scrollToImageId: it.id, scrollToImageUrl: it.full || it.thumbnail || '' });
+    }
+
+    // ---- full-panel detail view ----
+    function openPhotoWallDetail(idx) {
+        if (idx < 0 || idx >= PW.items.length) return;
+        var panel = PW.panel;
+        var detail = panel.querySelector('.pw-detail');
+        if (!detail) {
+            detail = document.createElement('div');
+            detail.className = 'pw-detail';
+            panel.appendChild(detail);
+            detail.addEventListener('click', function (e) {
+                var nav = e.target.closest('[data-pw-nav]');
+                if (nav) { openPhotoWallDetail(PW.detailIndex + parseInt(nav.getAttribute('data-pw-nav'), 10)); return; }
+                var act = e.target.closest('[data-pw-dact]');
+                if (act) {
+                    var a = act.getAttribute('data-pw-dact');
+                    if (a === 'exit') { closePhotoWallDetail(); }
+                    else if (a === 'article') { photoWallViewArticle(PW.items[PW.detailIndex]); }
+                    else if (a === 'location') { photoWallViewLocation(PW.items[PW.detailIndex]); }
+                }
+            });
+        }
+        PW.detailIndex = idx;
+        renderPhotoWallDetail(detail, idx);
+        detail.classList.add('is-open');
+    }
+
+    function closePhotoWallDetail() {
+        var detail = PW.panel && PW.panel.querySelector('.pw-detail');
+        if (detail) detail.classList.remove('is-open');
+    }
+
+    function renderPhotoWallDetail(detail, idx) {
+        var it = PW.items[idx];
+        if (!it) return;
+        var hasGeo = it.lat !== '' && it.lat != null && it.lng !== '' && it.lng != null;
+        var rows = [];
+        var dt = it.date ? (formatDate(it.date) + (it.time ? ' ' + it.time : '')) : '';
+        if (dt) rows.push('<div class="pw-detail-row"><span>日期时间</span><b>' + escapeHtml(dt) + '</b></div>');
+        if (hasGeo) rows.push('<div class="pw-detail-row"><span>经纬度</span><b>' + escapeHtml(Number(it.lat).toFixed(5) + ', ' + Number(it.lng).toFixed(5)) + '</b></div>');
+        if (it.camera) rows.push('<div class="pw-detail-row"><span>拍摄设备</span><b>' + escapeHtml(it.camera) + '</b></div>');
+        var exposure = [it.aperture, it.shutter, (it.iso ? 'ISO ' + it.iso : '')].filter(Boolean).join('  ·  ');
+        if (exposure) rows.push('<div class="pw-detail-row"><span>光圈快门ISO</span><b>' + escapeHtml(exposure) + '</b></div>');
+
+        var atStart = idx <= 0, atEnd = idx >= PW.items.length - 1;
+        var arrow = function (dir, disabled, path) {
+            return '<button type="button" class="pw-detail-arrow pw-detail-arrow--' + dir + '"' + (disabled ? ' disabled' : '') + ' data-pw-nav="' + (dir === 'prev' ? -1 : 1) + '" aria-label="' + (dir === 'prev' ? '上一张' : '下一张') + '"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="' + path + '"/></svg></button>';
+        };
+        var locBtn = hasGeo ? '<button type="button" class="pw-detail-round" data-pw-dact="location" title="查看照片位置"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>' : '';
+        detail.innerHTML = ''
+            + '<button type="button" class="pw-detail-exit" data-pw-dact="exit" aria-label="退出"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+            + '<div class="pw-detail-stage">'
+            +   arrow('prev', atStart, '15 18 9 12 15 6')
+            +   '<img class="pw-detail-img" src="' + escapeHtml(it.full || it.thumbnail || '') + '" alt="' + escapeHtml(it.title || '') + '">'
+            +   arrow('next', atEnd, '9 18 15 12 9 6')
+            + '</div>'
+            + '<div class="pw-detail-info">'
+            +   '<div class="pw-detail-params">' + (rows.join('') || '<div class="pw-detail-row"><span>暂无参数</span></div>') + '</div>'
+            +   '<div class="pw-detail-actions">'
+            +     '<button type="button" class="pw-detail-round" data-pw-dact="article" title="查看对应文章"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>'
+            +     locBtn
+            +   '</div>'
+            + '</div>';
+    }
+
+    // ---- three-case "view location" fly ----
+    // Centre of the free map area to the LEFT of the photo-wall panel.
+    function photoWallLeftAreaCenter() {
+        var H = window.innerHeight;
+        var panel = sidePanels.photowall;
+        var panelLeft = window.innerWidth * 0.6;
+        if (panel) { var pr = panel.getBoundingClientRect(); if (pr.width) panelLeft = pr.left; }
+        var leftBound = 0;
+        if (state.sidebarOpen && dom.sidebar) {
+            var sr = dom.sidebar.getBoundingClientRect();
+            if (sr.width) leftBound = sr.right;
+        }
+        return { x: (leftBound + panelLeft) / 2, y: H / 2 };
+    }
+
+    function flyMapToPhotoWallPhoto(coords) {
+        if (!state.map || !coords || state.isMobile) return;
+        var lngLat = new maplibregl.LngLat(coords[0], coords[1]);
+        var center = photoWallLeftAreaCenter();
+        var offset = [center.x - window.innerWidth / 2, center.y - window.innerHeight / 2];
+        var targetZoom = zoomForScale(5000, coords[1]);
+        targetZoom = Math.max(CONFIG.minZoom, Math.min(CONFIG.maxZoom, targetZoom));
+        var flyId = ++state.mapFlyId;
+        removePulseDot();
+        state.map.easeTo({ center: lngLat, offset: offset, duration: 1200, easing: easeInOutSine });
+        state.map.once('moveend', function () {
+            if (flyId !== state.mapFlyId) return;
+            setTimeout(function () {
+                if (flyId !== state.mapFlyId) return;
+                state.map.easeTo({ zoom: targetZoom, around: lngLat, duration: 1600, easing: easeInOutSine });
+                if (REGION.active) {
+                    state.map.once('moveend', function () { if (flyId === state.mapFlyId) showPulseDot(coords); });
+                }
+            }, 100);
+        });
+    }
+
+    function photoWallViewLocation(it) {
+        if (!it) return;
+        var hasGeo = it.lat !== '' && it.lat != null && it.lng !== '' && it.lng != null;
+        if (!hasGeo) return;
+        var coords = [parseFloat(it.lng), parseFloat(it.lat)];
+        // Case C: article + sidebar open → collapse the article first, then fly.
+        if (state.articleOpen) {
+            var wait = (ARTICLE_MOTION && ARTICLE_MOTION.closeDuration ? ARTICLE_MOTION.closeDuration : 500) + 40;
+            closeArticlePanel();
+            setTimeout(function () { flyMapToPhotoWallPhoto(coords); }, wait);
+        } else {
+            // Cases A (nothing) and B (sidebar only) are handled by the
+            // left-area centre calc (leftBound = 0 or sidebar right edge).
+            flyMapToPhotoWallPhoto(coords);
+        }
     }
 
     // ---------------------------------------------------------------

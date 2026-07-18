@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.3.8
+Version: 1.3.9
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -3054,12 +3054,15 @@ body.sphotography-cursor-dot textarea {
    right; they coexist with an open article on the left. */
 .side-panel {
     position: fixed;
-    right: 16px;
+    /* Right edge aligned with the page-links bar (v1.3.9) so the panel clears
+       the MapLibre top-right controls column (zoom / compass / night toggle). */
+    right: 58px;
     /* Sits just below the page-links bar (v1.3.8); the open/close FLIP grows
        from / shrinks to the clicked bar button. */
     top: 62px;
     bottom: 16px;
-    width: min(620px, calc(100vw - 380px));
+    /* Trimmed 42px (the right-edge shift from 16→58) so the left edge stays put. */
+    width: min(578px, calc(100vw - 422px));
     z-index: 116;
     overflow: hidden;
     border-radius: var(--panel-radius);
@@ -3290,6 +3293,125 @@ body.sphotography-cursor-dot textarea {
 .gb-feedback.is-success { color: var(--primary); }
 
 /* ============================================
+   12c. 照片墙 (photo wall) — v1.3.9
+   ============================================ */
+.pw-container { display: flex; flex-direction: column; gap: 26px; }
+.pw-group-header {
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-secondary, var(--text-muted));
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--color-border);
+}
+.pw-group-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+.pw-cell {
+    position: relative;
+    display: block;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 1 / 1;
+    background: var(--color-surface);
+    cursor: pointer;
+    box-shadow: var(--sphotography-card-shadow, 0 1px 6px rgba(0,0,0,0.12));
+    transition: transform var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+.pw-cell:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+.pw-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pw-empty { color: var(--text-muted); text-align: center; padding: 30px 0; }
+.pw-more { min-height: 20px; text-align: center; color: var(--text-muted); font-size: var(--text-xs); padding: 8px 0; }
+
+/* Per-photo popover: sits on its own row right below the clicked photo (spans
+   the group grid width), above the grid, without covering the photo. */
+.pw-popup {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px;
+    margin: 2px 0 4px;
+    border-radius: 12px;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+    z-index: 6;
+    animation: pwPopIn 160ms var(--ease-out-expo, ease);
+}
+@keyframes pwPopIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.pw-popup-opt {
+    flex: 1 1 auto;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+.pw-popup-opt:hover { color: #fff; background: var(--primary); border-color: transparent; }
+
+/* Full-panel detail overlay */
+.pw-detail {
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    display: none;
+    flex-direction: column;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border-radius: var(--panel-radius);
+    padding: 20px;
+}
+.pw-detail.is-open { display: flex; }
+.pw-detail-exit {
+    position: absolute; top: 12px; right: 12px; z-index: 3;
+    width: 34px; height: 34px; border-radius: 50%;
+    border: var(--panel-border); background: var(--glass-elevated-bg);
+    color: var(--text-primary); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.pw-detail-stage { position: relative; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.pw-detail-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+.pw-detail-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 42px; height: 42px; border-radius: 50%;
+    border: var(--panel-border); background: var(--glass-elevated-bg);
+    color: var(--text-primary); cursor: pointer; z-index: 2;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: filter var(--duration-fast) ease;
+}
+.pw-detail-arrow:hover { filter: brightness(1.08); }
+.pw-detail-arrow--prev { left: 4px; }
+.pw-detail-arrow--next { right: 4px; }
+.pw-detail-arrow:disabled { opacity: 0.3; cursor: default; }
+.pw-detail-info { flex: 0 0 auto; padding-top: 16px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.pw-detail-params { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pw-detail-row { display: flex; gap: 10px; font-size: var(--text-sm); }
+.pw-detail-row span { color: var(--text-muted); flex: 0 0 68px; }
+.pw-detail-row b { color: var(--text-primary); font-weight: 600; overflow-wrap: anywhere; }
+.pw-detail-actions { display: flex; gap: 10px; flex: 0 0 auto; }
+.pw-detail-round {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: none; background: var(--primary); color: #fff;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    transition: transform var(--duration-fast) ease, filter var(--duration-fast) ease;
+}
+.pw-detail-round:hover { filter: brightness(1.08); }
+.pw-detail-round:active { transform: scale(0.94); }
+
+/* ============================================
    13. Responsive: Mobile (< 768px)
    ============================================ */
 @media (max-width: 767px) {
@@ -3335,6 +3457,8 @@ body.sphotography-cursor-dot textarea {
     }
     .side-panel-scroll { padding: 18px 16px; }
     .friend-grid { gap: 10px; }
+    .pw-group-grid { grid-template-columns: repeat(3, 1fr); }
+    .pw-detail-info { flex-direction: column; align-items: stretch; }
     .page-links-bar { top: 8px; right: 52px; padding: 4px; gap: 2px; }
     .page-link-btn { padding: 7px 9px; }
     .page-link-txt { display: none; }
