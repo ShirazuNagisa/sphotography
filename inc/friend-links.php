@@ -23,7 +23,7 @@ function sphotography_schedule_friend_meta($id) {
 
 // Process a POST action on the friend-links page (all nonce-guarded).
 function sphotography_friend_links_handle_post() {
-	if (empty($_POST['sp_fl_action'])) return;
+	if (empty($_POST['sp_fl_action'])) return array('ok' => true);
 	if (!current_user_can('manage_options')) wp_die(esc_html__('权限不足。', 'sphotography'));
 	check_admin_referer('sphotography_friend_links');
 	$action = sanitize_key($_POST['sp_fl_action']);
@@ -31,20 +31,68 @@ function sphotography_friend_links_handle_post() {
 	$apps = sphotography_get_friend_link_applications();
 
 	if ('add' === $action) {
-		$url = esc_url_raw(wp_unslash($_POST['fl_url'] ?? ''));
-		if ($url && preg_match('/^https?:\/\//', $url)) {
-			$new_id = (!empty($links) ? max(array_column($links, 'id')) : 0) + 1;
-			$links[] = array(
-				'id'       => $new_id,
-				'url'      => $url,
-				'name'     => sanitize_text_field(wp_unslash($_POST['fl_name'] ?? '')),
-				'thumb_id' => (int) ($_POST['fl_thumb_id'] ?? 0),
-				'pinned'   => empty($_POST['fl_pinned']) ? 0 : 1,
-				'added'    => time(),
+		// v1.4.0: the URL is no longer `required` (browser validation moved to
+		// the server). Format-check first (fast, no network); then run an 8s
+		// connect-test; only add the link on success. On any failure, return
+		// the form state so the caller can stash it in a transient and the
+		// next page load can pre-fill the form + show a red notice.
+		$raw_url   = trim( (string) wp_unslash( $_POST['fl_url'] ?? '' ) );
+		$name      = sanitize_text_field( wp_unslash( $_POST['fl_name'] ?? '' ) );
+		$thumb_id  = (int) ( $_POST['fl_thumb_id'] ?? 0 );
+		$pinned    = empty( $_POST['fl_pinned'] ) ? 0 : 1;
+
+		if ( $raw_url === '' || ! preg_match( '#^https?://#i', $raw_url ) ) {
+			return array(
+				'ok'      => false,
+				'kind'    => 'format',
+				'message' => __( '请填写正确的网址（需以 http:// 或 https:// 开头）。', 'sphotography' ),
+				'form'    => array( 'fl_url' => $raw_url, 'fl_name' => $name, 'fl_pinned' => $pinned, 'fl_thumb_id' => $thumb_id ),
 			);
-			sphotography_update_friend_links($links);
-			sphotography_schedule_friend_meta($new_id);
 		}
+		$url = esc_url_raw( $raw_url );
+
+		// 8s timeout — long enough to survive slow VPS sites, short enough
+		// that the admin doesn't get frustrated waiting.
+		$response = wp_remote_get( $url, array(
+			'timeout'     => 8,
+			'redirection' => 5,
+			'user-agent'  => 'Sphotography-Link-Checker/1.0 (+' . home_url( '/' ) . ')',
+		) );
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'ok'      => false,
+				'kind'    => 'connect',
+				'message' => sprintf( __( '无法连接到该网址：%s', 'sphotography' ), $response->get_error_message() ),
+				'form'    => array( 'fl_url' => $url, 'fl_name' => $name, 'fl_pinned' => $pinned, 'fl_thumb_id' => $thumb_id ),
+			);
+		}
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		if ( $code < 200 || $code >= 400 ) {
+			return array(
+				'ok'      => false,
+				'kind'    => 'connect',
+				'message' => sprintf( __( '该网址返回了错误状态码：HTTP %d', 'sphotography' ), $code ),
+				'form'    => array( 'fl_url' => $url, 'fl_name' => $name, 'fl_pinned' => $pinned, 'fl_thumb_id' => $thumb_id ),
+			);
+		}
+
+		$new_id = ( ! empty( $links ) ? max( array_column( $links, 'id' ) ) : 0 ) + 1;
+		$links[] = array(
+			'id'       => $new_id,
+			'url'      => $url,
+			'name'     => $name,
+			'thumb_id' => $thumb_id,
+			'pinned'   => $pinned,
+			'added'    => time(),
+		);
+		sphotography_update_friend_links( $links );
+		sphotography_schedule_friend_meta( $new_id );
+
+		return array(
+			'ok'      => true,
+			'kind'    => 'added',
+			'message' => __( '友链已添加。', 'sphotography' ),
+		);
 	} elseif ('delete' === $action) {
 		$id = (int) ($_POST['fl_id'] ?? 0);
 		$links = array_values(array_filter($links, function ($l) use ($id) { return (int) $l['id'] !== $id; }));
@@ -80,6 +128,7 @@ function sphotography_friend_links_handle_post() {
 	} elseif ('save_notify' === $action) {
 		update_option('sphotography_friend_link_notify', empty($_POST['fl_notify']) ? '0' : '1');
 	}
+	return array('ok' => true);
 }
 
 /**
@@ -98,6 +147,18 @@ function sphotography_render_friend_links_board() {
 	});
 	$apps = sphotography_get_friend_link_applications();
 	$notify = sphotography_get_friend_link_notify();
+	// v1.4.0: stashed form values from a failed add (format error or connect
+	// failure) so the user doesn't have to retype after a backend reject.
+	$form_state = sphotography_get_fl_form_state();
+	$fl_url_value   = $form_state ? $form_state['fl_url'] : '';
+	$fl_name_value  = $form_state ? $form_state['fl_name'] : '';
+	$fl_pinned_chk  = $form_state ? $form_state['fl_pinned'] : false;
+	$fl_thumb_value = $form_state ? $form_state['fl_thumb_id'] : 0;
+	$fl_thumb_src   = '';
+	if ( $fl_thumb_value ) {
+		$src = wp_get_attachment_image_src( $fl_thumb_value, 'medium' );
+		if ( $src ) { $fl_thumb_src = $src[0]; }
+	}
 
 	ob_start();
 	?>
@@ -114,20 +175,20 @@ function sphotography_render_friend_links_board() {
 				<?php wp_nonce_field( 'sphotography_friend_links' ); ?>
 				<input type="hidden" name="action" value="sphotography_friend_links_action">
 				<input type="hidden" name="sp_fl_action" value="add">
-				<input type="hidden" name="fl_thumb_id" id="fl_thumb_id" value="0">
+				<input type="hidden" name="fl_thumb_id" id="fl_thumb_id" value="<?php echo esc_attr( $fl_thumb_value ); ?>">
 
 				<div style="display:grid;gap:12px;">
 					<div>
-						<label class="sphotography-label" for="fl_url"><?php esc_html_e( '网址（必填）', 'sphotography' ); ?></label>
-						<input type="url" name="fl_url" id="fl_url" class="regular-text" placeholder="https://example.com" required style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
+						<label class="sphotography-label" for="fl_url"><?php esc_html_e( '网址', 'sphotography' ); ?></label>
+						<input type="url" name="fl_url" id="fl_url" class="regular-text" placeholder="https://example.com" value="<?php echo esc_attr( $fl_url_value ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
 					</div>
 					<div>
 						<label class="sphotography-label" for="fl_name"><?php esc_html_e( '站点名称', 'sphotography' ); ?></label>
-						<input type="text" name="fl_name" id="fl_name" class="regular-text" placeholder="<?php esc_attr_e( '留空则自动获取网站标题', 'sphotography' ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
+						<input type="text" name="fl_name" id="fl_name" class="regular-text" placeholder="<?php esc_attr_e( '留空则自动获取网站标题', 'sphotography' ); ?>" value="<?php echo esc_attr( $fl_name_value ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
 					</div>
 					<div>
 						<label class="sphotography-label"><?php esc_html_e( '缩略图', 'sphotography' ); ?></label>
-						<img id="fl_thumb_preview" src="" style="max-width:180px;max-height:120px;display:none;border-radius:6px;margin-bottom:8px;">
+						<img id="fl_thumb_preview" src="<?php echo esc_url( $fl_thumb_src ); ?>" style="max-width:180px;max-height:120px;<?php echo $fl_thumb_src ? '' : 'display:none;'; ?>border-radius:6px;margin-bottom:8px;">
 						<p style="margin:0 0 8px 0;">
 							<button type="button" class="button" id="fl_thumb_pick"><?php esc_html_e( '选择图片', 'sphotography' ); ?></button>
 							<button type="button" class="button" id="fl_thumb_clear"><?php esc_html_e( '移除', 'sphotography' ); ?></button>
@@ -135,7 +196,7 @@ function sphotography_render_friend_links_board() {
 						<p class="sphotography-desc"><?php esc_html_e( '留空则在保存后自动抓取网站主页截图。', 'sphotography' ); ?></p>
 					</div>
 					<div>
-						<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="fl_pinned" value="1"> <?php esc_html_e( '置顶显示在最前', 'sphotography' ); ?></label>
+						<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="fl_pinned" value="1" <?php checked( $fl_pinned_chk ); ?>> <?php esc_html_e( '置顶显示在最前', 'sphotography' ); ?></label>
 					</div>
 				</div>
 
@@ -229,12 +290,83 @@ function sphotography_handle_friend_links_actions() {
 	if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( '权限不足。', 'sphotography' ) );
 	check_admin_referer( 'sphotography_friend_links' );
 
-	sphotography_friend_links_handle_post();
+	$result = sphotography_friend_links_handle_post();
 
-	wp_redirect( add_query_arg( 'page', 'sphotography-settings', admin_url( 'admin.php' ) ) . '#sp-cat-social' );
+	$redirect = admin_url( 'admin.php?page=sphotography-settings' ) . '#sp-cat-social';
+	$status   = ! empty( $result['ok'] ) ? 'ok' : 'error';
+	$msg      = isset( $result['message'] ) ? $result['message'] : '';
+	$kind     = isset( $result['kind'] ) ? $result['kind'] : '';
+
+	// On failure, stash the form values in a per-user transient so the next
+	// page load can pre-fill the form. On success, drop any stale transient.
+	$user_id = get_current_user_id();
+	if ( ! empty( $result['ok'] ) ) {
+		delete_transient( 'sphotography_fl_form_' . $user_id );
+	} elseif ( ! empty( $result['form'] ) ) {
+		set_transient( 'sphotography_fl_form_' . $user_id, $result['form'], MINUTE_IN_SECONDS );
+	}
+
+	$redirect = add_query_arg( array(
+		'sp_fl_status' => $status,
+		'sp_fl_msg'    => rawurlencode( $msg ),
+		'sp_fl_kind'   => $kind,
+	), $redirect );
+
+	wp_redirect( $redirect );
 	exit;
 }
 add_action( 'admin_post_sphotography_friend_links_action', 'sphotography_handle_friend_links_actions' );
+
+/**
+ * Admin notice + form pre-fill for friend-link add results.
+ *
+ * Hooked to admin_notices only on the Sphotography settings screen. Reads
+ * the sp_fl_* query args + the per-user transient, prints a green/red notice
+ * and (on error) a small "重试" hint. The transient + query args are consumed
+ * so they don't show again on a refresh.
+ */
+function sphotography_fl_add_result_notice() {
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || $screen->id !== 'toplevel_page_sphotography-settings' ) {
+		return;
+	}
+	if ( empty( $_GET['sp_fl_status'] ) ) {
+		return;
+	}
+	$status = sanitize_key( $_GET['sp_fl_status'] );
+	$msg    = isset( $_GET['sp_fl_msg'] ) ? rawurldecode( wp_unslash( $_GET['sp_fl_msg'] ) ) : '';
+	$kind   = isset( $_GET['sp_fl_kind'] ) ? sanitize_key( $_GET['sp_fl_kind'] ) : '';
+	if ( $msg === '' ) {
+		return;
+	}
+	$class = $status === 'ok' ? 'notice-success' : 'notice-error';
+	$retry = $status !== 'ok' ? ' <button type="button" class="button button-small" onclick="document.getElementById(\'fl_url\').focus();window.scrollTo(0,document.getElementById(\'sp-mod-friend-links\').offsetTop-46);">' . esc_html__( '重试', 'sphotography' ) . '</button>' : '';
+	echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible" data-sp-fl-notice data-sp-fl-kind="' . esc_attr( $kind ) . '"><p>' . esc_html( $msg ) . $retry . '</p></div>';
+}
+add_action( 'admin_notices', 'sphotography_fl_add_result_notice' );
+
+/**
+ * Returns the stashed form values (URL/name/pinned/thumb_id) from the
+ * per-user transient, or null if none. Consumed by the settings page when
+ * rendering the friend-links add form so the user's last input is preserved
+ * after a validation/connect-test failure.
+ */
+function sphotography_get_fl_form_state() {
+	$user_id = get_current_user_id();
+	if ( ! $user_id ) {
+		return null;
+	}
+	$state = get_transient( 'sphotography_fl_form_' . $user_id );
+	if ( ! is_array( $state ) ) {
+		return null;
+	}
+	return array(
+		'fl_url'      => isset( $state['fl_url'] ) ? (string) $state['fl_url'] : '',
+		'fl_name'     => isset( $state['fl_name'] ) ? (string) $state['fl_name'] : '',
+		'fl_pinned'   => ! empty( $state['fl_pinned'] ),
+		'fl_thumb_id' => isset( $state['fl_thumb_id'] ) ? (int) $state['fl_thumb_id'] : 0,
+	);
+}
 
 /**
  * Old page function (no longer used, kept for reference)

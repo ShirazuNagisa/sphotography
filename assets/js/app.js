@@ -381,7 +381,9 @@
         tipTimer: null,
         filterOpen: false,
         filterMotion: null,
+        // v1.4.0: two filter dimensions. AND across them, OR within each.
         selectedCategories: new Set(),
+        selectedRegionTags: new Set(),
         searchQuery: '',
         mapFlyId: 0,
         regionPanels: new Map(),
@@ -404,7 +406,11 @@
         dom.sidebarSearch = document.getElementById('sidebar-search-input');
         dom.filterBtn = document.getElementById('sidebar-filter-btn');
         dom.filterPanel = document.getElementById('sidebar-filter-panel');
-        dom.filterChips = document.getElementById('filter-chips');
+        // v1.4.0: split into two chip containers (categories + region tags)
+        // and a 清除 link.
+        dom.filterChipsCategories = document.getElementById('filter-chips-categories');
+        dom.filterChipsRegions = document.getElementById('filter-chips-regions');
+        dom.filterClear = document.getElementById('filter-clear');
         dom.articlePanel = document.getElementById('article-panel');
         dom.articleClose = document.getElementById('article-close');
         dom.articleTitle = document.getElementById('article-title');
@@ -501,8 +507,9 @@
 
     // ---------------------------------------------------------------
     // AI full-text summary card (v1.3.6). Shows post.sp_ai_summary between the
-    // header and the content; typewritten on the reader's FIRST open of a post
-    // (tracked per browser via localStorage), full text on later opens.
+    // header and the content. v1.4.0: typewriter runs on EVERY open (was once
+    // per browser/post via localStorage — removed so repeat visits animate
+    // too). Reduced-motion still short-circuits to the full text instantly.
     // ---------------------------------------------------------------
     var summaryTypeTimer = null;
     function renderArticleSummary(post) {
@@ -522,10 +529,11 @@
         var textEl = el.querySelector('.article-summary-text');
 
         var key = 'sp-summary-typed-' + (post.id || '');
-        var alreadyTyped = false;
-        try { alreadyTyped = !!localStorage.getItem(key); } catch (e) {}
-
-        if (alreadyTyped || prefersReducedMotion()) {
+        // v1.4.0: typewriter runs on every open. The localStorage "already
+        // typed" guard is gone — previously this hid the typewriter after the
+        // first ever open per browser, which made repeat visits feel static.
+        // Reduced-motion still short-circuits to the full text instantly.
+        if (prefersReducedMotion()) {
             textEl.textContent = summary;
             return;
         }
@@ -544,7 +552,6 @@
             } else {
                 el.classList.remove('is-typing');
                 summaryTypeTimer = null;
-                try { localStorage.setItem(key, '1'); } catch (e) {}
             }
         }
         summaryTypeTimer = setTimeout(tick, 260); // brief lead-in after the panel opens
@@ -1524,26 +1531,50 @@
         return cats;
     }
 
+    // v1.4.0: region tags (WordPress 自定义分类 region_tag). Used as a
+    // second filter dimension on the sidebar; chips inherit the colour
+    // dot from the existing tag-coloring code (TAG.color) so the visual
+    // matches the map droplet legend.
+    function getPostRegionTags(post) {
+        var tags = [];
+        if (post._embedded && post._embedded['wp:term']) {
+            post._embedded['wp:term'].forEach(function (group) {
+                (group || []).forEach(function (t) {
+                    if (t && t.taxonomy === 'region_tag') tags.push({ slug: t.slug, name: t.name });
+                });
+            });
+        }
+        return tags;
+    }
+
     function filterSidebarPosts(query) {
         state.searchQuery = query || '';
         applySidebarFilters();
     }
 
     // Real-time combined filter: text search AND (any of) the selected
-    // categories. The sidebar shows only the matching posts.
+    // categories AND (any of) the selected region tags. The sidebar shows
+    // only the matching posts. v1.4.0: AND across the two filter groups
+    // (categories, region tags); OR within each group.
     function applySidebarFilters() {
         var q = (state.searchQuery || '').toLowerCase().trim();
-        var selected = state.selectedCategories;
+        var selCats = state.selectedCategories;
+        var selTags = state.selectedRegionTags;
         var filtered = state.allPosts.filter(function (p) {
             if (q) {
                 var matchesText = (p.title.rendered || '').toLowerCase().indexOf(q) !== -1
                     || stripHtml(p.excerpt && p.excerpt.rendered || '').toLowerCase().indexOf(q) !== -1;
                 if (!matchesText) return false;
             }
-            if (selected && selected.size > 0) {
+            if (selCats && selCats.size > 0) {
                 var cats = getPostCategories(p);
-                var hit = cats.some(function (c) { return selected.has(c.slug); });
+                var hit = cats.some(function (c) { return selCats.has(c.slug); });
                 if (!hit) return false;
+            }
+            if (selTags && selTags.size > 0) {
+                var tags = getPostRegionTags(p);
+                var hitT = tags.some(function (t) { return selTags.has(t.slug); });
+                if (!hitT) return false;
             }
             return true;
         });
@@ -1551,11 +1582,42 @@
     }
 
     // ---------------------------------------------------------------
-    // 9b. Category Filter — real-time, panel expands from the filter button
+    // 9b. Filter chip groups — categories + region tags (v1.4.0)
+    //
+    // Two labelled chip groups inside the filter panel: 分类 (existing
+    // WordPress categories) and 地区 (the region_tag custom taxonomy).
+    // The 清除 link appears whenever any filter is selected across either
+    // group. The filter button shows a "·N" badge when active.
     // ---------------------------------------------------------------
-    function buildFilterChips() {
-        if (!dom.filterChips) return;
-        // Unique categories across all loaded posts.
+    function totalFilterCount() {
+        return (state.selectedCategories ? state.selectedCategories.size : 0)
+             + (state.selectedRegionTags ? state.selectedRegionTags.size : 0);
+    }
+
+    function syncFilterButtonBadge() {
+        if (!dom.filterBtn) return;
+        var n = totalFilterCount();
+        // Add or update a tiny badge on the button.
+        var existing = dom.filterBtn.querySelector('.sidebar-filter-badge');
+        if (n > 0) {
+            if (!existing) {
+                existing = document.createElement('span');
+                existing.className = 'sidebar-filter-badge';
+                dom.filterBtn.appendChild(existing);
+            }
+            existing.textContent = '·' + n;
+            dom.filterBtn.classList.add('is-active');
+        } else {
+            if (existing) existing.parentNode.removeChild(existing);
+            dom.filterBtn.classList.remove('is-active');
+        }
+        if (dom.filterClear) {
+            dom.filterClear.hidden = (n === 0);
+        }
+    }
+
+    function buildCategoryChips() {
+        if (!dom.filterChipsCategories) return;
         var seen = {};
         var cats = [];
         (state.allPosts || []).forEach(function (p) {
@@ -1566,10 +1628,10 @@
         cats.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
         if (cats.length === 0) {
-            dom.filterChips.innerHTML = '<span class="filter-chips-empty">暂无分类可筛选</span>';
+            dom.filterChipsCategories.innerHTML = '<span class="filter-chips-empty">暂无分类可筛选</span>';
             return;
         }
-        dom.filterChips.innerHTML = '';
+        dom.filterChipsCategories.innerHTML = '';
         cats.forEach(function (c) {
             var chip = document.createElement('button');
             chip.type = 'button';
@@ -1585,12 +1647,66 @@
                     state.selectedCategories.add(c.slug);
                     chip.classList.add('is-selected');
                 }
-                // Reflect whether any filter is active on the button.
-                dom.filterBtn.classList.toggle('is-active', state.selectedCategories.size > 0);
-                applySidebarFilters(); // real-time, no confirm needed
+                syncFilterButtonBadge();
+                applySidebarFilters();
             });
-            dom.filterChips.appendChild(chip);
+            dom.filterChipsCategories.appendChild(chip);
         });
+    }
+
+    function buildRegionChips() {
+        if (!dom.filterChipsRegions) return;
+        var seen = {};
+        var tags = [];
+        (state.allPosts || []).forEach(function (p) {
+            getPostRegionTags(p).forEach(function (t) {
+                if (t.slug && !seen[t.slug]) { seen[t.slug] = true; tags.push(t); }
+            });
+        });
+        tags.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+        if (tags.length === 0) {
+            dom.filterChipsRegions.innerHTML = '<span class="filter-chips-empty">暂无地区标签可筛选</span>';
+            return;
+        }
+        dom.filterChipsRegions.innerHTML = '';
+        tags.forEach(function (t) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'filter-chip' + (state.selectedRegionTags.has(t.slug) ? ' is-selected' : '');
+            // When tag colouring is on, prefix the label with a colour dot
+            // so the chip matches the map droplet legend.
+            var dot = '';
+            try {
+                if (typeof TAG !== 'undefined' && TAG && TAG.enabled && TAG.color) {
+                    var c = TAG.color(t.slug);
+                    if (c) { dot = '<span class="tag-chip-dot" style="background:' + escapeHtml(c) + ';"></span>'; }
+                }
+            } catch (e) { /* TAG not ready, fall through */ }
+            chip.innerHTML = dot + '<span>' + escapeHtml(t.name) + '</span>';
+            chip.dataset.slug = t.slug;
+            chip.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (state.selectedRegionTags.has(t.slug)) {
+                    state.selectedRegionTags.delete(t.slug);
+                    chip.classList.remove('is-selected');
+                } else {
+                    state.selectedRegionTags.add(t.slug);
+                    chip.classList.add('is-selected');
+                }
+                syncFilterButtonBadge();
+                applySidebarFilters();
+            });
+            dom.filterChipsRegions.appendChild(chip);
+        });
+    }
+
+    // Backwards-compat shim: callers that still invoke buildFilterChips()
+    // (e.g. after a posts refresh) get the new two-group behaviour.
+    function buildFilterChips() {
+        buildCategoryChips();
+        buildRegionChips();
+        syncFilterButtonBadge();
     }
 
     // ---------------------------------------------------------------
@@ -2591,8 +2707,19 @@
     }
 
     function closePhotoWallPopup() {
+        // v1.4.0: play the reverse-stagger close animation before removing
+        // the popup, so the column collapses smoothly top-to-bottom. If
+        // the popup is already mid-close, fall through to instant removal.
         var p = PW.scrollEl && PW.scrollEl.querySelector('.pw-popup');
-        if (p) p.remove();
+        if (!p) return;
+        if (p.classList.contains('is-closing')) {
+            if (p.parentNode) p.parentNode.removeChild(p);
+            return;
+        }
+        p.classList.add('is-closing');
+        // 180ms duration + 80ms last delay = 260ms total; round up to 320ms
+        // to give the slowest button (third) a margin to finish.
+        setTimeout(function () { if (p && p.parentNode) p.parentNode.removeChild(p); }, 320);
     }
 
     function onPhotoWallClick(e, scroll) {
@@ -2625,16 +2752,43 @@
         if (wasForThis) return; // second click on same photo → just close
         var it = PW.items[idx];
         var hasGeo = it && it.lat !== '' && it.lat != null && it.lng !== '' && it.lng != null;
+        // v1.4.0: the popup is now a column of circular icon buttons
+        // absolutely-positioned to the LEFT of the clicked cell, top-aligned.
+        // It is appended INSIDE the cell (cell is position: relative) so it
+        // anchors to the cell's top-left without affecting any sibling in the
+        // grid. Renders above the grid (z-index 10). Layout of the photo-wall
+        // page is unchanged — no DOM siblings added, no flow changes.
         var pop = document.createElement('div');
-        pop.className = 'pw-popup';
+        pop.className = 'pw-popup pw-popup--side';
         pop.setAttribute('data-for', String(idx));
+        // Icons are reused from the existing detail-view buttons (article,
+        // search/detail, location) so the visual language stays consistent.
         pop.innerHTML = ''
-            + '<button type="button" class="pw-popup-opt" data-pw-act="article" data-pw-idx="' + idx + '">查看对应文章</button>'
-            + '<button type="button" class="pw-popup-opt" data-pw-act="detail" data-pw-idx="' + idx + '">查看照片详情</button>'
-            + (hasGeo ? '<button type="button" class="pw-popup-opt" data-pw-act="location" data-pw-idx="' + idx + '">查看照片位置</button>' : '');
-        // Insert right after the clicked cell so it sits below the photo.
-        cell.parentNode.insertBefore(pop, cell.nextSibling);
+            + '<button type="button" class="pw-side-btn" data-pw-act="article" data-pw-idx="' + idx + '" title="' + escAttr(photoWallPopupTitle('article')) + '" aria-label="' + escAttr(photoWallPopupTitle('article')) + '">'
+            +   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+            + '</button>'
+            + '<button type="button" class="pw-side-btn" data-pw-act="detail" data-pw-idx="' + idx + '" title="' + escAttr(photoWallPopupTitle('detail')) + '" aria-label="' + escAttr(photoWallPopupTitle('detail')) + '">'
+            +   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+            + '</button>'
+            + (hasGeo ? '<button type="button" class="pw-side-btn" data-pw-act="location" data-pw-idx="' + idx + '" title="' + escAttr(photoWallPopupTitle('location')) + '" aria-label="' + escAttr(photoWallPopupTitle('location')) + '">'
+            +   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'
+            + '</button>' : '');
+        // Insert inside the cell (not as a sibling) so position:absolute
+        // anchors to the cell's top-left, and the popup extends out to the
+        // cell's left edge (right:100% + 8px gap). z-index 10 keeps the
+        // popup above the grid rows below.
+        cell.appendChild(pop);
     }
+
+    // Localized tooltip labels for the side popup (extracted so they can be
+    // tested / re-used if a third action is added later).
+    function photoWallPopupTitle(act) {
+        if (act === 'article') return '查看对应文章';
+        if (act === 'detail')  return '查看照片详情';
+        if (act === 'location') return '查看照片位置';
+        return '';
+    }
+    function escAttr(s) { return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
     function photoWallViewArticle(it) {
         if (!it || !it.postId) return;
@@ -4961,6 +5115,16 @@
         dom.sidebarSearch.addEventListener('input', debounce(function() { filterSidebarPosts(this.value); }, 300));
         if (dom.filterBtn) dom.filterBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleFilterPanel(); });
         if (dom.filterPanel) dom.filterPanel.addEventListener('click', function(e) { e.stopPropagation(); });
+        // 清除: drop both filter sets, refresh chips, re-render the list.
+        if (dom.filterClear) dom.filterClear.addEventListener('click', function(e) {
+            e.stopPropagation();
+            state.selectedCategories.clear();
+            state.selectedRegionTags.clear();
+            buildCategoryChips();
+            buildRegionChips();
+            syncFilterButtonBadge();
+            applySidebarFilters();
+        });
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
         // The about-card's own click handling (toggle expand) lives in

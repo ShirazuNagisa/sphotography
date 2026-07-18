@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.3.9
+Version: 1.4.0
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -384,6 +384,65 @@ body.sidebar-collapsed .sidebar {
     font-size: var(--text-xs);
     color: var(--text-muted);
     font-style: italic;
+}
+
+/* v1.4.0: filter panel now has a header row (title + 清除 link) and
+   two labelled chip groups (分类 + 地区). The active count badge sits
+   on the filter button itself. */
+.filter-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+}
+.filter-panel-header .filter-panel-title {
+    margin-bottom: 0;
+}
+.filter-clear {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: background var(--duration-fast) var(--ease-out-expo);
+}
+.filter-clear:hover { background: var(--color-surface-hover); }
+.filter-clear[hidden] { display: none; }
+.filter-group { margin-bottom: 12px; }
+.filter-group:last-child { margin-bottom: 0; }
+.filter-group-label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+.sidebar-filter-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.sidebar-filter-btn { position: relative; }
+.filter-chip { display: inline-flex; align-items: center; gap: 6px; }
+.filter-chip .tag-chip-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
 }
 
 .sidebar-search-kbd kbd {
@@ -3316,7 +3375,11 @@ body.sphotography-cursor-dot textarea {
     padding: 0;
     border: none;
     border-radius: 8px;
-    overflow: hidden;
+    /* v1.4.0: overflow visible so the absolutely-positioned side popup
+       can extend to the LEFT of the cell without being clipped. The image
+       inside now carries its own border-radius for the rounded-corner
+       visual. */
+    overflow: visible;
     aspect-ratio: 1 / 1;
     background: var(--color-surface);
     cursor: pointer;
@@ -3324,42 +3387,93 @@ body.sphotography-cursor-dot textarea {
     transition: transform var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
 }
 .pw-cell:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
-.pw-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pw-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 8px; }
 .pw-empty { color: var(--text-muted); text-align: center; padding: 30px 0; }
 .pw-more { min-height: 20px; text-align: center; color: var(--text-muted); font-size: var(--text-xs); padding: 8px 0; }
 
-/* Per-photo popover: sits on its own row right below the clicked photo (spans
-   the group grid width), above the grid, without covering the photo. */
-.pw-popup {
-    grid-column: 1 / -1;
+/* v1.4.0: per-photo popup is now a column of circular icon buttons
+   absolutely-positioned to the LEFT of the clicked cell, top-aligned with
+   the photo. Renders ABOVE the grid (z-index 10). The buttons slide in
+   top-to-bottom with 40ms stagger; closing plays the same animation in
+   reverse. Layout of the photo-wall page is unaffected (no DOM siblings
+   added, no flow changes). */
+.pw-popup--side {
+    position: absolute;
+    top: 0;
+    right: 100%;
+    margin-right: 8px;
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    flex-wrap: wrap;
-    padding: 8px;
-    margin: 2px 0 4px;
-    border-radius: 12px;
-    background: var(--glass-elevated-bg);
-    backdrop-filter: var(--glass-elevated-blur);
-    -webkit-backdrop-filter: var(--glass-elevated-blur);
-    border: var(--panel-border);
-    box-shadow: var(--shadow-elevated);
-    z-index: 6;
-    animation: pwPopIn 160ms var(--ease-out-expo, ease);
+    z-index: 10;
+    pointer-events: auto;
+    /* Sit slightly above the row of cells on the same horizontal line. */
+    padding: 2px 0;
 }
-@keyframes pwPopIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-.pw-popup-opt {
-    flex: 1 1 auto;
-    padding: 8px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
+.pw-side-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(20,20,22,0.78);
+    color: #fff;
     cursor: pointer;
-    white-space: nowrap;
-    transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    opacity: 0;
+    transform: translateX(8px);
+    transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    animation: pwSidePopIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    flex: 0 0 auto;
+    padding: 0;
 }
-.pw-popup-opt:hover { color: #fff; background: var(--primary); border-color: transparent; }
+.pw-side-btn:hover {
+    background: var(--primary, #1abc9c);
+    border-color: transparent;
+    transform: scale(1.08);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+}
+.pw-side-btn:active { transform: scale(0.94); }
+.pw-side-btn:focus-visible {
+    outline: 2px solid var(--primary, #1abc9c);
+    outline-offset: 2px;
+}
+.pw-popup--side .pw-side-btn:nth-child(1) { animation-delay: 0ms; }
+.pw-popup--side .pw-side-btn:nth-child(2) { animation-delay: 40ms; }
+.pw-popup--side .pw-side-btn:nth-child(3) { animation-delay: 80ms; }
+.pw-popup--side.is-closing .pw-side-btn {
+    animation: pwSidePopOut 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.pw-popup--side.is-closing .pw-side-btn:nth-child(1) { animation-delay: 80ms; }
+.pw-popup--side.is-closing .pw-side-btn:nth-child(2) { animation-delay: 40ms; }
+.pw-popup--side.is-closing .pw-side-btn:nth-child(3) { animation-delay: 0ms; }
+@keyframes pwSidePopIn {
+    from { opacity: 0; transform: translateX(8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pwSidePopOut {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(8px); }
+}
+/* On narrow viewports the side-positioned popup may run off the panel's
+   left edge; nudge it to the RIGHT of the cell instead so it stays inside
+   the side panel. */
+@media (max-width: 520px) {
+    .pw-popup--side {
+        right: auto;
+        left: 100%;
+        margin-right: 0;
+        margin-left: 8px;
+    }
+}
+/* Legacy v1.3.9 row-style popup kept as a no-op so any stale references
+   don't break. The v1.3.9 text-button popup is superseded by the side
+   icon buttons. */
+.pw-popup:not(.pw-popup--side) { display: none; }
 
 /* Full-panel detail overlay */
 .pw-detail {

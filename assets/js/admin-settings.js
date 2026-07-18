@@ -194,6 +194,48 @@
             runBatch(0);
         });
 
+        // v1.4.0: Batch backfill of EXIF (aperture / shutter / ISO) for
+        // every image attachment. Mirrors the rebuild-geo pattern: paginated
+        // batches of 20, skip-on-fail, status text updated after each
+        // batch. On completion the server drops the wall-photos transient.
+        $('#sphotography-exif-backfill').on('click', function () {
+            var btn = $(this);
+            var status = $('#sphotography-exif-backfill-status');
+            if (!config.exifBackfillNonce) { return; }
+            btn.prop('disabled', true);
+            var totalNew = 0;
+
+            function runBatch(offset) {
+                $.post(config.ajaxUrl, {
+                    action: 'sphotography_exif_backfill',
+                    nonce: config.exifBackfillNonce,
+                    offset: offset
+                }).done(function (res) {
+                    if (!res || !res.success) {
+                        status.text((res && res.data && res.data.message) || (config.exifBackfillFail || '回填失败：')).css('color', '#e74c3c');
+                        btn.prop('disabled', false);
+                        return;
+                    }
+                    var d = res.data;
+                    if (d.new_fields) { totalNew += d.new_fields; }
+                    status.text('处理中… ' + d.done + ' / ' + d.total).css('color', '');
+                    if (d.finished) {
+                        var msg = (config.exifBackfillDone || '✓ 完成，已处理 %1$d 张照片，新提取了 %2$d 个 EXIF 字段。')
+                            .replace('%1$d', d.total).replace('%2$d', totalNew);
+                        status.text(msg).css('color', '#2ecc71');
+                        btn.prop('disabled', false);
+                    } else {
+                        runBatch(d.next_offset);
+                    }
+                }).fail(function () {
+                    status.text('✗ 请求失败').css('color', '#e74c3c');
+                    btn.prop('disabled', false);
+                });
+            }
+            status.text(config.exifBackfillRunning || '处理中…').css('color', '');
+            runBatch(0);
+        });
+
         // Generic slider readouts (v1.2.5): each .sphotography-slider-row pairs
         // a range input with a .sphotography-slider-val; an optional
         // data-suffix on the value element is appended to the number.
@@ -214,7 +256,12 @@
         });
 
         // ----- Right-side index (TOC): smooth scroll + scrollspy -----
+        // v1.4.0: TOC is now nested. Parents are buttons that toggle the
+        // child list; leaves and children are links that scroll to the
+        // matching section. The scroll-spy auto-expands whichever
+        // category is currently in view.
         var $tocLinks = $('.sphotography-toc-link');
+        var $tocGroups = $('.sphotography-toc-group');
         if ($tocLinks.length) {
             var sections = [];
             $tocLinks.each(function () {
@@ -223,18 +270,64 @@
                 if (el) { sections.push({ id: id, el: el }); }
             });
 
+            // Map a section id to its parent group (if it has one) so the
+            // scroll-spy can auto-expand the right parent.
+            function parentGroupOf(id) {
+                return $tocGroups.filter('.has-children').filter(function () {
+                    return $(this).find('[data-target="' + id + '"]').length > 0
+                        || $(this).children('.sphotography-toc-parent').attr('data-target') === id;
+                }).first();
+            }
+
             $tocLinks.on('click', function (e) {
-                var id = $(this).data('target');
+                var $self = $(this);
+                var id = $self.data('target');
                 var el = document.getElementById(id);
                 if (!el) { return; }
                 e.preventDefault();
+                // Expand the parent group if the click was on a child link.
+                var $group = $self.closest('.sphotography-toc-group');
+                if ($group.length && !$group.hasClass('is-expanded')) {
+                    $group.addClass('is-expanded');
+                    $group.children('.sphotography-toc-parent').attr('aria-expanded', 'true');
+                }
                 var top = el.getBoundingClientRect().top + window.pageYOffset - 46;
                 window.scrollTo({ top: top, behavior: 'smooth' });
+            });
+
+            // Click on a parent button toggles the child list. Clicking
+            // ALSO scrolls to the parent anchor so the user lands on the
+            // category title (the natural "head" of the section).
+            $('.sphotography-toc-parent').on('click', function (e) {
+                e.preventDefault();
+                var $btn = $(this);
+                var $group = $btn.parent('.sphotography-toc-group');
+                var willExpand = !$group.hasClass('is-expanded');
+                $group.toggleClass('is-expanded');
+                $btn.attr('aria-expanded', willExpand ? 'true' : 'false');
+                if (willExpand) {
+                    var id = $btn.data('target');
+                    var el = document.getElementById(id);
+                    if (el) {
+                        var top = el.getBoundingClientRect().top + window.pageYOffset - 46;
+                        window.scrollTo({ top: top, behavior: 'smooth' });
+                    }
+                }
             });
 
             var setActive = function (id) {
                 $tocLinks.removeClass('active');
                 $tocLinks.filter('[data-target="' + id + '"]').addClass('active');
+            };
+
+            // Auto-expand the parent group of the currently-active section
+            // on every scroll-spy tick.
+            var expandGroupOf = function (id) {
+                var $group = parentGroupOf(id);
+                if ($group.length && !$group.hasClass('is-expanded')) {
+                    $group.addClass('is-expanded');
+                    $group.children('.sphotography-toc-parent').attr('aria-expanded', 'true');
+                }
             };
 
             var onScroll = function () {
@@ -245,7 +338,10 @@
                         current = sections[i].id;
                     }
                 }
-                if (current) { setActive(current); }
+                if (current) {
+                    setActive(current);
+                    expandGroupOf(current);
+                }
             };
 
             var scrollScheduled = false;
