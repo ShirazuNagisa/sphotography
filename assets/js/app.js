@@ -2170,7 +2170,49 @@
             html += '<a class="page-link-btn page-link-ext" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener"' + tip + '><span class="page-link-ico">' + extIcon + '</span><span class="page-link-txt">' + escapeHtml(e.name || e.url) + '</span></a>';
         });
         bar.innerHTML = html;
+
+        // v1.4.2: 共享滑动药丸(iOS-26 流动高亮)。置于按钮之下,hover/focus 时
+        // 平移+变宽到目标按钮矩形,高亮在按钮间“流动”。离开整栏时淡出。
+        var pill = document.createElement('span');
+        pill.className = 'page-link-pill';
+        pill.setAttribute('aria-hidden', 'true');
+        bar.insertBefore(pill, bar.firstChild);
+
         document.body.appendChild(bar);
+
+        function movePillTo(btn) {
+            var barRect = bar.getBoundingClientRect();
+            var r = btn.getBoundingClientRect();
+            // 相对栏内边距盒定位(clientLeft/Top 扣除边框),兼容栏有边框的情况。
+            var x = r.left - barRect.left - bar.clientLeft;
+            var y = r.top - barRect.top - bar.clientTop;
+            pill.style.width = r.width + 'px';
+            pill.style.height = r.height + 'px';
+            pill.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+            bar.classList.add('pill-active');
+        }
+        // 预置到首个按钮下方(隐形),让首次 hover 是一段流动而非从角落窜出。
+        requestAnimationFrame(function () {
+            var first = bar.querySelector('.page-link-btn');
+            if (!first) return;
+            var barRect = bar.getBoundingClientRect();
+            var r = first.getBoundingClientRect();
+            pill.style.width = r.width + 'px';
+            pill.style.height = r.height + 'px';
+            pill.style.transform = 'translate(' + (r.left - barRect.left - bar.clientLeft) + 'px,' + (r.top - barRect.top - bar.clientTop) + 'px)';
+        });
+        bar.addEventListener('mouseover', function (e) {
+            var btn = e.target.closest('.page-link-btn');
+            if (btn) movePillTo(btn);
+        });
+        bar.addEventListener('focusin', function (e) {
+            var btn = e.target.closest('.page-link-btn');
+            if (btn) movePillTo(btn);
+        });
+        bar.addEventListener('mouseleave', function () { bar.classList.remove('pill-active'); });
+        bar.addEventListener('focusout', function (e) {
+            if (!bar.contains(e.relatedTarget)) bar.classList.remove('pill-active');
+        });
 
         bar.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-sp-panel]');
@@ -2205,6 +2247,7 @@
 
         var scroll = panel.querySelector('.side-panel-scroll');
         var bandTop = panel.querySelector('.sp-frost-band--top');
+        var bandBottom = panel.querySelector('.sp-frost-band--bottom'); // guestbook 无底部带 → null
         var scheduled = false;
         scroll.addEventListener('scroll', function () {
             if (scheduled) return;
@@ -2212,6 +2255,11 @@
             requestAnimationFrame(function () {
                 scheduled = false;
                 if (bandTop) bandTop.classList.toggle('is-visible', scroll.scrollTop > 6);
+                // v1.4.2: 到达最底部时淡出底部毛玻璃带（友链/照片墙有底部带；留言板无，跳过）。
+                if (bandBottom) {
+                    var atBottom = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 2;
+                    bandBottom.classList.toggle('is-at-bottom', atBottom);
+                }
             });
         });
         return panel;
@@ -3453,6 +3501,7 @@
         overlay.appendChild(bandTop);
         overlay.appendChild(bandBottom);
         dom.articleNavBandTop = bandTop;
+        dom.articleNavBandBottom = bandBottom; // v1.4.2: 供到底淡出用
 
         var top = document.createElement('button');
         top.type = 'button';
@@ -3595,6 +3644,12 @@
         var deltaToTextEnd = contentRect.bottom - panelRect.bottom;
         var trioVisible = deltaToTextEnd > 2;
         dom.articleNavBottom.classList.toggle('is-visible', trioVisible);
+
+        // v1.4.2: 滚动到最底部时淡出底部毛玻璃带（下方已无正文需要虚化）。
+        if (dom.articleNavBandBottom) {
+            var atBottom = scrollTop + panel.clientHeight >= panel.scrollHeight - 2;
+            dom.articleNavBandBottom.classList.toggle('is-at-bottom', atBottom);
+        }
 
         // Reading progress: how far the reader is toward the text end resting at
         // the panel bottom (0 → 100%).
@@ -3967,6 +4022,9 @@
         var pos = start + text.length;
         textarea.selectionStart = textarea.selectionEnd = pos;
         textarea.focus();
+        // A programmatic `.value` set fires no `input` event; dispatch one so any
+        // listeners (markdown live-preview, char counters) see the change. (v1.4.2)
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     // Wrap the current textarea selection with markdown markers (or insert a
@@ -4098,6 +4156,14 @@
         var emojiPanel = form.querySelector('.comment-emoji-panel');
         if (emojiBtn && emojiPanel) {
             emojiBtn.addEventListener('click', function () { emojiPanel.hidden = !emojiPanel.hidden; });
+            // v1.4.2 emoji-insert fix: clicking an emoji <button> used to blur the
+            // textarea and drop the caret, so the emoji never appeared to land in
+            // the box. Cancel the mousedown default so focus/selection stay on the
+            // textarea (caret preserved), then insert on click — click still fires
+            // on touch devices, so this works cross-device without double-insert.
+            emojiPanel.addEventListener('mousedown', function (e) {
+                if (e.target.closest('.comment-emoji')) { e.preventDefault(); }
+            });
             emojiPanel.addEventListener('click', function (e) {
                 var b = e.target.closest('.comment-emoji');
                 if (b) { insertAtCaret(textarea, b.textContent); }

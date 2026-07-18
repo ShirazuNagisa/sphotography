@@ -170,38 +170,14 @@ function sphotography_render_friend_links_board() {
 		</div>
 		<div class="sphotography-module-body">
 
-			<h4 style="margin:0 0 16px 0;font-size:0.9rem;font-weight:600;color:var(--sp-text);"><?php esc_html_e( '添加友链', 'sphotography' ); ?></h4>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:20px;">
-				<?php wp_nonce_field( 'sphotography_friend_links' ); ?>
-				<input type="hidden" name="action" value="sphotography_friend_links_action">
-				<input type="hidden" name="sp_fl_action" value="add">
-				<input type="hidden" name="fl_thumb_id" id="fl_thumb_id" value="<?php echo esc_attr( $fl_thumb_value ); ?>">
-
-				<div style="display:grid;gap:12px;">
-					<div>
-						<label class="sphotography-label" for="fl_url"><?php esc_html_e( '网址', 'sphotography' ); ?></label>
-						<input type="url" name="fl_url" id="fl_url" class="regular-text" placeholder="https://example.com" value="<?php echo esc_attr( $fl_url_value ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
-					</div>
-					<div>
-						<label class="sphotography-label" for="fl_name"><?php esc_html_e( '站点名称', 'sphotography' ); ?></label>
-						<input type="text" name="fl_name" id="fl_name" class="regular-text" placeholder="<?php esc_attr_e( '留空则自动获取网站标题', 'sphotography' ); ?>" value="<?php echo esc_attr( $fl_name_value ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
-					</div>
-					<div>
-						<label class="sphotography-label"><?php esc_html_e( '缩略图', 'sphotography' ); ?></label>
-						<img id="fl_thumb_preview" src="<?php echo esc_url( $fl_thumb_src ); ?>" style="max-width:180px;max-height:120px;<?php echo $fl_thumb_src ? '' : 'display:none;'; ?>border-radius:6px;margin-bottom:8px;">
-						<p style="margin:0 0 8px 0;">
-							<button type="button" class="button" id="fl_thumb_pick"><?php esc_html_e( '选择图片', 'sphotography' ); ?></button>
-							<button type="button" class="button" id="fl_thumb_clear"><?php esc_html_e( '移除', 'sphotography' ); ?></button>
-						</p>
-						<p class="sphotography-desc"><?php esc_html_e( '留空则在保存后自动抓取网站主页截图。', 'sphotography' ); ?></p>
-					</div>
-					<div>
-						<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="fl_pinned" value="1" <?php checked( $fl_pinned_chk ); ?>> <?php esc_html_e( '置顶显示在最前', 'sphotography' ); ?></label>
-					</div>
-				</div>
-
-				<?php submit_button( __( '添加友链', 'sphotography' ), 'primary', 'submit', false, array( 'style' => 'margin-top:12px;' ) ); ?>
-			</form>
+			<?php // v1.4.2: 「添加友链」改为按钮 + 居中弹窗（modal）。表单本体由
+			// sphotography_render_friend_links_modal() 渲染在设置大表单之外，彻底消除
+			// 此前「表单嵌套在设置大表单内」导致点保存误触发 HTML5 校验（请填写此字段）。 ?>
+			<p style="margin:0 0 20px 0;">
+				<button type="button" class="button button-primary" id="sp-fl-add-open" style="display:inline-flex;align-items:center;gap:6px;">
+					<span class="dashicons dashicons-plus-alt2"></span><?php esc_html_e( '添加友链', 'sphotography' ); ?>
+				</button>
+			</p>
 
 			<h4 style="margin:20px 0 16px 0;font-size:0.9rem;font-weight:600;color:var(--sp-text);"><?php esc_html_e( '现有友链', 'sphotography' ); ?></h4>
 			<?php if ( empty( $links ) ) : ?>
@@ -272,9 +248,99 @@ function sphotography_render_friend_links_board() {
 			</form>
 		</div>
 	</div>
+	<?php
+	return ob_get_clean();
+}
+
+/**
+ * v1.4.2: 「添加友链」居中弹窗（modal）。
+ *
+ * 这段 HTML 必须渲染在主题设置大表单 <form id="sphotography-settings-form"> 之外
+ * ——由 admin/theme-settings.php 在 </form> 之后调用——否则浏览器会把这里的输入框
+ * 归属到外层设置表单，点「保存设置」时误触发 HTML5 校验（请填写此字段）。弹窗默认
+ * position:fixed 覆盖视口，放在 DOM 何处均不影响显示，只需保证在设置表单之外。
+ */
+function sphotography_render_friend_links_modal() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return '';
+	}
+
+	// 复用「添加失败」后暂存的表单值（格式错误 / 连通性测试失败），
+	// 使得下次加载时预填，用户无需重填。存在暂存时自动弹开弹窗。
+	$form_state     = sphotography_get_fl_form_state();
+	$fl_url_value   = $form_state ? $form_state['fl_url'] : '';
+	$fl_name_value  = $form_state ? $form_state['fl_name'] : '';
+	$fl_pinned_chk  = $form_state ? $form_state['fl_pinned'] : false;
+	$fl_thumb_value = $form_state ? $form_state['fl_thumb_id'] : 0;
+	$fl_thumb_src   = '';
+	if ( $fl_thumb_value ) {
+		$src = wp_get_attachment_image_src( $fl_thumb_value, 'medium' );
+		if ( $src ) { $fl_thumb_src = $src[0]; }
+	}
+	$auto_open = $form_state ? '1' : '0';
+
+	ob_start();
+	?>
+	<div class="sp-fl-modal-overlay" id="sp-fl-modal" data-auto-open="<?php echo esc_attr( $auto_open ); ?>" hidden>
+		<div class="sp-fl-modal" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( '添加友链', 'sphotography' ); ?>">
+			<button type="button" class="sp-fl-modal-close" id="sp-fl-modal-close" aria-label="<?php esc_attr_e( '关闭', 'sphotography' ); ?>">&times;</button>
+			<h3 class="sp-fl-modal-title"><?php esc_html_e( '添加友链', 'sphotography' ); ?></h3>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'sphotography_friend_links' ); ?>
+				<input type="hidden" name="action" value="sphotography_friend_links_action">
+				<input type="hidden" name="sp_fl_action" value="add">
+				<input type="hidden" name="fl_thumb_id" id="fl_thumb_id" value="<?php echo esc_attr( $fl_thumb_value ); ?>">
+
+				<div style="display:grid;gap:12px;">
+					<div>
+						<label class="sphotography-label" for="fl_url"><?php esc_html_e( '网址', 'sphotography' ); ?></label>
+						<input type="url" name="fl_url" id="fl_url" class="regular-text" placeholder="https://example.com" value="<?php echo esc_attr( $fl_url_value ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
+					</div>
+					<div>
+						<label class="sphotography-label" for="fl_name"><?php esc_html_e( '站点名称', 'sphotography' ); ?></label>
+						<input type="text" name="fl_name" id="fl_name" class="regular-text" placeholder="<?php esc_attr_e( '留空则自动获取网站标题', 'sphotography' ); ?>" value="<?php echo esc_attr( $fl_name_value ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
+					</div>
+					<div>
+						<label class="sphotography-label"><?php esc_html_e( '缩略图', 'sphotography' ); ?></label>
+						<img id="fl_thumb_preview" src="<?php echo esc_url( $fl_thumb_src ); ?>" style="max-width:180px;max-height:120px;<?php echo $fl_thumb_src ? '' : 'display:none;'; ?>border-radius:6px;margin-bottom:8px;">
+						<p style="margin:0 0 8px 0;">
+							<button type="button" class="button" id="fl_thumb_pick"><?php esc_html_e( '选择图片', 'sphotography' ); ?></button>
+							<button type="button" class="button" id="fl_thumb_clear"><?php esc_html_e( '移除', 'sphotography' ); ?></button>
+						</p>
+						<p class="sphotography-desc"><?php esc_html_e( '留空则在保存后自动抓取网站主页截图。', 'sphotography' ); ?></p>
+					</div>
+					<div>
+						<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="fl_pinned" value="1" <?php checked( $fl_pinned_chk ); ?>> <?php esc_html_e( '置顶显示在最前', 'sphotography' ); ?></label>
+					</div>
+				</div>
+
+				<div class="sp-fl-modal-actions">
+					<button type="button" class="button" id="sp-fl-modal-cancel"><?php esc_html_e( '取消', 'sphotography' ); ?></button>
+					<?php submit_button( __( '添加友链', 'sphotography' ), 'primary', 'submit', false ); ?>
+				</div>
+			</form>
+		</div>
+	</div>
 
 	<script>
 	(function(){
+		var overlay=document.getElementById('sp-fl-modal');
+		if(!overlay) return;
+		var openBtn=document.getElementById('sp-fl-add-open'),
+		    closeBtn=document.getElementById('sp-fl-modal-close'),
+		    cancelBtn=document.getElementById('sp-fl-modal-cancel');
+		function open(){ overlay.hidden=false; document.body.classList.add('sp-fl-modal-open'); var u=document.getElementById('fl_url'); if(u) u.focus(); }
+		function close(){ overlay.hidden=true; document.body.classList.remove('sp-fl-modal-open'); }
+		if(openBtn) openBtn.addEventListener('click',open);
+		if(closeBtn) closeBtn.addEventListener('click',close);
+		if(cancelBtn) cancelBtn.addEventListener('click',close);
+		// 点遮罩空白处关闭；点弹窗内容不关闭。
+		overlay.addEventListener('click',function(e){ if(e.target===overlay) close(); });
+		document.addEventListener('keydown',function(e){ if(e.key==='Escape' && !overlay.hidden) close(); });
+		// 添加失败后（有暂存表单值）自动弹开，方便用户重试。
+		if(overlay.getAttribute('data-auto-open')==='1') open();
+
+		// 缩略图选择（媒体库）。
 		var pick=document.getElementById('fl_thumb_pick'),clear=document.getElementById('fl_thumb_clear'),idEl=document.getElementById('fl_thumb_id'),prev=document.getElementById('fl_thumb_preview'),frame;
 		if(pick){pick.addEventListener('click',function(e){e.preventDefault();if(frame){frame.open();return;}frame=wp.media({title:'选择缩略图',multiple:false});frame.on('select',function(){var a=frame.state().get('selection').first().toJSON();idEl.value=a.id;prev.src=a.url;prev.style.display='block';});frame.open();});}
 		if(clear){clear.addEventListener('click',function(e){e.preventDefault();idEl.value='0';prev.src='';prev.style.display='none';});}

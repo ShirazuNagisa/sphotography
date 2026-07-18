@@ -285,9 +285,11 @@
                 var el = document.getElementById(id);
                 if (!el) { return; }
                 e.preventDefault();
-                // Expand the parent group if the click was on a child link.
+                // Expand the parent group if the click was on a child link
+                // (v1.4.2 手风琴：先收起其他已展开的组)。
                 var $group = $self.closest('.sphotography-toc-group');
                 if ($group.length && !$group.hasClass('is-expanded')) {
+                    collapseOthers($group);
                     $group.addClass('is-expanded');
                     $group.children('.sphotography-toc-parent').attr('aria-expanded', 'true');
                 }
@@ -298,11 +300,22 @@
             // Click on a parent button toggles the child list. Clicking
             // ALSO scrolls to the parent anchor so the user lands on the
             // category title (the natural "head" of the section).
+            // v1.4.2: 手风琴式 — 同一时间只展开一个大板块的子索引。
+            var collapseOthers = function ($keep) {
+                $tocGroups.filter('.is-expanded').each(function () {
+                    var $g = $(this);
+                    if ($keep && $g.is($keep)) { return; }
+                    $g.removeClass('is-expanded');
+                    $g.children('.sphotography-toc-parent').attr('aria-expanded', 'false');
+                });
+            };
+
             $('.sphotography-toc-parent').on('click', function (e) {
                 e.preventDefault();
                 var $btn = $(this);
                 var $group = $btn.parent('.sphotography-toc-group');
                 var willExpand = !$group.hasClass('is-expanded');
+                if (willExpand) { collapseOthers($group); } // 手风琴：先收起其他
                 $group.toggleClass('is-expanded');
                 $btn.attr('aria-expanded', willExpand ? 'true' : 'false');
                 if (willExpand) {
@@ -325,6 +338,7 @@
             var expandGroupOf = function (id) {
                 var $group = parentGroupOf(id);
                 if ($group.length && !$group.hasClass('is-expanded')) {
+                    collapseOthers($group); // v1.4.2 手风琴：滚动进入某分类时收起其他
                     $group.addClass('is-expanded');
                     $group.children('.sphotography-toc-parent').attr('aria-expanded', 'true');
                 }

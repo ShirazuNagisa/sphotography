@@ -399,6 +399,8 @@ function sphotography_render_settings_page() {
     $show_success = isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true';
     ?>
     <div class="wrap sphotography-settings-wrap">
+        <?php /* v1.4.2: 主题动态图标占位——页顶留空容器，日后放入 SVG 文件作为主题动态图标。 */ ?>
+        <div class="sphotography-theme-icon" aria-hidden="true"><!-- TODO: 在此插入主题动态图标 SVG --></div>
         <h1 class="sphotography-settings-title"><?php _e( '主题全局配置', 'sphotography' ); ?></h1>
         <p class="sphotography-settings-subtitle"><?php _e( '管理 Sphotography 主题的外观、布局与行为', 'sphotography' ); ?></p>
 
@@ -416,25 +418,29 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Live Preview (sticky at top) -->
             <!-- ============================================ -->
+            <?php // v1.4.2: 实时预览作为最顶部的独立大板块卡片（D1）。 ?>
             <?php $sphotography_preview_url = sphotography_map_preview_url(); ?>
             <?php if ( $sphotography_preview_url ) : ?>
-            <div id="sphotography-preview-sticky-wrap">
-                <div class="sphotography-field sphotography-map-preview-field">
-                    <label class="sphotography-label"><?php _e( '地图实时预览', 'sphotography' ); ?></label>
-                    <div class="sphotography-map-preview" id="sphotography-map-preview" data-preview-base="<?php echo esc_attr( $sphotography_preview_url ); ?>">
-                        <iframe id="sphotography-map-preview-frame" title="<?php esc_attr_e( '地图预览', 'sphotography' ); ?>" loading="lazy" referrerpolicy="no-referrer"></iframe>
-                        <div class="sphotography-map-preview-refresh" id="sphotography-map-preview-refresh" aria-hidden="true"></div>
+            <section class="sp-cat-card" id="sp-cat-preview">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-visibility"></span><?php _e( '实时预览', 'sphotography' ); ?></h2>
+                <div id="sphotography-preview-sticky-wrap">
+                    <div class="sphotography-field sphotography-map-preview-field">
+                        <div class="sphotography-map-preview" id="sphotography-map-preview" data-preview-base="<?php echo esc_attr( $sphotography_preview_url ); ?>">
+                            <iframe id="sphotography-map-preview-frame" title="<?php esc_attr_e( '地图预览', 'sphotography' ); ?>" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                            <div class="sphotography-map-preview-refresh" id="sphotography-map-preview-refresh" aria-hidden="true"></div>
+                        </div>
+                        <p class="sphotography-desc"><?php _e( '改动下方任一地图相关设置后自动刷新预览（约 0.3 秒防抖）。预览使用站点真实照片数据；「行政区上色」需先运行地图样式分类中的「重建行政区索引」。改动尚未保存时预览即时体现，正式生效仍需点击保存。', 'sphotography' ); ?></p>
                     </div>
-                    <p class="sphotography-desc"><?php _e( '改动下方任一地图相关设置后自动刷新预览（约 0.3 秒防抖）。预览使用站点真实照片数据；「行政区上色」需先运行地图样式分类中的「重建行政区索引」。改动尚未保存时预览即时体现，正式生效仍需点击保存。', 'sphotography' ); ?></p>
                 </div>
-            </div>
+            </section>
             <?php endif; ?>
 
             <!-- ============================================ -->
             <!-- Category 1: 外观与颜色 -->
             <!-- ============================================ -->
-            <!-- Category: 外观与颜色 -->
-            <div class="sp-cat-anchor" id="sp-cat-appearance"></div>
+            <!-- Category: 外观与颜色 (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-appearance">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-art"></span><?php _e( '外观与颜色', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 配色 -->
                 <div class="sphotography-module" id="sp-mod-theme-color">
@@ -623,6 +629,7 @@ function sphotography_render_settings_page() {
                         </div>
                     </div>
                 </div>
+                </div><?php // v1.4.2 fix: 补回 sp-mod-card 缺失的模块闭合 </div>，此前 sp-mod-date 被误嵌套其中。 ?>
 
                 <!-- Sub-board 4: 日期格式 -->
                 <div class="sphotography-module" id="sp-mod-date">
@@ -662,12 +669,11 @@ function sphotography_render_settings_page() {
                 </div>
             
 
-            <!-- ============================================ -->
-            <!-- Category 2: 边栏与个人 -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 边栏与个人 -->
-            <div class="sp-cat-anchor" id="sp-cat-sidebar"></div>
+            </section><!-- /.sp-cat-card 外观与颜色 -->
+
+            <!-- Category 2: 边栏与个人 (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-sidebar">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-admin-users"></span><?php _e( '边栏与个人', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 站点与边栏 -->
                 <div class="sphotography-module" id="sp-mod-sidebar-site">
@@ -812,12 +818,11 @@ function sphotography_render_settings_page() {
                 </div>
             
 
-            <!-- ============================================ -->
-            <!-- Category 3: 动画 -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 动画 -->
-            <div class="sp-cat-anchor" id="sp-cat-animation"></div>
+            </section><!-- /.sp-cat-card 边栏与个人 -->
+
+            <!-- Category 3: 动画 (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-animation">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-update"></span><?php _e( '动画', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 基础动画 -->
                 <div class="sphotography-module" id="sp-mod-animation-basic">
@@ -832,7 +837,8 @@ function sphotography_render_settings_page() {
                         <select id="sphotography-preloader-style" name="sphotography[preloader_style]">
                             <option value="off" <?php selected( $values['preloader_style'], 'off' ); ?>><?php _e( '关闭', 'sphotography' ); ?></option>
                             <option value="aperture" <?php selected( $values['preloader_style'], 'aperture' ); ?>><?php _e( '光圈（默认）', 'sphotography' ); ?></option>
-                            <option value="flythrough" <?php selected( $values['preloader_style'], 'flythrough' ); ?>><?php _e( '流光穿越', 'sphotography' ); ?></option>
+                            <?php // v1.4.2: 「流光穿越」暂时停用（不可选），代码保留为已弃用状态，待日后打磨后重新启用。已保存该值的站点仍保留在白名单中不被清除。 ?>
+                            <option value="flythrough" <?php selected( $values['preloader_style'], 'flythrough' ); ?> disabled><?php _e( '流光穿越（暂未启用）', 'sphotography' ); ?></option>
                         </select>
                         <p class="sphotography-desc"><?php _e( '地图首页首次加载时的开屏动画。「光圈」为品牌化光圈加载；「流光穿越」以站点名称流光登场，加载完成后镜头穿过文字进入地图；「关闭」则不显示开屏。', 'sphotography' ); ?></p>
                     </div>
@@ -950,12 +956,11 @@ function sphotography_render_settings_page() {
                 </div>
             
 
-            <!-- ============================================ -->
-            <!-- Category 4: 阅读与评论 -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 阅读与评论 -->
-            <div class="sp-cat-anchor" id="sp-cat-reading_comments"></div>
+            </section><!-- /.sp-cat-card 动画 -->
+
+            <!-- Category 4: 阅读与评论 (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-reading_comments">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-book"></span><?php _e( '阅读与评论', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 阅读信息 -->
                 <div class="sphotography-module" id="sp-mod-reading">
@@ -1180,12 +1185,11 @@ function sphotography_render_settings_page() {
                 </div>
             
 
-            <!-- ============================================ -->
-            <!-- Category 5: 地图 -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 地图 -->
-            <div class="sp-cat-anchor" id="sp-cat-map"></div>
+            </section><!-- /.sp-cat-card 阅读与评论 -->
+
+            <!-- Category 5: 地图 (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-map">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-location-alt"></span><?php _e( '地图', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 底图 -->
             <div class="sphotography-module" id="sp-mod-mapstyle">
@@ -1333,12 +1337,11 @@ function sphotography_render_settings_page() {
                 </div>
             
 
-            <!-- ============================================ -->
-            <!-- Category 7: 社交 (Social) -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 社交 -->
-            <div class="sp-cat-anchor" id="sp-cat-social"></div>
+            </section><!-- /.sp-cat-card 地图 -->
+
+            <!-- Category 7: 社交 (Social) (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-social">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-share"></span><?php _e( '社交', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 友链管理 -->
                 <?php if ( function_exists( 'sphotography_render_friend_links_board' ) ) : ?>
@@ -1351,12 +1354,11 @@ function sphotography_render_settings_page() {
                 <?php endif; ?>
             
 
-            <!-- ============================================ -->
-            <!-- Category 8: 其他 -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 其他 -->
-            <div class="sp-cat-anchor" id="sp-cat-other"></div>
+            </section><!-- /.sp-cat-card 社交 -->
+
+            <!-- Category 8: 其他 (v1.4.2: 大板块卡片) -->
+            <section class="sp-cat-card" id="sp-cat-other">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-admin-generic"></span><?php _e( '其他', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 页脚 -->
                 <div class="sphotography-module" id="sp-mod-footer">
@@ -1397,12 +1399,11 @@ function sphotography_render_settings_page() {
                 </div>
             
 
-            <!-- ============================================ -->
-            <!-- Category 8: 系统 -->
-            <!-- ============================================ -->
-            <div class="sp-cat-divider"></div>
-            <!-- Category: 系统 -->
-            <div class="sp-cat-anchor" id="sp-cat-system"></div>
+            </section><!-- /.sp-cat-card 其他 -->
+
+            <!-- Category 8: 系统 (v1.4.2: 大板块卡片；保存/重置按钮位于本卡片底部) -->
+            <section class="sp-cat-card" id="sp-cat-system">
+                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-admin-tools"></span><?php _e( '系统', 'sphotography' ); ?></h2>
 
                 <!-- Sub-board 1: 实验性功能 -->
             <div class="sphotography-module" id="sp-mod-experimental">
@@ -1607,7 +1608,16 @@ function sphotography_render_settings_page() {
                     <?php _e( '重置默认', 'sphotography' ); ?>
                 </button>
             </div>
+        </section><!-- /.sp-cat-card 系统（含底部 保存/重置 按钮对） -->
         </form>
+
+        <?php
+        // v1.4.2: 「添加友链」弹窗渲染在设置大表单之外（de-nest），彻底避免其输入框
+        // 被归属到外层表单而误触发保存时的 HTML5 校验。
+        if ( function_exists( 'sphotography_render_friend_links_modal' ) ) {
+            echo sphotography_render_friend_links_modal();
+        }
+        ?>
 
         <!-- ============================================ -->
         <!-- Right-side index (TOC) — quick jump + save -->
@@ -1621,7 +1631,7 @@ function sphotography_render_settings_page() {
                     // (the same `.sphotography-module` ids in the main
                     // column) listed beneath it. 实时预览 is a leaf.
                     $toc_items = array(
-                        array( 'id' => 'sphotography-preview-sticky-wrap', 'label' => __( '实时预览', 'sphotography' ) ),
+                        array( 'id' => 'sp-cat-preview', 'label' => __( '实时预览', 'sphotography' ) ),
                         array( 'id' => 'sp-cat-appearance', 'label' => __( '外观与颜色', 'sphotography' ), 'children' => array(
                             array( 'id' => 'sp-mod-theme-color',     'label' => __( '配色', 'sphotography' ) ),
                             array( 'id' => 'sp-mod-theme-darkmode',  'label' => __( '明暗', 'sphotography' ) ),
@@ -1720,6 +1730,9 @@ function sphotography_admin_enqueue_settings( $hook ) {
     // class is added in admin/admin-style.php). Effects are kept subtle.
     $sp_primary = sphotography_admin_primary_color();
     $sp_serif   = "'Noto Serif SC', Georgia, 'Times New Roman', 'Songti SC', serif";
+    // v1.4.2: 大板块卡片圆角跟随前台 card_radius 主题设置（而非固定 14px），
+    // 让后台配置卡片与前台面板的圆角观感一致。限幅 0–40 与前端字段一致。
+    $sp_card_radius = max( 0, min( 40, (int) get_theme_mod( 'sphotography_card_radius', 16 ) ) );
 
     $sp_light = "
         --sp-bg: #f4f1ec;
@@ -1781,26 +1794,68 @@ function sphotography_admin_enqueue_settings( $hook ) {
             top: 46px;
             align-self: flex-start;
         }
-        /* v1.4.1: settings page is now a flat list of boards (the v1.3.8
-           category <section> wrappers were dropped). Category groups are
-           separated by a thin divider line so the eye can still feel the
-           grouping without seeing big section headings. The TOC still
-           scrolls to invisible anchor divs at the top of each group. */
-        .sp-cat-anchor {
-            /* Invisible scroll target — sits at the top of each category
-               group so the right-side TOC parent link can still jump there.
-               1px tall is enough for the browser to consider it a valid
-               scroll target (zero-height elements are unreliable). */
-            height: 1px;
-            margin: 0;
-            padding: 0;
-            visibility: hidden;
+        /* v1.4.2: 每个大板块 = 一张独立卡片，彼此不相连（靠 margin 间隔）。
+           卡片圆角跟随前台 card_radius 主题设置。内部子模块扁平化为带分隔线的
+           带标题分区（去掉各自的卡片外观）。旧的 .sp-cat-anchor/.sp-cat-divider
+           已由 <section class=\"sp-cat-card\"> 取代。 */
+        .sp-cat-card {
+            background: var(--sp-surface);
+            border: 1px solid var(--sp-border);
+            border-radius: {$sp_card_radius}px;
+            box-shadow: var(--sp-shadow);
+            margin-bottom: 24px;
+            padding: 20px 26px 24px;
+            scroll-margin-top: 52px; /* 锚点跳转避开 WP 顶部管理条 */
         }
-        .sp-cat-divider {
-            height: 1px;
-            background: var(--sp-border);
-            margin: 32px 0;
+        .sp-cat-card:last-of-type { margin-bottom: 0; }
+        .sp-cat-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 6px 0;
+            padding-bottom: 14px;
+            border-bottom: 2px solid var(--sp-border);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--sp-text);
+            font-family: {$sp_serif};
+            letter-spacing: 0.01em;
+        }
+        .sp-cat-card-title .sp-cat-card-icon {
+            color: var(--sp-accent);
+            font-size: 1.4rem;
+            width: auto;
+            height: auto;
+        }
+        /* 扁平化卡片内子模块：脱去卡片外观，改为带分隔线的分区。 */
+        .sp-cat-card .sphotography-module {
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            margin: 0;
+            overflow: visible;
+            scroll-margin-top: 52px;
+        }
+        .sp-cat-card .sphotography-module + .sphotography-module {
+            border-top: 1px solid var(--sp-border);
+            margin-top: 6px;
+        }
+        .sp-cat-card .sphotography-module-header {
+            background: transparent;
+            border-bottom: none;
+            padding: 16px 0 4px;
+        }
+        .sp-cat-card .sphotography-module-body {
+            padding: 6px 0 2px;
+        }
+        /* 卡片内的实时预览容器（若预览卡沿用旧 id）不再重复卡片外观。 */
+        .sp-cat-card #sphotography-preview-sticky-wrap {
+            background: transparent;
+            border: none;
+            box-shadow: none;
             padding: 0;
+            margin: 0;
         }
         /* v1.4.0: force every board to fill the main column regardless of
            parent flex/grid quirks. */
@@ -1880,18 +1935,28 @@ function sphotography_admin_enqueue_settings( $hook ) {
             transform: rotate(90deg);
             color: var(--sp-accent);
         }
+        /* v1.4.2: 更“丝滑”的子索引滑下——240ms 减速曲线 + 子项透明度同步淡入。 */
         .sphotography-toc-children {
             display: grid;
             grid-template-rows: 0fr;
-            transition: grid-template-rows 160ms ease;
+            transition: grid-template-rows 240ms cubic-bezier(0.16,1,0.3,1);
             overflow: hidden;
         }
         .sphotography-toc-children > .sphotography-toc-child-wrap {
             min-height: 0;
             overflow: hidden;
+            opacity: 0;
+            transition: opacity 200ms ease;
         }
         .sphotography-toc-group.is-expanded > .sphotography-toc-children {
             grid-template-rows: 1fr;
+        }
+        .sphotography-toc-group.is-expanded > .sphotography-toc-children > .sphotography-toc-child-wrap {
+            opacity: 1;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .sphotography-toc-children,
+            .sphotography-toc-children > .sphotography-toc-child-wrap { transition: none; }
         }
         .sphotography-toc-child {
             padding-left: 24px !important;
@@ -1927,6 +1992,17 @@ function sphotography_admin_enqueue_settings( $hook ) {
             .sphotography-settings-layout { display: block; }
             .sphotography-toc { display: none; }
         }
+        /* v1.4.2: 页顶主题动态图标占位容器——现留空（仅 HTML 注释标记），
+           日后放入 SVG 文件即显示。空时自动折叠不占空间。 */
+        .sphotography-theme-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 0 14px 0;
+        }
+        .sphotography-theme-icon:empty { display: none; }
+        .sphotography-theme-icon svg,
+        .sphotography-theme-icon img { max-width: 96px; max-height: 96px; }
         .sphotography-settings-title {
             font-size: 1.9rem;
             font-weight: 700;
@@ -2073,12 +2149,15 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-radio-text {
             font-size: 0.9375rem;
         }
+        /* v1.4.2: 保存/重置按钮对现位于最后一张大板块卡片（系统）内部底部，
+           以卡片内分隔线与上方选项区隔开。 */
         .sphotography-actions {
             display: flex;
             gap: 12px;
             align-items: center;
-            margin-top: 24px;
-            padding: 20px 0;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--sp-border);
         }
         .sphotography-actions .button-large {
             display: inline-flex;
@@ -2317,10 +2396,10 @@ function sphotography_admin_enqueue_settings( $hook ) {
             width: 100%;
             background: var(--sp-surface);
             border: 1px solid var(--sp-border);
-            border-radius: 14px;
+            border-radius: {$sp_card_radius}px;
             box-shadow: var(--sp-shadow);
             padding: 20px 24px;
-            margin-bottom: 40px;
+            margin-bottom: 24px;
         }
         /* v1.2.9 — experimental AI risk banner */
         .sphotography-ai-risk {
@@ -2353,6 +2432,73 @@ function sphotography_admin_enqueue_settings( $hook ) {
             font-weight: 600;
             color: var(--sp-text);
         }
+        /* v1.4.2 — 「添加友链」居中弹窗（modal）。 */
+        .sp-fl-modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+        }
+        .sp-fl-modal-overlay[hidden] { display: none; }
+        .sp-fl-modal {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            max-height: calc(100vh - 48px);
+            overflow-y: auto;
+            background: var(--sp-surface);
+            color: var(--sp-text);
+            border: 1px solid var(--sp-border);
+            border-radius: {$sp_card_radius}px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+            padding: 24px 26px 22px;
+            font-family: {$sp_serif};
+        }
+        .sp-fl-modal-title {
+            margin: 0 0 16px 0;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--sp-text);
+        }
+        .sp-fl-modal-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 50%;
+            background: var(--sp-surface-2);
+            color: var(--sp-text-muted);
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 140ms ease, color 140ms ease;
+        }
+        .sp-fl-modal-close:hover { background: var(--sp-accent); color: #fff; }
+        .sp-fl-modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            align-items: center;
+            margin-top: 18px;
+        }
+        .sp-fl-modal-actions .button-primary {
+            background: var(--sp-accent);
+            border-color: var(--sp-accent);
+            box-shadow: none;
+            text-shadow: none;
+        }
+        body.sp-fl-modal-open { overflow: hidden; }
     ";
 
     wp_add_inline_style( 'wp-color-picker', $settings_css );
