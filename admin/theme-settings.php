@@ -1592,6 +1592,7 @@ function sphotography_render_settings_page() {
                 <nav class="sphotography-toc-nav">
                     <?php
                     $toc_items = array(
+                        'sphotography-preview-sticky-wrap' => __( '实时预览', 'sphotography' ),
                         'sp-cat-appearance'      => __( '外观与颜色', 'sphotography' ),
                         'sp-cat-sidebar'         => __( '边栏与个人', 'sphotography' ),
                         'sp-cat-animation'       => __( '动画', 'sphotography' ),
@@ -2151,24 +2152,18 @@ function sphotography_admin_enqueue_settings( $hook ) {
             animation: sphotographyPreviewSpin 0.7s linear infinite;
         }
         @keyframes sphotographyPreviewSpin { to { transform: rotate(360deg); } }
-        /* Live-preview board: pinned at the top; shrinks to a compact bar once
-           the user scrolls past it so it stays visible (v1.3.8). */
+        /* Live-preview board (v1.3.9): a normal full-width board at the top of
+           the page (NOT sticky). It occupies one index (TOC) slot. */
         #sphotography-preview-sticky-wrap {
-            position: sticky;
-            top: 16px;
-            z-index: 30;
-            background: var(--sp-bg);
+            display: block;
+            width: 100%;
+            background: var(--sp-surface);
+            border: 1px solid var(--sp-border);
             border-radius: 14px;
-            transition: box-shadow 200ms ease, padding 200ms ease;
-        }
-        #sphotography-preview-sticky-wrap.is-stuck {
             box-shadow: var(--sp-shadow);
-            padding: 8px;
+            padding: 20px 24px;
+            margin-bottom: 40px;
         }
-        .sphotography-map-preview { transition: height 220ms ease; }
-        #sphotography-preview-sticky-wrap.is-stuck .sphotography-label,
-        #sphotography-preview-sticky-wrap.is-stuck .sphotography-desc { display: none; }
-        #sphotography-preview-sticky-wrap.is-stuck .sphotography-map-preview { height: 132px; }
         /* v1.2.9 — experimental AI risk banner */
         .sphotography-ai-risk {
             border: 1px solid rgba(224,90,77,0.35);

@@ -26,6 +26,7 @@ require_once get_template_directory() . '/inc/post-metrics.php';
 require_once get_template_directory() . '/inc/comments.php';
 require_once get_template_directory() . '/inc/friend-links.php';
 require_once get_template_directory() . '/inc/guestbook.php';
+require_once get_template_directory() . '/inc/photo-wall.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"
@@ -102,6 +103,31 @@ function sphotography_register_photograph_meta() {
         'taken_at' => array(
             'type'        => 'string',
             'description' => 'Date the photograph was taken (Y-m-d format)',
+            'default'     => '',
+        ),
+        'taken_time' => array(
+            'type'        => 'string',
+            'description' => 'Time the photograph was taken (H:i:s format)',
+            'default'     => '',
+        ),
+        'aperture' => array(
+            'type'        => 'string',
+            'description' => 'Aperture value (f/N format)',
+            'default'     => '',
+        ),
+        'shutter' => array(
+            'type'        => 'string',
+            'description' => 'Shutter speed (e.g. 1/200 or 2s)',
+            'default'     => '',
+        ),
+        'iso' => array(
+            'type'        => 'string',
+            'description' => 'ISO speed rating',
+            'default'     => '',
+        ),
+        'wall_pinned' => array(
+            'type'        => 'string',
+            'description' => 'Whether the photo is pinned to the photo wall (1 or unset)',
             'default'     => '',
         ),
     );
@@ -219,7 +245,7 @@ function sphotography_read_exif_and_save( $attachment_id, $file_path ) {
                 $result['camera'] = true;
             }
 
-            // Date
+            // Date and Time
             $date_str = '';
             if ( isset( $exif['EXIF']['DateTimeOriginal'] ) ) {
                 $date_str = $exif['EXIF']['DateTimeOriginal'];
@@ -230,7 +256,44 @@ function sphotography_read_exif_and_save( $attachment_id, $file_path ) {
                 $ts = strtotime( $date_str );
                 if ( $ts !== false ) {
                     update_post_meta( $attachment_id, 'taken_at', date( 'Y-m-d', $ts ) );
+                    update_post_meta( $attachment_id, 'taken_time', date( 'H:i:s', $ts ) );
                     $result['date'] = true;
+                }
+            }
+
+            // Aperture: FNumber or ApertureValue, formatted as f/N
+            if ( isset( $exif['EXIF']['FNumber'] ) ) {
+                $aperture_val = $exif['EXIF']['FNumber'];
+            } elseif ( isset( $exif['EXIF']['ApertureValue'] ) ) {
+                $aperture_val = $exif['EXIF']['ApertureValue'];
+            } else {
+                $aperture_val = null;
+            }
+            if ( $aperture_val !== null ) {
+                $aperture_decimal = sphotography_parse_exif_rational( $aperture_val );
+                if ( $aperture_decimal !== null ) {
+                    $aperture_str = 'f/' . number_format( $aperture_decimal, 1 );
+                    update_post_meta( $attachment_id, 'aperture', $aperture_str );
+                }
+            }
+
+            // Shutter: ExposureTime, formatted as 1/N or Ns
+            if ( isset( $exif['EXIF']['ExposureTime'] ) ) {
+                $shutter_str = sphotography_format_shutter_speed( $exif['EXIF']['ExposureTime'] );
+                if ( $shutter_str ) {
+                    update_post_meta( $attachment_id, 'shutter', $shutter_str );
+                }
+            }
+
+            // ISO: ISOSpeedRatings (may be array, take first)
+            if ( isset( $exif['EXIF']['ISOSpeedRatings'] ) ) {
+                $iso_val = $exif['EXIF']['ISOSpeedRatings'];
+                if ( is_array( $iso_val ) && ! empty( $iso_val ) ) {
+                    $iso_val = $iso_val[0];
+                }
+                $iso_int = (int) $iso_val;
+                if ( $iso_int > 0 ) {
+                    update_post_meta( $attachment_id, 'iso', (string) $iso_int );
                 }
             }
         } else {
@@ -435,6 +498,51 @@ function sphotography_exif_frac_to_float( $frac ) {
         return floatval( $frac );
     }
     return null;
+}
+
+/**
+ * Parse EXIF rational value to float (used for aperture, shutter, ISO).
+ *
+ * @param mixed $val EXIF value (array, string, or number)
+ * @return float|null
+ */
+function sphotography_parse_exif_rational( $val ) {
+    if ( is_array( $val ) && count( $val ) >= 2 && isset( $val[1] ) && $val[1] != 0 ) {
+        return floatval( $val[0] ) / floatval( $val[1] );
+    }
+    if ( is_float( $val ) || is_int( $val ) ) {
+        return floatval( $val );
+    }
+    if ( is_string( $val ) && strpos( $val, '/' ) !== false ) {
+        $parts = explode( '/', $val );
+        if ( count( $parts ) === 2 && is_numeric( $parts[0] ) && is_numeric( $parts[1] ) && $parts[1] != 0 ) {
+            return floatval( $parts[0] ) / floatval( $parts[1] );
+        }
+    }
+    if ( is_string( $val ) && is_numeric( $val ) ) {
+        return floatval( $val );
+    }
+    return null;
+}
+
+/**
+ * Format shutter speed EXIF value (ExposureTime) as string.
+ *
+ * @param mixed $val EXIF ExposureTime value
+ * @return string|null e.g. "1/200" or "2s"
+ */
+function sphotography_format_shutter_speed( $val ) {
+    $decimal = sphotography_parse_exif_rational( $val );
+    if ( $decimal === null || $decimal <= 0 ) {
+        return null;
+    }
+    // If >= 1 second, format as "Ns"
+    if ( $decimal >= 1 ) {
+        return round( $decimal ) . 's';
+    }
+    // If < 1 second, format as "1/N"
+    $denominator = round( 1 / $decimal );
+    return '1/' . $denominator;
 }
 
 // ============================================
@@ -725,6 +833,7 @@ function sphotography_enqueue_scripts() {
             'externalLinks'   => $sp_external_links,
             'friendLinks'     => function_exists( 'sphotography_friend_links_config' ) ? sphotography_friend_links_config() : array(),
             'guestbook'       => function_exists( 'sphotography_guestbook_config' ) ? sphotography_guestbook_config() : array(),
+            'photoWall'       => function_exists( 'sphotography_photo_wall_config' ) ? sphotography_photo_wall_config() : array(),
         )
     );
 }

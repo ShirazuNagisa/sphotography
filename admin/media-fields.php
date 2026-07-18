@@ -43,6 +43,14 @@ function sphotography_attachment_fields( $form_fields, $post ) {
         'helps' => __( '格式 Y-m-d，例如 2026-07-10（自动从 EXIF 读取）', 'sphotography' ),
     );
 
+    $form_fields['sphotography_wall_pinned'] = array(
+        'label' => __( '加入照片墙置顶', 'sphotography' ),
+        'input' => 'html',
+        'html'  => '<input type="checkbox" name="attachments[' . esc_attr( $post_id ) . '][sphotography_wall_pinned]" value="1" '
+                 . ( get_post_meta( $post_id, 'wall_pinned', true ) === '1' ? 'checked="checked"' : '' )
+                 . ' />',
+    );
+
     return $form_fields;
 }
 add_filter( 'attachment_fields_to_edit', 'sphotography_attachment_fields', 10, 2 );
@@ -70,6 +78,13 @@ function sphotography_attachment_fields_save( $post, $attachment ) {
                 delete_post_meta( $post['ID'], $meta_key );
             }
         }
+    }
+
+    // Handle checkbox: set if present, delete if absent
+    if ( isset( $attachment['sphotography_wall_pinned'] ) ) {
+        update_post_meta( $post['ID'], 'wall_pinned', '1' );
+    } else {
+        delete_post_meta( $post['ID'], 'wall_pinned' );
     }
 
     return $post;
