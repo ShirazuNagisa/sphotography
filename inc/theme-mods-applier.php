@@ -354,7 +354,12 @@ function sphotography_localize_data() {
         'pjaxAnimation'    => (bool) sphotography_get_mod( 'pjax_animation' ),
         'primaryColor'     => sphotography_get_mod( 'primary_color' ),
         'frontendFont'     => sphotography_get_mod( 'frontend_font' ),
-        'sidebarDefaultOpen' => (bool) sphotography_get_mod( 'sidebar_default_open' ),
+        // Device-aware sidebar default (v1.3.7): resolved server-side with
+        // wp_is_mobile() so the JS reads one boolean, matching the body class
+        // emitted in template-map.php.
+        'sidebarDefaultOpen' => (bool) ( wp_is_mobile()
+            ? sphotography_get_mod( 'sidebar_default_open_mobile' )
+            : sphotography_get_mod( 'sidebar_default_open_desktop' ) ),
         'articleCardSize'  => sphotography_get_mod( 'article_card_size' ),
         'readingInfo'      => (bool) sphotography_get_mod( 'reading_info' ),
         'readingSpeedCjk'  => (int) sphotography_get_mod( 'reading_speed_cjk' ),

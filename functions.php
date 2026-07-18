@@ -24,6 +24,8 @@ require_once get_template_directory() . '/inc/ip-region.php';
 require_once get_template_directory() . '/inc/article-location.php';
 require_once get_template_directory() . '/inc/post-metrics.php';
 require_once get_template_directory() . '/inc/comments.php';
+require_once get_template_directory() . '/inc/friend-links.php';
+require_once get_template_directory() . '/inc/guestbook.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"
@@ -681,6 +683,32 @@ function sphotography_enqueue_scripts() {
         true
     );
 
+    // Parse the 外站 links (name|url|tooltip, max 3) for the page-links bar.
+    $sp_external_links = array();
+    $sp_ext_raw = (string) sphotography_get_mod( 'external_links' );
+    if ( '' !== trim( $sp_ext_raw ) ) {
+        $sp_ext_lines = preg_split( '/\r\n|\r|\n/', $sp_ext_raw );
+        foreach ( $sp_ext_lines as $sp_line ) {
+            $sp_line = trim( $sp_line );
+            if ( '' === $sp_line ) {
+                continue;
+            }
+            $sp_parts = array_map( 'trim', explode( '|', $sp_line ) );
+            $sp_url = isset( $sp_parts[1] ) ? esc_url_raw( $sp_parts[1] ) : '';
+            if ( '' === $sp_url ) {
+                continue;
+            }
+            $sp_external_links[] = array(
+                'name' => $sp_parts[0] !== '' ? $sp_parts[0] : $sp_url,
+                'url'  => $sp_url,
+                'tip'  => isset( $sp_parts[2] ) ? $sp_parts[2] : '',
+            );
+            if ( count( $sp_external_links ) >= 3 ) {
+                break;
+            }
+        }
+    }
+
     $sp_current_user = wp_get_current_user();
     wp_localize_script(
         'sphotography-app',
@@ -694,6 +722,9 @@ function sphotography_enqueue_scripts() {
             'currentUserEmail' => is_user_logged_in() ? $sp_current_user->user_email : '',
             'commentsClosedText' => __( '评论已关闭。', 'sphotography' ),
             'comments'        => function_exists( 'sphotography_comment_config' ) ? sphotography_comment_config() : array(),
+            'externalLinks'   => $sp_external_links,
+            'friendLinks'     => function_exists( 'sphotography_friend_links_config' ) ? sphotography_friend_links_config() : array(),
+            'guestbook'       => function_exists( 'sphotography_guestbook_config' ) ? sphotography_guestbook_config() : array(),
         )
     );
 }

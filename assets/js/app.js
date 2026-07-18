@@ -1989,6 +1989,430 @@
     }
 
     // ---------------------------------------------------------------
+    // 10a2. Page-links bar + 友链 / 留言 side panels (v1.3.7)
+    //
+    // A horizontal glass strip pinned top-right (left of the map controls) with
+    // 友链 / 留言 entries plus up to three admin-configured 外站 links. The two
+    // panels open over the right half of the screen and coexist with an open
+    // article (which lives on the left); they are mutually exclusive with each
+    // other — opening one first collapses the other.
+    // ---------------------------------------------------------------
+    var GB_STATE = { mode: 'random', page: 1, sort: 'time', order: 'asc', hasMore: false, loading: false };
+    var sidePanels = { built: false, friend: null, guestbook: null, open: null };
+
+    function initPageLinks() {
+        buildPageLinksBar();
+    }
+
+    function buildPageLinksBar() {
+        if (document.getElementById('page-links-bar')) return;
+        var friendIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+        var msgIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+        var extIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+
+        var bar = document.createElement('div');
+        bar.id = 'page-links-bar';
+        bar.className = 'page-links-bar';
+        var html = ''
+            + '<button type="button" class="page-link-btn" data-sp-panel="friend"><span class="page-link-ico">' + friendIcon + '</span><span class="page-link-txt">友链</span></button>'
+            + '<button type="button" class="page-link-btn" data-sp-panel="guestbook"><span class="page-link-ico">' + msgIcon + '</span><span class="page-link-txt">留言</span></button>';
+        var ext = Array.isArray(APP.externalLinks) ? APP.externalLinks : [];
+        ext.forEach(function (e) {
+            if (!e || !e.url) return;
+            var tip = e.tip ? ' title="' + escapeHtml(e.tip) + '"' : '';
+            html += '<a class="page-link-btn page-link-ext" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener"' + tip + '><span class="page-link-ico">' + extIcon + '</span><span class="page-link-txt">' + escapeHtml(e.name || e.url) + '</span></a>';
+        });
+        bar.innerHTML = html;
+        document.body.appendChild(bar);
+
+        bar.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-sp-panel]');
+            if (!btn) return;
+            toggleSidePanel(btn.getAttribute('data-sp-panel'));
+        });
+    }
+
+    function ensureSidePanels() {
+        if (sidePanels.built) return;
+        sidePanels.friend = buildSidePanel('friend', '友链');
+        sidePanels.guestbook = buildSidePanel('guestbook', '留言');
+        sidePanels.built = true;
+    }
+
+    function buildSidePanel(kind, title) {
+        var panel = document.createElement('div');
+        panel.className = 'side-panel side-panel--' + kind + ' glass-panel';
+        panel.id = kind + '-panel';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-label', title);
+        var bottomBand = (kind === 'guestbook') ? '' : '<div class="sp-frost-band sp-frost-band--bottom is-visible" aria-hidden="true"></div>';
+        panel.innerHTML = ''
+            + '<button type="button" class="panel-close-btn side-panel-close" aria-label="关闭"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+            + '<div class="sp-frost-band sp-frost-band--top" aria-hidden="true"></div>'
+            + bottomBand
+            + '<div class="side-panel-scroll"></div>';
+        document.body.appendChild(panel);
+
+        panel.querySelector('.side-panel-close').addEventListener('click', function () { closeSidePanel(kind); });
+
+        var scroll = panel.querySelector('.side-panel-scroll');
+        var bandTop = panel.querySelector('.sp-frost-band--top');
+        var scheduled = false;
+        scroll.addEventListener('scroll', function () {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(function () {
+                scheduled = false;
+                if (bandTop) bandTop.classList.toggle('is-visible', scroll.scrollTop > 6);
+            });
+        });
+        return panel;
+    }
+
+    function toggleSidePanel(which) {
+        if (sidePanels.open === which) { closeSidePanel(which); return; }
+        openSidePanel(which);
+    }
+
+    function openSidePanel(which) {
+        ensureSidePanels();
+        var doOpen = function () {
+            sidePanels.open = which;
+            var panel = sidePanels[which];
+            panel.classList.add('active');
+            if (which === 'friend') { loadFriendPanel(panel); } else { loadGuestbookPanel(panel); }
+        };
+        // 友链 / 留言 share the right slot: collapse the other one first.
+        if (sidePanels.open && sidePanels.open !== which) {
+            closeSidePanel(sidePanels.open, doOpen);
+        } else {
+            doOpen();
+        }
+    }
+
+    function closeSidePanel(which, cb) {
+        var panel = sidePanels[which];
+        if (!panel) { if (cb) cb(); return; }
+        panel.classList.remove('active');
+        if (sidePanels.open === which) sidePanels.open = null;
+        if (cb) setTimeout(cb, 320);
+    }
+
+    // ---- 友链 ----
+    function loadFriendPanel(panel) {
+        var scroll = panel.querySelector('.side-panel-scroll');
+        scroll.scrollTop = 0;
+        scroll.innerHTML = '<header class="side-panel-header"><h3>友链</h3></header><div class="friend-grid"><p class="friend-loading">加载中…</p></div>';
+        fetchFromRest('sphotography/v1/friend-links').then(function (data) {
+            if (sidePanels.open !== 'friend') return;
+            var items = (data && Array.isArray(data.items)) ? data.items : [];
+            renderFriendCards(scroll, items);
+        });
+    }
+
+    function renderFriendCards(scroll, items) {
+        var grid;
+        if (items.length) {
+            var cards = items.map(function (it) {
+                var thumb = it.thumb
+                    ? '<span class="friend-card-thumb"><img src="' + escapeHtml(it.thumb) + '" alt="" loading="lazy"></span>'
+                    : '<span class="friend-card-thumb friend-card-thumb--empty"></span>';
+                return '<a class="friend-card" href="' + escapeHtml(it.url) + '" target="_blank" rel="noopener">'
+                    + thumb
+                    + '<span class="friend-card-name">' + escapeHtml(it.name || it.url) + '</span>'
+                    + '</a>';
+            }).join('');
+            grid = '<div class="friend-grid">' + cards + '</div>';
+        } else {
+            grid = '<p class="friend-empty">还没有友链。</p>';
+        }
+        scroll.innerHTML = '<header class="side-panel-header"><h3>友链</h3></header>' + grid + buildFriendApplyForm();
+        wireFriendApply(scroll);
+    }
+
+    function buildFriendApplyForm() {
+        return ''
+            + '<div class="friend-apply">'
+            +   '<h4 class="friend-apply-title">申请友链</h4>'
+            +   '<form class="friend-apply-form" novalidate>'
+            +     '<input type="email" class="friend-apply-email" placeholder="你的邮箱 *" autocomplete="email">'
+            +     '<input type="url" class="friend-apply-url" placeholder="你的网站链接 *">'
+            +     '<input type="text" class="friend-apply-name" placeholder="站点名称（可选）">'
+            +     '<textarea class="friend-apply-msg" rows="2" placeholder="留言（可选）"></textarea>'
+            +     '<div class="friend-apply-footer"><span class="friend-apply-feedback"></span><button type="submit" class="friend-apply-submit">提交申请</button></div>'
+            +   '</form>'
+            + '</div>';
+    }
+
+    function wireFriendApply(scroll) {
+        var form = scroll.querySelector('.friend-apply-form');
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var email = (form.querySelector('.friend-apply-email').value || '').trim();
+            var url = (form.querySelector('.friend-apply-url').value || '').trim();
+            var name = (form.querySelector('.friend-apply-name').value || '').trim();
+            var msg = (form.querySelector('.friend-apply-msg').value || '').trim();
+            var fb = form.querySelector('.friend-apply-feedback');
+            fb.className = 'friend-apply-feedback';
+            if (!email || !url) { fb.textContent = '请填写邮箱和链接。'; fb.classList.add('is-error'); return; }
+            var btn = form.querySelector('.friend-apply-submit');
+            btn.disabled = true; btn.textContent = '提交中…';
+            postJson(CONFIG.restBase + '/sphotography/v1/friend-links/apply', { email: email, url: url, name: name, message: msg }).then(function (r) {
+                btn.disabled = false; btn.textContent = '提交申请';
+                if (!r.ok) { fb.textContent = ccError(r); fb.classList.add('is-error'); return; }
+                form.reset();
+                fb.textContent = '申请已提交，等待站长审核。';
+                fb.classList.add('is-success');
+            });
+        });
+    }
+
+    // ---- 留言 (guestbook) ----
+    function guestbookPostId() { return (APP.guestbook && APP.guestbook.postId) ? APP.guestbook.postId : 0; }
+
+    function guestbookSortHtml() {
+        return ''
+            + '<div class="comment-sort gb-sort-ctrl" role="group" aria-label="留言排序">'
+            +   '<button type="button" class="comment-sort-btn" data-gb-sort="time"></button>'
+            +   '<button type="button" class="comment-sort-btn" data-gb-sort="likes">点赞</button>'
+            + '</div>';
+    }
+
+    function updateGuestbookSortUI(scroll) {
+        var timeBtn = scroll.querySelector('.comment-sort-btn[data-gb-sort="time"]');
+        var likeBtn = scroll.querySelector('.comment-sort-btn[data-gb-sort="likes"]');
+        if (timeBtn) {
+            timeBtn.textContent = '时间 ' + (GB_STATE.order === 'desc' ? '↓' : '↑');
+            timeBtn.classList.toggle('is-active', GB_STATE.sort === 'time');
+        }
+        if (likeBtn) likeBtn.classList.toggle('is-active', GB_STATE.sort === 'likes');
+    }
+
+    function loadGuestbookPanel(panel) {
+        GB_STATE = { mode: 'random', page: 1, sort: 'time', order: 'asc', hasMore: false, loading: false };
+        var scroll = panel.querySelector('.side-panel-scroll');
+        scroll.scrollTop = 0;
+        scroll.innerHTML = ''
+            + '<header class="side-panel-header gb-head"><h3>留言</h3><div class="gb-sort-wrap" hidden>' + guestbookSortHtml() + '</div><span class="gb-count" hidden></span></header>'
+            + '<ul class="comment-list gb-list" id="gb-list"><li class="gb-loading">加载中…</li></ul>'
+            + '<div class="gb-more" id="gb-more"></div>';
+        ensureGuestbookComposer(panel);
+        wireGuestbookList(panel, scroll);
+        loadGuestbook(scroll, true);
+    }
+
+    function loadGuestbook(scroll, replace) {
+        if (GB_STATE.loading) return;
+        GB_STATE.loading = true;
+        var listEl = scroll.querySelector('#gb-list');
+        var params = { mode: GB_STATE.mode, page: GB_STATE.page };
+        if (GB_STATE.mode === 'all') { params.sort = GB_STATE.sort; params.order = GB_STATE.order; }
+        ccGet('sphotography/v1/guestbook', params).then(function (data) {
+            GB_STATE.loading = false;
+            if (sidePanels.open !== 'guestbook') return;
+            var loading = listEl.querySelector('.gb-loading');
+            if (loading) loading.remove();
+            if (!data) { if (replace) listEl.innerHTML = '<li class="gb-empty">加载失败，请稍后再试。</li>'; return; }
+            var items = Array.isArray(data.items) ? data.items : [];
+            GB_STATE.hasMore = !!data.has_more;
+            GB_STATE.page = data.page || GB_STATE.page;
+            var countEl = scroll.querySelector('.gb-count');
+            if (countEl && typeof data.total === 'number') { countEl.hidden = false; countEl.textContent = '(' + data.total + ')'; }
+            if (replace) listEl.innerHTML = '';
+            if (replace && !items.length) {
+                listEl.innerHTML = '<li class="gb-empty">还没有留言，来写第一条吧。</li>';
+            } else {
+                listEl.insertAdjacentHTML('beforeend', items.map(function (c) { return buildCommentNode(c, false); }).join(''));
+                applyFolding(listEl);
+            }
+            renderGuestbookMore(scroll);
+        });
+    }
+
+    function renderGuestbookMore(scroll) {
+        var more = scroll.querySelector('#gb-more');
+        if (!more) return;
+        more.innerHTML = '';
+        if (GB_STATE.mode === 'random') {
+            more.innerHTML = '<button type="button" class="gb-showall" data-gb-showall>展示全部留言</button>';
+        } else if (GB_STATE.hasMore) {
+            more.innerHTML = '<button type="button" class="comment-page-btn gb-loadmore" data-gb-page="' + (GB_STATE.page + 1) + '">加载更多留言</button>';
+        }
+    }
+
+    function wireGuestbookList(panel, scroll) {
+        var pid = guestbookPostId();
+        var listEl = scroll.querySelector('#gb-list');
+        var countEl = scroll.querySelector('.gb-count');
+        scroll.addEventListener('click', function (e) {
+            var t = e.target;
+
+            var showAll = t.closest('[data-gb-showall]');
+            if (showAll) {
+                GB_STATE.mode = 'all'; GB_STATE.page = 1;
+                var sortWrap = scroll.querySelector('.gb-sort-wrap');
+                if (sortWrap) sortWrap.hidden = false;
+                updateGuestbookSortUI(scroll);
+                listEl.innerHTML = '<li class="gb-loading">加载中…</li>';
+                loadGuestbook(scroll, true);
+                return;
+            }
+
+            var sortBtn = t.closest('[data-gb-sort]');
+            if (sortBtn) {
+                var s = sortBtn.getAttribute('data-gb-sort');
+                if (s === 'time') {
+                    if (GB_STATE.sort === 'time') { GB_STATE.order = (GB_STATE.order === 'asc') ? 'desc' : 'asc'; }
+                    else { GB_STATE.sort = 'time'; }
+                } else if (s === 'likes') {
+                    if (GB_STATE.sort === 'likes') return;
+                    GB_STATE.sort = 'likes';
+                }
+                GB_STATE.page = 1;
+                updateGuestbookSortUI(scroll);
+                listEl.innerHTML = '<li class="gb-loading">加载中…</li>';
+                loadGuestbook(scroll, true);
+                return;
+            }
+
+            var pageBtn = t.closest('[data-gb-page]');
+            if (pageBtn) {
+                GB_STATE.page = parseInt(pageBtn.getAttribute('data-gb-page'), 10) || (GB_STATE.page + 1);
+                loadGuestbook(scroll, false);
+                return;
+            }
+
+            var likeBtn = t.closest('[data-cc-like]');
+            if (likeBtn) {
+                var lid = likeBtn.getAttribute('data-cc-like');
+                postJson(ccEndpoint('/' + lid + '/like'), {}).then(function (r) {
+                    if (!r.ok) return;
+                    likeBtn.classList.toggle('is-liked', !!r.data.liked);
+                    var cnt = likeBtn.querySelector('.comment-like-count');
+                    if (cnt) cnt.textContent = r.data.likes;
+                });
+                return;
+            }
+
+            var pinBtn = t.closest('[data-cc-pin]');
+            if (pinBtn) {
+                postJson(ccEndpoint('/' + pinBtn.getAttribute('data-cc-pin') + '/pin'), {}).then(function (r) {
+                    if (!r.ok) return;
+                    listEl.innerHTML = '<li class="gb-loading">加载中…</li>';
+                    loadGuestbook(scroll, true);
+                });
+                return;
+            }
+
+            var replyBtn = t.closest('[data-cc-reply]');
+            if (replyBtn) { openReplyForm(pid, replyBtn, listEl, countEl); return; }
+
+            var editBtn = t.closest('[data-cc-edit]');
+            if (editBtn) { openEditForm(pid, editBtn, listEl, countEl); return; }
+
+            var foldBtn = t.closest('[data-cc-fold]');
+            if (foldBtn) {
+                var text = foldBtn.previousElementSibling;
+                if (text && text.classList.contains('comment-text')) {
+                    var expanded = text.classList.toggle('is-expanded');
+                    text.style.maxHeight = expanded ? 'none' : (CCFG.foldPx || 200) + 'px';
+                    foldBtn.textContent = expanded ? '收起' : '展开阅读全文';
+                }
+                return;
+            }
+
+            var histBtn = t.closest('[data-cc-history]');
+            if (histBtn) { toggleHistory(histBtn); return; }
+        });
+    }
+
+    // Guestbook composer: separate rounded email / message inputs + a circular
+    // send button, pinned to the panel bottom over a frosted band. The message
+    // box (and the band) grow upward as the text wraps.
+    function ensureGuestbookComposer(panel) {
+        if (panel.querySelector('.gb-composer')) return;
+        var composer = document.createElement('div');
+        composer.className = 'gb-composer';
+        composer.innerHTML = ''
+            + '<div class="gb-composer-inner">'
+            +   '<div class="gb-feedback"></div>'
+            +   '<div class="gb-fields">'
+            +     '<input type="email" class="gb-email" placeholder="邮箱（不公开）" autocomplete="email">'
+            +     '<input type="text" class="gb-nick" placeholder="昵称（可选）" autocomplete="nickname">'
+            +   '</div>'
+            +   '<div class="gb-msg-row">'
+            +     '<textarea class="gb-msg" rows="1" placeholder="写下留言…支持 Markdown"></textarea>'
+            +     '<button type="button" class="gb-send" aria-label="发送"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>'
+            +   '</div>'
+            + '</div>';
+        panel.appendChild(composer);
+
+        var ta = composer.querySelector('.gb-msg');
+        var scroll = panel.querySelector('.side-panel-scroll');
+        function syncComposerPad() {
+            scroll.style.paddingBottom = (composer.offsetHeight + 12) + 'px';
+        }
+        function autoGrow() {
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+            syncComposerPad();
+        }
+        ta.addEventListener('input', autoGrow);
+        composer.querySelector('.gb-send').addEventListener('click', function () { submitGuestbook(panel); });
+        ta.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitGuestbook(panel); }
+        });
+        // Initial padding once laid out.
+        requestAnimationFrame(syncComposerPad);
+    }
+
+    function submitGuestbook(panel) {
+        var pid = guestbookPostId();
+        if (!pid) return;
+        var composer = panel.querySelector('.gb-composer');
+        var scroll = panel.querySelector('.side-panel-scroll');
+        var listEl = scroll.querySelector('#gb-list');
+        var countEl = scroll.querySelector('.gb-count');
+        var email = (composer.querySelector('.gb-email').value || '').trim();
+        var nick = (composer.querySelector('.gb-nick').value || '').trim();
+        var msg = (composer.querySelector('.gb-msg').value || '').trim();
+        var fb = composer.querySelector('.gb-feedback');
+        var sendBtn = composer.querySelector('.gb-send');
+        fb.className = 'gb-feedback';
+        if (!msg) { fb.textContent = '请输入留言内容。'; fb.classList.add('is-error'); return; }
+        if (!APP.loggedIn && !email) { fb.textContent = '请填写邮箱（不公开）。'; fb.classList.add('is-error'); return; }
+        var payload = { post: pid, content: msg, parent: 0 };
+        if (!APP.loggedIn) { payload.author_name = nick || '匿名'; payload.author_email = email; }
+        payload.notify = 0;
+        sendBtn.disabled = true;
+        postJson(ccEndpoint(''), payload).then(function (r) {
+            sendBtn.disabled = false;
+            if (!r.ok) { fb.textContent = ccError(r); fb.classList.add('is-error'); return; }
+            if (r.data.status !== 'approved') {
+                fb.textContent = '留言已提交，等待审核后显示。';
+                fb.classList.add('is-success');
+                composer.querySelector('.gb-msg').value = '';
+                composer.querySelector('.gb-msg').style.height = 'auto';
+                return;
+            }
+            var empty = listEl.querySelector('.gb-empty');
+            if (empty) empty.remove();
+            // Prepend the new message so it is immediately visible.
+            listEl.insertAdjacentHTML('afterbegin', buildCommentNode(r.data.comment, false));
+            applyFolding(listEl);
+            if (countEl) {
+                var cur = parseInt((countEl.textContent || '').replace(/\D/g, ''), 10) || 0;
+                countEl.hidden = false; countEl.textContent = '(' + (cur + 1) + ')';
+            }
+            composer.querySelector('.gb-msg').value = '';
+            composer.querySelector('.gb-msg').style.height = 'auto';
+            fb.textContent = '留言成功！';
+            fb.classList.add('is-success');
+        });
+    }
+
+    // ---------------------------------------------------------------
     // 10b. Social share bar (after content, before comments)
     // ---------------------------------------------------------------
     function htmlToText(s) {
@@ -2018,7 +2442,12 @@
             var qr = qrcode(0, 'M');
             qr.addData(text);
             qr.make();
-            el.innerHTML = qr.createImgTag(4, 8, 'QR');
+            // Render as inline SVG rather than a data-URL <img> (v1.3.7): a
+            // data-URL image is blocked by strict img-src CSPs and mangled by
+            // some image-optimization proxies, which showed as a broken QR.
+            // Inline SVG is real DOM, immune to both, and stays crisp. Use the
+            // scalable form so the container CSS controls its size.
+            el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 8, scalable: true, alt: 'QR', title: 'QR' });
         } catch (e) {
             el.textContent = text;
         }
@@ -2352,6 +2781,19 @@
         var overlay = document.createElement('div');
         overlay.className = 'article-nav-overlay';
 
+        // Frosted gradient bands (v1.3.7) behind the nav buttons: content blurs
+        // as it scrolls under them. The top band stays off at scrollTop=0 and
+        // fades in on scroll; the bottom band is always present.
+        var bandTop = document.createElement('div');
+        bandTop.className = 'sp-frost-band sp-frost-band--top';
+        bandTop.setAttribute('aria-hidden', 'true');
+        var bandBottom = document.createElement('div');
+        bandBottom.className = 'sp-frost-band sp-frost-band--bottom is-visible';
+        bandBottom.setAttribute('aria-hidden', 'true');
+        overlay.appendChild(bandTop);
+        overlay.appendChild(bandBottom);
+        dom.articleNavBandTop = bandTop;
+
         var top = document.createElement('button');
         top.type = 'button';
         top.className = 'article-nav-btn article-nav-top';
@@ -2484,6 +2926,10 @@
         // Back-to-top: once the reader has scrolled down a little.
         dom.articleNavTop.classList.toggle('is-visible', scrollTop > 120);
 
+        // Top frosted band: off while the article is at the very top (no blur
+        // over the first line), fades in as soon as scrolling begins.
+        if (dom.articleNavBandTop) dom.articleNavBandTop.classList.toggle('is-visible', scrollTop > 6);
+
         // Bottom trio: visible while the article text still extends below the
         // panel bottom (its end has not yet risen above the viewport bottom).
         var deltaToTextEnd = contentRect.bottom - panelRect.bottom;
@@ -2526,7 +2972,8 @@
     var CCFG = (APP.comments && typeof APP.comments === 'object') ? APP.comments : {};
     var COMMENTS_BASE = 'sphotography/v1/comments';
     // Per-post render state so pagination / reloads stay scoped to one article.
-    var cState = { postId: 0, page: 1, hasMore: false, loading: false };
+    // sort/order (v1.3.7): 'time' (order asc|desc) or 'likes'. Pinned always lead.
+    var cState = { postId: 0, page: 1, hasMore: false, loading: false, sort: 'time', order: 'asc' };
 
     var EMOJI_LIST = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳','😅','😜','🤔','😴','😇','🙃','😉','😌','😢','😭','😤','😱','😳','🥺','😔','🙄','😏','😬','🤯','🤗','👍','👎','👌','🙏','👏','🙌','💪','🤝','✌️','🤞','❤️','🧡','💛','💚','💙','💜','🖤','💔','✨','🔥','🎉','🎂','🌟','⭐','☀️','🌈','🌸','🍀','🐶','🐱','🍎','🍕','☕','🎵','📷','💯'];
 
@@ -2619,14 +3066,40 @@
             + '</li>';
     }
 
+    // Comment sort control (v1.3.7): a 时间 toggle (asc↔desc) + a 点赞 button.
+    // Pinned comments are unaffected server-side.
+    function commentSortHtml() {
+        return ''
+            + '<div class="comment-sort" role="group" aria-label="评论排序">'
+            +   '<button type="button" class="comment-sort-btn" data-cc-sort="time"></button>'
+            +   '<button type="button" class="comment-sort-btn" data-cc-sort="likes">点赞</button>'
+            + '</div>';
+    }
+
+    function updateCommentSortUI() {
+        var wrap = dom.articleComments;
+        if (!wrap) return;
+        var timeBtn = wrap.querySelector('.comment-sort-btn[data-cc-sort="time"]');
+        var likeBtn = wrap.querySelector('.comment-sort-btn[data-cc-sort="likes"]');
+        if (timeBtn) {
+            var arrow = cState.order === 'desc' ? '↓' : '↑';
+            timeBtn.textContent = '时间 ' + arrow;
+            timeBtn.classList.toggle('is-active', cState.sort === 'time');
+        }
+        if (likeBtn) likeBtn.classList.toggle('is-active', cState.sort === 'likes');
+    }
+
     function renderComments(postId, commentStatus) {
         var wrap = dom.articleComments;
         if (!wrap) return;
-        cState = { postId: postId, page: 1, hasMore: false, loading: false };
+        cState = { postId: postId, page: 1, hasMore: false, loading: false, sort: 'time', order: 'asc' };
         var isOpen = commentStatus !== 'closed';
         wrap.innerHTML = ''
             + '<div class="comments-section" data-cc-align="' + escapeHtml(CCFG.avatarAlign || 'top') + '">'
-            +   '<h4 class="comments-title"><span class="comments-count-label">评论</span> <span class="comments-count">…</span></h4>'
+            +   '<div class="comments-head">'
+            +     '<h4 class="comments-title"><span class="comments-count-label">评论</span> <span class="comments-count">…</span></h4>'
+            +     commentSortHtml()
+            +   '</div>'
             +   '<ul class="comment-list" id="comment-list"></ul>'
             +   '<div class="comment-pager" id="comment-pager"></div>'
             +   (isOpen ? buildCommentFormHtml(0) : '<p class="comments-closed">' + escapeHtml(APP.commentsClosedText || '评论已关闭。') + '</p>')
@@ -2636,10 +3109,37 @@
         var countEl = wrap.querySelector('.comments-count');
         listEl.innerHTML = '<li class="comments-loading">加载中…</li>';
 
+        updateCommentSortUI();
+        wireCommentSort(postId, listEl, countEl);
         wireCommentList(postId, listEl, countEl);
         if (isOpen) wireCommentForm(postId, wrap.querySelector('.comment-form'), listEl, countEl);
 
         loadCommentPage(postId, 1, true, listEl, countEl);
+    }
+
+    // Sort buttons: 时间 toggles asc↔desc; 点赞 switches to like-count order.
+    // Changing sort reloads from page 1 (server does the ordering).
+    function wireCommentSort(postId, listEl, countEl) {
+        var sortWrap = dom.articleComments.querySelector('.comment-sort');
+        if (!sortWrap) return;
+        sortWrap.addEventListener('click', function (e) {
+            var btn = e.target.closest('.comment-sort-btn');
+            if (!btn) return;
+            var sort = btn.getAttribute('data-cc-sort');
+            if (sort === 'time') {
+                if (cState.sort === 'time') {
+                    cState.order = (cState.order === 'asc') ? 'desc' : 'asc';
+                } else {
+                    cState.sort = 'time';
+                }
+            } else if (sort === 'likes') {
+                if (cState.sort === 'likes') return;
+                cState.sort = 'likes';
+            }
+            updateCommentSortUI();
+            listEl.innerHTML = '<li class="comments-loading">加载中…</li>';
+            loadCommentPage(postId, 1, true, listEl, countEl);
+        });
     }
 
     // GET with credentials + nonce. Logged-in users MUST send the REST nonce or
@@ -2659,7 +3159,7 @@
     function loadCommentPage(postId, page, replace, listEl, countEl) {
         if (cState.loading) return;
         cState.loading = true;
-        ccGet(COMMENTS_BASE, { post: postId, page: page }).then(function (data) {
+        ccGet(COMMENTS_BASE, { post: postId, page: page, sort: cState.sort, order: cState.order }).then(function (data) {
             cState.loading = false;
             if (state.openedPostId !== postId || !data) return;
             var items = Array.isArray(data.items) ? data.items : [];
@@ -2737,6 +3237,23 @@
             ? '<button type="button" class="comment-emoji-btn" title="插入表情">😊</button>'
             : '';
 
+        // Markdown toolbar + live preview (v1.3.7). Only when the site renders a
+        // Markdown subset; buttons wrap the selection, preview renders client-side.
+        var mdToolbar = '';
+        if (CCFG.markdown) {
+            mdToolbar = ''
+                + '<div class="comment-md-toolbar" role="group" aria-label="Markdown 工具">'
+                +   '<button type="button" class="comment-md-btn" data-md="bold" title="粗体"><b>B</b></button>'
+                +   '<button type="button" class="comment-md-btn" data-md="italic" title="斜体"><i>I</i></button>'
+                +   '<button type="button" class="comment-md-btn" data-md="strike" title="删除线"><s>S</s></button>'
+                +   '<button type="button" class="comment-md-btn" data-md="code" title="行内代码">&lt;/&gt;</button>'
+                +   '<button type="button" class="comment-md-btn" data-md="link" title="链接">🔗</button>'
+                +   '<button type="button" class="comment-md-btn" data-md="quote" title="引用">❝</button>'
+                +   '<button type="button" class="comment-md-btn" data-md="list" title="列表">≔</button>'
+                +   '<button type="button" class="comment-md-preview-toggle" data-md="preview" title="预览">预览</button>'
+                + '</div>';
+        }
+
         var captchaRow = (CCFG.captcha && !loggedIn)
             ? '<div class="comment-captcha-row"><span class="comment-captcha-q">…</span><input type="text" class="comment-input comment-captcha-input" inputmode="numeric" placeholder="= ?" autocomplete="off"><button type="button" class="comment-captcha-refresh" title="换一题">↻</button></div>'
             : '';
@@ -2752,7 +3269,9 @@
         return ''
             + '<form class="comment-form' + (isReply ? ' comment-form--reply' : '') + '" novalidate data-cc-parent="' + (parentId || 0) + '">'
             +   identityRow
+            +   mdToolbar
             +   '<textarea class="comment-textarea" rows="3" placeholder="' + (isReply ? ('回复 @' + escapeHtml(replyName || '') + '…') : '写下你的评论…') + '" required></textarea>'
+            +   (CCFG.markdown ? '<div class="comment-md-preview" hidden></div>' : '')
             +   (CCFG.emojiPanel !== false ? '<div class="comment-emoji-panel" hidden>' + EMOJI_LIST.map(function (e) { return '<button type="button" class="comment-emoji">' + e + '</button>'; }).join('') + '</div>' : '')
             +   captchaRow
             +   (options ? '<div class="comment-options">' + options + '</div>' : '')
@@ -2790,6 +3309,125 @@
         textarea.focus();
     }
 
+    // Wrap the current textarea selection with markdown markers (or insert a
+    // placeholder when nothing is selected). For line-oriented markers (quote,
+    // list) prefix each selected line instead.
+    function applyMdMarker(textarea, kind) {
+        var start = textarea.selectionStart || 0;
+        var end = textarea.selectionEnd || 0;
+        var val = textarea.value;
+        var sel = val.slice(start, end);
+        var before = val.slice(0, start);
+        var after = val.slice(end);
+        var out, caretStart, caretEnd;
+
+        function wrap(mark, placeholder) {
+            var body = sel || placeholder;
+            out = before + mark + body + mark + after;
+            caretStart = start + mark.length;
+            caretEnd = caretStart + body.length;
+        }
+        function linePrefix(prefix, placeholder) {
+            var body = sel || placeholder;
+            var prefixed = body.split('\n').map(function (l) { return prefix + l; }).join('\n');
+            out = before + prefixed + after;
+            caretStart = start;
+            caretEnd = start + prefixed.length;
+        }
+
+        if (kind === 'bold')        wrap('**', '粗体');
+        else if (kind === 'italic') wrap('*', '斜体');
+        else if (kind === 'strike') wrap('~~', '删除线');
+        else if (kind === 'code')   wrap('`', '代码');
+        else if (kind === 'quote')  linePrefix('> ', '引用');
+        else if (kind === 'list')   linePrefix('- ', '列表项');
+        else if (kind === 'link') {
+            var body = sel || '链接文字';
+            var tail = '](https://)';
+            out = before + '[' + body + tail + after;
+            caretStart = start + 1;
+            caretEnd = caretStart + body.length;
+        } else { return; }
+
+        textarea.value = out;
+        textarea.selectionStart = caretStart;
+        textarea.selectionEnd = caretEnd;
+        textarea.focus();
+    }
+
+    // Compact client-side renderer for the same Markdown subset the server
+    // supports (bold/italic/strike, inline+fenced code, links, blockquote,
+    // ordered/unordered lists). Escape first so no raw HTML survives — the
+    // server re-sanitizes on submit; this is preview-only.
+    function renderMarkdownSubset(text) {
+        text = String(text || '').replace(/\r\n?/g, '\n');
+        // Pull fenced code blocks and inline code out first so their contents
+        // are not reparsed. Placeholders use a control-char delimiter that
+        // never appears in user text.
+        var SP = '\u0001';
+        var codeBlocks = [];
+        text = text.replace(/```[ \t]*\n?([\s\S]*?)```/g, function (m, code) {
+            var key = SP + 'C' + codeBlocks.length + SP;
+            codeBlocks.push('<pre><code>' + escapeHtml(code.replace(/\n+$/, '')) + '</code></pre>');
+            return '\n' + key + '\n';
+        });
+        var inline = [];
+        text = text.replace(/`([^`\n]+)`/g, function (m, code) {
+            var key = SP + 'I' + inline.length + SP;
+            inline.push('<code>' + escapeHtml(code) + '</code>');
+            return key;
+        });
+        // Inline formatter for one raw line: escape first (no user HTML
+        // survives; preview only, the server re-sanitizes on submit), then
+        // re-introduce the whitelisted markup.
+        function fmt(s) {
+            s = escapeHtml(s);
+            s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, function (m, label, url) {
+                return '<a href="' + url + '" rel="nofollow noopener" target="_blank">' + label + '</a>';
+            });
+            s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+            s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+            s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+            return s;
+        }
+        // Block assembly: fenced code, blockquotes, lists, paragraphs.
+        var lines = text.split('\n');
+        var html = '';
+        var i = 0;
+        var phRaw = new RegExp('^' + SP + 'C(\\d+)' + SP + '$');
+        while (i < lines.length) {
+            var line = lines[i];
+            var mph = line.match(phRaw);
+            if (mph) { html += codeBlocks[+mph[1]]; i++; continue; }
+            if (/^\s*>\s?/.test(line)) {
+                var quote = [];
+                while (i < lines.length && /^\s*>\s?/.test(lines[i])) { quote.push(fmt(lines[i].replace(/^\s*>\s?/, ''))); i++; }
+                html += '<blockquote>' + quote.join('<br>') + '</blockquote>';
+                continue;
+            }
+            if (/^\s*[-*+]\s+/.test(line)) {
+                var ul = [];
+                while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { ul.push('<li>' + fmt(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>'); i++; }
+                html += '<ul>' + ul.join('') + '</ul>';
+                continue;
+            }
+            if (/^\s*\d+\.\s+/.test(line)) {
+                var ol = [];
+                while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { ol.push('<li>' + fmt(lines[i].replace(/^\s*\d+\.\s+/, '')) + '</li>'); i++; }
+                html += '<ol>' + ol.join('') + '</ol>';
+                continue;
+            }
+            if (line.trim() === '') { i++; continue; }
+            var para = [];
+            while (i < lines.length && lines[i].trim() !== '' && !/^\s*(>|[-*+]\s|\d+\.\s)/.test(lines[i]) && !phRaw.test(lines[i])) {
+                para.push(fmt(lines[i])); i++;
+            }
+            html += '<p>' + para.join('<br>') + '</p>';
+        }
+        inline.forEach(function (v, idx) { html = html.split(SP + 'I' + idx + SP).join(v); });
+        return html;
+    }
+
     // Wire an individual form (top-level or reply/edit) — submit, emoji, captcha.
     function wireCommentForm(postId, form, listEl, countEl, editId) {
         if (!form) return;
@@ -2803,6 +3441,37 @@
             emojiPanel.addEventListener('click', function (e) {
                 var b = e.target.closest('.comment-emoji');
                 if (b) { insertAtCaret(textarea, b.textContent); }
+            });
+        }
+
+        // Markdown toolbar + preview toggle (v1.3.7).
+        var mdToolbar = form.querySelector('.comment-md-toolbar');
+        var mdPreview = form.querySelector('.comment-md-preview');
+        if (mdToolbar && textarea) {
+            mdToolbar.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-md]');
+                if (!btn) return;
+                var kind = btn.getAttribute('data-md');
+                if (kind === 'preview') {
+                    var showing = !mdPreview.hidden;
+                    if (showing) {
+                        mdPreview.hidden = true;
+                        textarea.hidden = false;
+                        btn.classList.remove('is-active');
+                        btn.textContent = '预览';
+                        textarea.focus();
+                    } else {
+                        mdPreview.innerHTML = (textarea.value || '').trim()
+                            ? renderMarkdownSubset(textarea.value)
+                            : '<p class="comment-md-preview-empty">没有可预览的内容。</p>';
+                        mdPreview.hidden = false;
+                        textarea.hidden = true;
+                        btn.classList.add('is-active');
+                        btn.textContent = '编辑';
+                    }
+                    return;
+                }
+                applyMdMarker(textarea, kind);
             });
         }
 
@@ -4008,6 +4677,7 @@
             initEntryAnimation();
             bindUIEvents();
             initProfileExpand();
+            initPageLinks();
             // Sidebar defaults to collapsed unless the "default expand sidebar"
             // setting is enabled.
             if (SETTINGS.sidebarDefaultOpen) {

@@ -268,8 +268,10 @@ function sphotography_rest_create_comment( WP_REST_Request $request ) {
 
 	$logged_in = is_user_logged_in();
 
-	// Captcha (anonymous only).
-	if ( sphotography_comment_setting( 'comment_captcha' ) && ! $logged_in ) {
+	// Captcha (anonymous only). The guestbook (留言板) is exempt by design —
+	// it never shows a captcha regardless of the global comment setting.
+	$is_guestbook = function_exists( 'sphotography_guestbook_post_id' ) && $post_id === sphotography_guestbook_post_id();
+	if ( sphotography_comment_setting( 'comment_captcha' ) && ! $logged_in && ! $is_guestbook ) {
 		if ( ! sphotography_verify_captcha( $request->get_param( 'captcha_token' ), $request->get_param( 'captcha_answer' ) ) ) {
 			return new WP_Error( 'sp_captcha', __( '验证码错误，请重试。', 'sphotography' ), array( 'status' => 400 ) );
 		}
@@ -440,6 +442,30 @@ function sphotography_rest_list_comments( WP_REST_Request $request ) {
 	$pinned = array();
 	foreach ( $pinned_pairs as $pair ) {
 		$pinned[] = $pair['comment'];
+	}
+
+	// Sort the normal (non-pinned) list per the requested order (v1.3.7).
+	// Pinned comments are unaffected and always lead. $normal arrives in
+	// comment_date_gmt ASC order from the query above.
+	//   sort=time  + order=asc  → oldest first (default, unchanged)
+	//   sort=time  + order=desc → newest first
+	//   sort=likes             → most-liked first, ties broken newest-first
+	$sort  = $request->get_param( 'sort' );
+	$order = $request->get_param( 'order' );
+	$sort  = ( 'likes' === $sort ) ? 'likes' : 'time';
+	$order = ( 'desc' === $order ) ? 'desc' : 'asc';
+	if ( 'likes' === $sort ) {
+		usort( $normal, function ( $a, $b ) {
+			$la = (int) get_comment_meta( $a->comment_ID, '_sp_likes', true );
+			$lb = (int) get_comment_meta( $b->comment_ID, '_sp_likes', true );
+			if ( $la !== $lb ) {
+				return $lb - $la; // more likes first
+			}
+			// Tie-break: newer comment first.
+			return strcmp( $b->comment_date_gmt, $a->comment_date_gmt );
+		} );
+	} elseif ( 'desc' === $order ) {
+		$normal = array_reverse( $normal );
 	}
 
 	// Page 1 shows pinned first, then the first page of normal comments.

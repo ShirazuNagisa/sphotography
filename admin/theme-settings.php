@@ -33,7 +33,10 @@ function sphotography_get_default_settings() {
         'custom_date_format'  => '',
         // ④ Sidebar Info
         'site_title'          => '',
-        'sidebar_default_open' => false,
+        // Sidebar default open state, split by device (v1.3.7). Desktop defaults
+        // to expanded; mobile defaults to collapsed to save screen space.
+        'sidebar_default_open_desktop' => true,
+        'sidebar_default_open_mobile'  => false,
         'article_card_size'   => 'small',
         'enable_hitokoto'     => false,
         // Personal-info display mode (v1.2.9). Replaces the old about_card_enabled
@@ -46,6 +49,9 @@ function sphotography_get_default_settings() {
         // Custom personal links for the expanded profile view (v1.3.2).
         // One per line, "名称|链接" (e.g. "GitHub|https://github.com/xxx").
         'custom_links'        => '',
+        // Page-links bar 外站 entries (v1.3.7). Up to 3 lines,
+        // "名称|链接|悬停文案" (tooltip optional). Shown top-right beside 友链/留言.
+        'external_links'      => '',
         // ⑤ Animation
         'preloader_style'     => 'aperture',
         'smooth_scroll'       => 'enabled',
@@ -120,7 +126,7 @@ function sphotography_get_default_settings() {
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'ai_summary', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open_desktop', 'sidebar_default_open_mobile', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'ai_summary', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -152,7 +158,8 @@ function sphotography_sanitize_settings( $input ) {
 
     // ④ Sidebar Info
     $sanitized['site_title'] = sanitize_text_field( $input['site_title'] );
-    $sanitized['sidebar_default_open'] = ! empty( $input['sidebar_default_open'] ) ? 1 : 0;
+    $sanitized['sidebar_default_open_desktop'] = ! empty( $input['sidebar_default_open_desktop'] ) ? 1 : 0;
+    $sanitized['sidebar_default_open_mobile']  = ! empty( $input['sidebar_default_open_mobile'] ) ? 1 : 0;
     $allowed_card_size = array( 'small', 'large' );
     $sanitized['article_card_size'] = in_array( $input['article_card_size'], $allowed_card_size, true ) ? $input['article_card_size'] : $defaults['article_card_size'];
     $sanitized['enable_hitokoto'] = ! empty( $input['enable_hitokoto'] ) ? 1 : 0;
@@ -164,6 +171,14 @@ function sphotography_sanitize_settings( $input ) {
     // Custom links: keep as a raw multiline string; each line is parsed and
     // URL-escaped at render time by sphotography_parse_profile_links().
     $sanitized['custom_links'] = isset( $input['custom_links'] ) ? sanitize_textarea_field( $input['custom_links'] ) : '';
+    // 外站 links: keep at most the first 3 non-empty lines.
+    if ( isset( $input['external_links'] ) ) {
+        $ext_lines = preg_split( '/\r\n|\r|\n/', sanitize_textarea_field( $input['external_links'] ) );
+        $ext_lines = array_values( array_filter( array_map( 'trim', $ext_lines ), 'strlen' ) );
+        $sanitized['external_links'] = implode( "\n", array_slice( $ext_lines, 0, 3 ) );
+    } else {
+        $sanitized['external_links'] = '';
+    }
 
     // ⑤ Animation
     $allowed_preloader = array( 'off', 'aperture', 'flythrough' );
@@ -630,12 +645,23 @@ function sphotography_render_settings_page() {
                     <div class="sphotography-field sphotography-field-checkbox">
                         <label class="sphotography-label">
                             <input type="checkbox"
-                                   name="sphotography[sidebar_default_open]"
+                                   name="sphotography[sidebar_default_open_desktop]"
                                    value="1"
-                                   <?php checked( $values['sidebar_default_open'], 1 ); ?>>
-                            <?php _e( '默认展开边栏', 'sphotography' ); ?>
+                                   <?php checked( $values['sidebar_default_open_desktop'], 1 ); ?>>
+                            <?php _e( '桌面端默认展开边栏', 'sphotography' ); ?>
                         </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，首次进入站点时左侧文章栏将默认展开；关闭则默认收起，仅显示全屏地图。默认关闭。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '桌面端首次进入站点时左侧文章栏是否默认展开。默认开启。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[sidebar_default_open_mobile]"
+                                   value="1"
+                                   <?php checked( $values['sidebar_default_open_mobile'], 1 ); ?>>
+                            <?php _e( '移动端默认展开边栏', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '手机 / 窄屏首次进入站点时左侧文章栏是否默认展开。默认关闭，以保留全屏地图空间。', 'sphotography' ); ?></p>
                     </div>
 
                     <div class="sphotography-field">
@@ -704,6 +730,15 @@ function sphotography_render_settings_page() {
                                   rows="4"
                                   placeholder="GitHub|https://github.com/xxx&#10;微博|https://weibo.com/xxx&#10;邮箱|mailto:me@example.com"><?php echo esc_textarea( $values['custom_links'] ); ?></textarea>
                         <p class="sphotography-desc"><?php _e( '一行一个，格式「名称|链接」。展开个人信息时按顺序显示，每行一个可点击链接。留空则不显示链接。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-external-links"><?php _e( '页面链接栏 · 外站', 'sphotography' ); ?></label>
+                        <textarea id="sphotography-external-links"
+                                  name="sphotography[external_links]"
+                                  rows="3"
+                                  placeholder="博客|https://example.com|我的另一个站点&#10;作品集|https://portfolio.example.com"><?php echo esc_textarea( $values['external_links'] ); ?></textarea>
+                        <p class="sphotography-desc"><?php _e( '右上角页面链接栏中「外站」入口。一行一个，最多 3 条，格式「名称|链接|悬停文案」。悬停文案可省略，省略则悬停不显示提示。点击在新标签页打开。', 'sphotography' ); ?></p>
                     </div>
                 </div>
             </div>
