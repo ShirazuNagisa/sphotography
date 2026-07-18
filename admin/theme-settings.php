@@ -414,12 +414,33 @@ function sphotography_render_settings_page() {
             <?php wp_nonce_field( 'sphotography_save_settings', 'sphotography_save_nonce' ); ?>
 
             <!-- ============================================ -->
-            <!-- Module 1: 全局主题 -->
+            <!-- Live Preview (sticky at top) -->
             <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-theme">
+            <?php $sphotography_preview_url = sphotography_map_preview_url(); ?>
+            <?php if ( $sphotography_preview_url ) : ?>
+            <div id="sphotography-preview-sticky-wrap">
+                <div class="sphotography-field sphotography-map-preview-field">
+                    <label class="sphotography-label"><?php _e( '地图实时预览', 'sphotography' ); ?></label>
+                    <div class="sphotography-map-preview" id="sphotography-map-preview" data-preview-base="<?php echo esc_attr( $sphotography_preview_url ); ?>">
+                        <iframe id="sphotography-map-preview-frame" title="<?php esc_attr_e( '地图预览', 'sphotography' ); ?>" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                        <div class="sphotography-map-preview-refresh" id="sphotography-map-preview-refresh" aria-hidden="true"></div>
+                    </div>
+                    <p class="sphotography-desc"><?php _e( '改动下方任一地图相关设置后自动刷新预览（约 0.3 秒防抖）。预览使用站点真实照片数据；「行政区上色」需先运行地图样式分类中的「重建行政区索引」。改动尚未保存时预览即时体现，正式生效仍需点击保存。', 'sphotography' ); ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- ============================================ -->
+            <!-- Category 1: 外观与颜色 -->
+            <!-- ============================================ -->
+            <section class="sp-cat" id="sp-cat-appearance">
+                <h2 class="sp-cat-title"><?php _e( '外观与颜色', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 配色 -->
+                <div class="sphotography-module" id="sp-mod-theme-color">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-art"></span>
-                    <h2><?php _e( '全局主题', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '配色', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
 
@@ -485,6 +506,17 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '开启后，顶部导航栏和底部区域将使用主题主色调填充。', 'sphotography' ); ?></p>
                     </div>
 
+                </div>
+                </div>
+
+                <!-- Sub-board 2: 明暗模式 -->
+                <div class="sphotography-module" id="sp-mod-theme-darkmode">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-visibility"></span>
+                    <h3><?php _e( '明暗模式', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+
                     <!-- Night mode -->
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-night-mode"><?php _e( '夜间模式', 'sphotography' ); ?></label>
@@ -504,6 +536,17 @@ function sphotography_render_settings_page() {
                             <option value="purple" <?php selected( $values['dark_scheme'], 'purple' ); ?>><?php _e( '暗夜紫（#1a0a1e）', 'sphotography' ); ?></option>
                         </select>
                     </div>
+
+                </div>
+                </div>
+
+                <!-- Sub-board 3: 字体与光标 -->
+                <div class="sphotography-module" id="sp-mod-theme-font">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-editor-textcolor"></span>
+                    <h3><?php _e( '字体与光标', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
 
                     <!-- Frontend font -->
                     <div class="sphotography-field">
@@ -534,18 +577,17 @@ function sphotography_render_settings_page() {
                                    <?php checked( $values['admin_global_style'], 1 ); ?>>
                             <?php _e( '启用全局后台 Sphotography 风格', 'sphotography' ); ?>
                         </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，整个 WordPress 后台将统一为 Sphotography 风格：优雅衬线字体、主题主色调，并跟随上方“深色模式”设置在深/浅色间切换。默认关闭，保持 WordPress 原生外观。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '开启后，整个 WordPress 后台将统一为 Sphotography 风格：优雅衬线字体、主题主色调，并跟随上方"深色模式"设置在深/浅色间切换。默认关闭，保持 WordPress 原生外观。', 'sphotography' ); ?></p>
                     </div>
-                </div>
-            </div>
 
-            <!-- ============================================ -->
-            <!-- Module 2: 卡片样式 -->
-            <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-card">
+                </div>
+                </div>
+
+                <!-- Sub-board 4: 卡片样式 -->
+                <div class="sphotography-module" id="sp-mod-card">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-screenoptions"></span>
-                    <h2><?php _e( '卡片样式', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '卡片样式', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
 
@@ -581,54 +623,56 @@ function sphotography_render_settings_page() {
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- ============================================ -->
-            <!-- Module 3: 日期格式 -->
-            <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-date">
-                <div class="sphotography-module-header">
-                    <span class="sphotography-module-icon dashicons dashicons-calendar-alt"></span>
-                    <h2><?php _e( '日期格式', 'sphotography' ); ?></h2>
-                </div>
-                <div class="sphotography-module-body">
-
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-date-format"><?php _e( '日期展示格式', 'sphotography' ); ?></label>
-                        <select id="sphotography-date-format" name="sphotography[date_format]">
-                            <option value="Y-m-d" <?php selected( $values['date_format'], 'Y-m-d' ); ?>><?php _e( '2026-07-13', 'sphotography' ); ?></option>
-                            <option value="Y/m/d" <?php selected( $values['date_format'], 'Y/m/d' ); ?>><?php _e( '2026/07/13', 'sphotography' ); ?></option>
-                            <option value="Y年m月d日" <?php selected( $values['date_format'], 'Y年m月d日' ); ?>><?php _e( '2026年7月13日', 'sphotography' ); ?></option>
-                            <option value="m/d/Y" <?php selected( $values['date_format'], 'm/d/Y' ); ?>><?php _e( '07/13/2026', 'sphotography' ); ?></option>
-                            <option value="d/m/Y" <?php selected( $values['date_format'], 'd/m/Y' ); ?>><?php _e( '13/07/2026', 'sphotography' ); ?></option>
-                            <option value="F j, Y" <?php selected( $values['date_format'], 'F j, Y' ); ?>><?php _e( 'July 13, 2026', 'sphotography' ); ?></option>
-                            <option value="j F Y" <?php selected( $values['date_format'], 'j F Y' ); ?>><?php _e( '13 July 2026', 'sphotography' ); ?></option>
-                            <option value="custom" <?php selected( $values['date_format'], 'custom' ); ?>><?php _e( '自定义格式', 'sphotography' ); ?></option>
-                        </select>
+                <!-- Sub-board 4: 日期格式 -->
+                <div class="sphotography-module" id="sp-mod-date">
+                    <div class="sphotography-module-header">
+                        <span class="sphotography-module-icon dashicons dashicons-calendar-alt"></span>
+                        <h3><?php _e( '日期格式', 'sphotography' ); ?></h3>
                     </div>
+                    <div class="sphotography-module-body">
 
-                    <div class="sphotography-field sphotography-custom-date-field" style="<?php echo $values['date_format'] === 'custom' ? '' : 'display:none;'; ?>">
-                        <label class="sphotography-label" for="sphotography-custom-date-format"><?php _e( '自定义 PHP 日期格式', 'sphotography' ); ?></label>
-                        <input type="text"
-                               id="sphotography-custom-date-format"
-                               name="sphotography[custom_date_format]"
-                               value="<?php echo esc_attr( $values['custom_date_format'] ); ?>"
-                               placeholder="<?php esc_attr_e( '例如：l, F j, Y', 'sphotography' ); ?>">
-                        <p class="sphotography-desc">
-                            <?php _e( '请输入 PHP date() 函数支持的格式字符。', 'sphotography' ); ?>
-                            <a href="https://www.php.net/manual/zh/function.date.php" target="_blank"><?php _e( '查看格式参考', 'sphotography' ); ?></a>
-                        </p>
+                        <div class="sphotography-field">
+                            <label class="sphotography-label" for="sphotography-date-format"><?php _e( '日期展示格式', 'sphotography' ); ?></label>
+                            <select id="sphotography-date-format" name="sphotography[date_format]">
+                                <option value="Y-m-d" <?php selected( $values['date_format'], 'Y-m-d' ); ?>><?php _e( '2026-07-13', 'sphotography' ); ?></option>
+                                <option value="Y/m/d" <?php selected( $values['date_format'], 'Y/m/d' ); ?>><?php _e( '2026/07/13', 'sphotography' ); ?></option>
+                                <option value="Y年m月d日" <?php selected( $values['date_format'], 'Y年m月d日' ); ?>><?php _e( '2026年7月13日', 'sphotography' ); ?></option>
+                                <option value="m/d/Y" <?php selected( $values['date_format'], 'm/d/Y' ); ?>><?php _e( '07/13/2026', 'sphotography' ); ?></option>
+                                <option value="d/m/Y" <?php selected( $values['date_format'], 'd/m/Y' ); ?>><?php _e( '13/07/2026', 'sphotography' ); ?></option>
+                                <option value="F j, Y" <?php selected( $values['date_format'], 'F j, Y' ); ?>><?php _e( 'July 13, 2026', 'sphotography' ); ?></option>
+                                <option value="j F Y" <?php selected( $values['date_format'], 'j F Y' ); ?>><?php _e( '13 July 2026', 'sphotography' ); ?></option>
+                                <option value="custom" <?php selected( $values['date_format'], 'custom' ); ?>><?php _e( '自定义格式', 'sphotography' ); ?></option>
+                            </select>
+                        </div>
+
+                        <div class="sphotography-field sphotography-custom-date-field" style="<?php echo $values['date_format'] === 'custom' ? '' : 'display:none;'; ?>">
+                            <label class="sphotography-label" for="sphotography-custom-date-format"><?php _e( '自定义 PHP 日期格式', 'sphotography' ); ?></label>
+                            <input type="text"
+                                   id="sphotography-custom-date-format"
+                                   name="sphotography[custom_date_format]"
+                                   value="<?php echo esc_attr( $values['custom_date_format'] ); ?>"
+                                   placeholder="<?php esc_attr_e( '例如：l, F j, Y', 'sphotography' ); ?>">
+                            <p class="sphotography-desc">
+                                <?php _e( '请输入 PHP date() 函数支持的格式字符。', 'sphotography' ); ?>
+                                <a href="https://www.php.net/manual/zh/function.date.php" target="_blank"><?php _e( '查看格式参考', 'sphotography' ); ?></a>
+                            </p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
             <!-- ============================================ -->
-            <!-- Module 4: 左侧栏信息 -->
+            <!-- Category 2: 边栏与个人 -->
             <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-sidebar">
+            <section class="sp-cat" id="sp-cat-sidebar">
+                <h2 class="sp-cat-title"><?php _e( '边栏与个人', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 站点与边栏 -->
+                <div class="sphotography-module" id="sp-mod-sidebar-site">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-info"></span>
-                    <h2><?php _e( '左侧栏信息', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '站点与边栏', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
 
@@ -684,6 +728,17 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '开启后，在左侧栏底部显示来自一言 API 的随机格言。', 'sphotography' ); ?></p>
                     </div>
 
+                </div>
+                </div>
+
+                <!-- Sub-board 2: 个人信息 -->
+                <div class="sphotography-module" id="sp-mod-sidebar-profile">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-admin-users"></span>
+                    <h3><?php _e( '个人信息', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-profile-display"><?php _e( '个人信息展示方式', 'sphotography' ); ?></label>
                         <select id="sphotography-profile-display" name="sphotography[profile_display]">
@@ -732,24 +787,41 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '一行一个，格式「名称|链接」。展开个人信息时按顺序显示，每行一个可点击链接。留空则不显示链接。', 'sphotography' ); ?></p>
                     </div>
 
+                </div>
+                </div>
+
+                <!-- Sub-board 3: 页面链接栏 -->
+                <div class="sphotography-module" id="sp-mod-sidebar-external">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-link"></span>
+                    <h3><?php _e( '页面链接栏', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+
                     <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-external-links"><?php _e( '页面链接栏 · 外站', 'sphotography' ); ?></label>
+                        <label class="sphotography-label" for="sphotography-external-links"><?php _e( '外站', 'sphotography' ); ?></label>
                         <textarea id="sphotography-external-links"
                                   name="sphotography[external_links]"
                                   rows="3"
                                   placeholder="博客|https://example.com|我的另一个站点&#10;作品集|https://portfolio.example.com"><?php echo esc_textarea( $values['external_links'] ); ?></textarea>
                         <p class="sphotography-desc"><?php _e( '右上角页面链接栏中「外站」入口。一行一个，最多 3 条，格式「名称|链接|悬停文案」。悬停文案可省略，省略则悬停不显示提示。点击在新标签页打开。', 'sphotography' ); ?></p>
                     </div>
+
                 </div>
-            </div>
+                </div>
+            </section>
 
             <!-- ============================================ -->
-            <!-- Module 5: 动画设置 -->
+            <!-- Category 3: 动画 -->
             <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-animation">
+            <section class="sp-cat" id="sp-cat-animation">
+                <h2 class="sp-cat-title"><?php _e( '动画', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 基础动画 -->
+                <div class="sphotography-module" id="sp-mod-animation-basic">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-update"></span>
-                    <h2><?php _e( '动画设置', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '基础动画', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
 
@@ -794,6 +866,17 @@ function sphotography_render_settings_page() {
                         </label>
                         <p class="sphotography-desc"><?php _e( '开启后，通过 Pjax 无刷新跳转页面时会附带滚动动画过渡效果。', 'sphotography' ); ?></p>
                     </div>
+
+                </div>
+                </div>
+
+                <!-- Sub-board 2: 运动性格·高级 -->
+                <div class="sphotography-module" id="sp-mod-animation-advanced">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-art"></span>
+                    <h3><?php _e( '运动性格·高级', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
 
                     <!-- Motion personality (v1.2.5) -->
                     <div class="sphotography-field">
@@ -862,15 +945,20 @@ function sphotography_render_settings_page() {
                         </div>
                     </div>
                 </div>
-            </div>
+                </div>
+            </section>
 
             <!-- ============================================ -->
-            <!-- Module 6: 阅读信息 -->
+            <!-- Category 4: 阅读与评论 -->
             <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-reading">
+            <section class="sp-cat" id="sp-cat-reading_comments">
+                <h2 class="sp-cat-title"><?php _e( '阅读与评论', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 阅读信息 -->
+                <div class="sphotography-module" id="sp-mod-reading">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-book"></span>
-                    <h2><?php _e( '阅读信息', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '阅读信息', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
 
@@ -916,53 +1004,192 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '每分钟阅读的英文单词数，范围 50-1000。默认 200。', 'sphotography' ); ?></p>
                     </div>
                 </div>
-            </div>
+                </div>
 
-            <!-- ============================================ -->
-            <!-- Module 7: 页脚设置 -->
-            <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-footer">
+                <!-- Sub-board 2: 评论·显示 -->
+                <div class="sphotography-module" id="sp-mod-comments">
                 <div class="sphotography-module-header">
-                    <span class="sphotography-module-icon dashicons dashicons-editor-paragraph"></span>
-                    <h2><?php _e( '页脚设置', 'sphotography' ); ?></h2>
+                    <span class="sphotography-module-icon dashicons dashicons-admin-comments"></span>
+                    <h3><?php _e( '评论·显示', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
+
+                    <!-- Pagination -->
                     <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-footer-content"><?php _e( '页脚内容', 'sphotography' ); ?></label>
-                        <textarea id="sphotography-footer-content"
-                                  name="sphotography[footer_content]"
-                                  rows="3"
-                                  style="max-width:100%;font-family:monospace;"
-                                  placeholder="<?php esc_attr_e( '例如：© 2026 Your Name. All rights reserved.', 'sphotography' ); ?>"><?php echo esc_textarea( $values['footer_content'] ); ?></textarea>
-                        <p class="sphotography-desc"><?php _e( '留空则隐藏页脚。支持可信管理员输入的 HTML 与脚本标签，显示在地图底部中央位置。', 'sphotography' ); ?></p>
+                        <label class="sphotography-label" for="sphotography-comment-pagination"><?php _e( '评论分页方式', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-pagination" name="sphotography[comment_pagination]">
+                            <option value="infinite" <?php selected( $values['comment_pagination'], 'infinite' ); ?>><?php _e( '无限加载（滚动到底自动加载）', 'sphotography' ); ?></option>
+                            <option value="paged" <?php selected( $values['comment_pagination'], 'paged' ); ?>><?php _e( '分页加载（点击翻页）', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '每批/每页 10 条顶层评论，子评论随其父评论一起加载。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Avatar align -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-avatar-align"><?php _e( '评论头像垂直位置', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-avatar-align" name="sphotography[comment_avatar_align]">
+                            <option value="top" <?php selected( $values['comment_avatar_align'], 'top' ); ?>><?php _e( '居上', 'sphotography' ); ?></option>
+                            <option value="center" <?php selected( $values['comment_avatar_align'], 'center' ); ?>><?php _e( '居中', 'sphotography' ); ?></option>
+                        </select>
+                    </div>
+
+                    <!-- Edit history visibility -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-edit-history-view"><?php _e( '谁可以查看评论编辑记录', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-edit-history-view" name="sphotography[comment_edit_history_view]">
+                            <option value="all" <?php selected( $values['comment_edit_history_view'], 'all' ); ?>><?php _e( '所有人', 'sphotography' ); ?></option>
+                            <option value="admin" <?php selected( $values['comment_edit_history_view'], 'admin' ); ?>><?php _e( '仅博主', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '选择"所有人"时，被编辑过的评论会显示"已编辑"标记，任何人可点开查看历次版本。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Pin -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_pin_enabled]" value="1" <?php checked( $values['comment_pin_enabled'], 1 ); ?>>
+                            <?php _e( '开启评论置顶功能', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，博主可置顶顶层评论，置顶评论显示在评论区最前方。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Like -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_like_enabled]" value="1" <?php checked( $values['comment_like_enabled'], 1 ); ?>>
+                            <?php _e( '启用评论点赞', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，每条评论显示点赞按钮，同一访客可取消赞。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- UA display -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-comment-ua-display"><?php _e( '评论者 UA 显示', 'sphotography' ); ?></label>
+                        <select id="sphotography-comment-ua-display" name="sphotography[comment_ua_display]">
+                            <option value="none" <?php selected( $values['comment_ua_display'], 'none' ); ?>><?php _e( '不显示', 'sphotography' ); ?></option>
+                            <option value="browser" <?php selected( $values['comment_ua_display'], 'browser' ); ?>><?php _e( '浏览器', 'sphotography' ); ?></option>
+                            <option value="browser_ver" <?php selected( $values['comment_ua_display'], 'browser_ver' ); ?>><?php _e( '浏览器 + 版本号', 'sphotography' ); ?></option>
+                            <option value="platform_browser_ver" <?php selected( $values['comment_ua_display'], 'platform_browser_ver' ); ?>><?php _e( '平台 + 浏览器 + 版本号', 'sphotography' ); ?></option>
+                            <option value="platform_browser" <?php selected( $values['comment_ua_display'], 'platform_browser' ); ?>><?php _e( '平台 + 浏览器', 'sphotography' ); ?></option>
+                            <option value="platform" <?php selected( $values['comment_ua_display'], 'platform' ); ?>><?php _e( '平台', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '仅解析并显示浏览器/平台。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- IP location -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_ip_location]" value="1" <?php checked( $values['comment_ip_location'], 1 ); ?>>
+                            <?php _e( '显示评论者 IP 属地', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论旁显示由 IP 解析的归属地（国内到省、国外到国家），不显示完整 IP 地址。首次开启会按需从数据分支下载离线 IP 库到 uploads 目录，在服务器本地解析。历史评论会在下次浏览时自动补全属地。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Text avatar -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_text_avatar]" value="1" <?php checked( $values['comment_text_avatar'], 1 ); ?>>
+                            <?php _e( '启用文字头像', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '评论者未设置 Gravatar 时自动生成文字头像，头像颜色由邮箱哈希计算。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Fold long -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_fold_long]" value="1" <?php checked( $values['comment_fold_long'], 1 ); ?>>
+                            <?php _e( '折叠过长评论', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，超过约 200px 高度的评论会被折叠，显示"展开阅读全文"。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Show reply-to -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_show_reply_to]" value="1" <?php checked( $values['comment_show_reply_to'], 1 ); ?>>
+                            <?php _e( '在子评论中显示被回复者用户名', 'sphotography' ); ?>
+                        </label>
                     </div>
                 </div>
-            </div>
+                </div>
+
+                <!-- Sub-board 3: 评论·功能 -->
+                <div class="sphotography-module" id="sp-mod-comments-feature">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-admin-settings"></span>
+                    <h3><?php _e( '评论·功能', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+
+                    <!-- Captcha -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_captcha]" value="1" <?php checked( $values['comment_captcha'], 1 ); ?>>
+                            <?php _e( '启用数字求和验证码', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，未登录访客发表评论前需回答一道随机数字加法题（如 3 + 5 = ?）。登录用户自动跳过。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Allow edit -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_allow_edit]" value="1" <?php checked( $values['comment_allow_edit'], 1 ); ?>>
+                            <?php _e( '允许评论者再次编辑评论', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论者可编辑自己发表的评论（依据登录身份或本浏览器）。每次编辑都会记录到编辑历史。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Private mode -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_allow_private]" value="1" <?php checked( $values['comment_allow_private'], 1 ); ?>>
+                            <?php _e( '允许悄悄话模式', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论者可将评论设为悄悄话。悄悄话评论及其下所有回复只有发送者和博主可见。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Mail notify -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_mail_notify]" value="1" <?php checked( $values['comment_mail_notify'], 1 ); ?>>
+                            <?php _e( '允许评论者接收回复邮件提醒', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论框显示"启用邮件通知"复选框（默认勾选）。评论有新回复且已通过审核时，通过站点邮件服务发送提醒。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Markdown -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_markdown]" value="1" <?php checked( $values['comment_markdown'], 1 ); ?>>
+                            <?php _e( '允许在评论中使用 Markdown 语法', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论支持安全的 Markdown 子集（粗体、斜体、删除线、链接、行内代码、代码块、引用、列表）。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- Emoji panel -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[comment_emoji_panel]" value="1" <?php checked( $values['comment_emoji_panel'], 1 ); ?>>
+                            <?php _e( '启用评论表情面板', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，评论输入框下显示表情键盘按钮，可插入 Unicode 表情。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+                </div>
+            </section>
 
             <!-- ============================================ -->
-            <!-- Module 8: 地图样式 -->
+            <!-- Category 5: 地图 -->
             <!-- ============================================ -->
+            <section class="sp-cat" id="sp-cat-map">
+                <h2 class="sp-cat-title"><?php _e( '地图', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 底图 -->
             <div class="sphotography-module" id="sp-mod-mapstyle">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-location-alt"></span>
-                    <h2><?php _e( '地图样式', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '底图', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
-
-                    <!-- Live preview (v1.2.6) -->
-                    <?php $sphotography_preview_url = sphotography_map_preview_url(); ?>
-                    <div class="sphotography-field sphotography-map-preview-field">
-                        <label class="sphotography-label"><?php _e( '实时预览', 'sphotography' ); ?></label>
-                        <?php if ( $sphotography_preview_url ) : ?>
-                            <div class="sphotography-map-preview" id="sphotography-map-preview" data-preview-base="<?php echo esc_attr( $sphotography_preview_url ); ?>">
-                                <iframe id="sphotography-map-preview-frame" title="<?php esc_attr_e( '地图预览', 'sphotography' ); ?>" loading="lazy" referrerpolicy="no-referrer"></iframe>
-                                <div class="sphotography-map-preview-refresh" id="sphotography-map-preview-refresh" aria-hidden="true"></div>
-                            </div>
-                            <p class="sphotography-desc"><?php _e( '改动下方任一地图相关设置后自动刷新预览（约 0.3 秒防抖）。预览使用站点真实照片数据；「行政区上色」需先运行下方「重建行政区索引」。改动尚未保存时预览即时体现，正式生效仍需点击保存。', 'sphotography' ); ?></p>
-                        <?php else : ?>
-                            <p class="sphotography-desc"><?php _e( '未找到使用「全屏地图」模板的页面，暂时无法预览。请先创建一个页面并将其模板设为「Fullscreen Map」。', 'sphotography' ); ?></p>
-                        <?php endif; ?>
-                    </div>
 
                     <!-- Style preset -->
                     <div class="sphotography-field">
@@ -989,8 +1216,16 @@ function sphotography_render_settings_page() {
                                placeholder="https://example.com/style.json">
                         <p class="sphotography-desc"><?php _e( '粘贴任意 MapLibre 兼容的 style JSON 地址（必须为 https）。留空或加载失败时将自动回退到「自动」底图。', 'sphotography' ); ?></p>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Marker mode (v1.2.6) — single mutually-exclusive selector -->
+                <!-- Sub-board 2: 标记与聚合 -->
+                <div class="sphotography-module" id="sp-mod-mapstyle-marker">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-map-marker"></span>
+                    <h3><?php _e( '标记与聚合', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-marker-mode"><?php _e( '地图标记模式', 'sphotography' ); ?></label>
                         <select id="sphotography-marker-mode" name="sphotography[marker_mode]" data-sp-map-preview="markerMode">
@@ -1031,8 +1266,16 @@ function sphotography_render_settings_page() {
                         </label>
                         <p class="sphotography-desc"><?php _e( '仅在「按地区标签分色」模式下生效。在地图左下角显示可折叠的标签配色图例（移动端折叠为「图例」小胶囊）。默认开启。可在「地区标签」编辑页手动为标签指定颜色，留空则按别名自动配色。', 'sphotography' ); ?></p>
                     </div>
+                </div>
+            </div>
 
-                    <!-- Region colouring: granularity (region mode only) -->
+                <!-- Sub-board 3: 区域着色 -->
+                <div class="sphotography-module" id="sp-mod-mapstyle-region">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-admin-site-alt"></span>
+                    <h3><?php _e( '区域着色', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
                     <div class="sphotography-field sp-mode-field" data-sp-mode="region">
                         <label class="sphotography-label" for="sphotography-region-granularity"><?php _e( '上色粒度', 'sphotography' ); ?></label>
                         <select id="sphotography-region-granularity" name="sphotography[region_granularity]" data-sp-map-preview="regionGranularity">
@@ -1065,14 +1308,55 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
             </div>
+            </section>
 
             <!-- ============================================ -->
-            <!-- Module 9: CDN 来源配置 -->
+            <!-- Category 7: 社交 (Social) -->
             <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-cdn">
+            <section class="sp-cat" id="sp-cat-social">
+                <h2 class="sp-cat-title"><?php _e( '社交', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 友链管理 -->
+                <?php if ( function_exists( 'sphotography_render_friend_links_board' ) ) : ?>
+                    <?php echo sphotography_render_friend_links_board(); ?>
+                <?php endif; ?>
+
+                <!-- Sub-board 2: 留言板设置 -->
+                <?php if ( function_exists( 'sphotography_render_guestbook_board' ) ) : ?>
+                    <?php echo sphotography_render_guestbook_board(); ?>
+                <?php endif; ?>
+            </section>
+
+            <!-- ============================================ -->
+            <!-- Category 8: 其他 -->
+            <!-- ============================================ -->
+            <section class="sp-cat" id="sp-cat-other">
+                <h2 class="sp-cat-title"><?php _e( '其他', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 页脚 -->
+                <div class="sphotography-module" id="sp-mod-footer">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-editor-paragraph"></span>
+                    <h3><?php _e( '页脚', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-footer-content"><?php _e( '页脚内容', 'sphotography' ); ?></label>
+                        <textarea id="sphotography-footer-content"
+                                  name="sphotography[footer_content]"
+                                  rows="3"
+                                  style="max-width:100%;font-family:monospace;"
+                                  placeholder="<?php esc_attr_e( '例如：© 2026 Your Name. All rights reserved.', 'sphotography' ); ?>"><?php echo esc_textarea( $values['footer_content'] ); ?></textarea>
+                        <p class="sphotography-desc"><?php _e( '留空则隐藏页脚。支持可信管理员输入的 HTML 与脚本标签，显示在地图底部中央位置。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Sub-board 2: CDN -->
+                <div class="sphotography-module" id="sp-mod-cdn">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-networking"></span>
-                    <h2><?php _e( 'CDN 来源', 'sphotography' ); ?></h2>
+                    <h3><?php _e( 'CDN', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
                     <div class="sphotography-field">
@@ -1085,15 +1369,20 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '切换前端地图引擎的 CDN 来源。jsDelivr 在中国大陆及全球均有较好的加速效果。更改后保存，刷新前端页面生效。地图瓦片始终从 CartoDB CDN 直接加载，不受此设置影响。', 'sphotography' ); ?></p>
                     </div>
                 </div>
-            </div>
+                </div>
+            </section>
 
             <!-- ============================================ -->
-            <!-- Module 9b: 实验性功能 (v1.2.9) -->
+            <!-- Category 8: 系统 -->
             <!-- ============================================ -->
+            <section class="sp-cat" id="sp-cat-system">
+                <h2 class="sp-cat-title"><?php _e( '系统', 'sphotography' ); ?></h2>
+
+                <!-- Sub-board 1: 实验性功能 -->
             <div class="sphotography-module" id="sp-mod-experimental">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-buddicons-activity"></span>
-                    <h2><?php _e( '实验性功能', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '实验性功能', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
 
@@ -1244,179 +1533,11 @@ function sphotography_render_settings_page() {
                 </div>
             </div>
 
-            <!-- ============================================ -->
-            <!-- Module 11: 评论 (v1.3.1) -->
-            <!-- ============================================ -->
-            <div class="sphotography-module" id="sp-mod-comments">
-                <div class="sphotography-module-header">
-                    <span class="sphotography-module-icon dashicons dashicons-admin-comments"></span>
-                    <h2><?php _e( '评论', 'sphotography' ); ?></h2>
-                </div>
-                <div class="sphotography-module-body">
-
-                    <h3 class="sphotography-subhead"><?php _e( '评论功能', 'sphotography' ); ?></h3>
-
-                    <!-- Captcha -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_captcha]" value="1" <?php checked( $values['comment_captcha'], 1 ); ?>>
-                            <?php _e( '启用数字求和验证码', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，未登录访客发表评论前需回答一道随机数字加法题（如 3 + 5 = ?）。登录用户自动跳过。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Allow edit -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_allow_edit]" value="1" <?php checked( $values['comment_allow_edit'], 1 ); ?>>
-                            <?php _e( '允许评论者再次编辑评论', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，评论者可编辑自己发表的评论（依据登录身份或本浏览器）。每次编辑都会记录到编辑历史。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Private mode -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_allow_private]" value="1" <?php checked( $values['comment_allow_private'], 1 ); ?>>
-                            <?php _e( '允许悄悄话模式', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，评论者可将评论设为悄悄话。悄悄话评论及其下所有回复只有发送者和博主可见。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Mail notify -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_mail_notify]" value="1" <?php checked( $values['comment_mail_notify'], 1 ); ?>>
-                            <?php _e( '允许评论者接收回复邮件提醒', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，评论框显示"启用邮件通知"复选框（默认勾选）。评论有新回复且已通过审核时，通过站点邮件服务发送提醒。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Markdown -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_markdown]" value="1" <?php checked( $values['comment_markdown'], 1 ); ?>>
-                            <?php _e( '允许在评论中使用 Markdown 语法', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，评论支持安全的 Markdown 子集（粗体、斜体、删除线、链接、行内代码、代码块、引用、列表）。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Emoji panel -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_emoji_panel]" value="1" <?php checked( $values['comment_emoji_panel'], 1 ); ?>>
-                            <?php _e( '启用评论表情面板', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，评论输入框下显示表情键盘按钮，可插入 Unicode 表情。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-comment-pagination"><?php _e( '评论分页方式', 'sphotography' ); ?></label>
-                        <select id="sphotography-comment-pagination" name="sphotography[comment_pagination]">
-                            <option value="infinite" <?php selected( $values['comment_pagination'], 'infinite' ); ?>><?php _e( '无限加载（滚动到底自动加载）', 'sphotography' ); ?></option>
-                            <option value="paged" <?php selected( $values['comment_pagination'], 'paged' ); ?>><?php _e( '分页加载（点击翻页）', 'sphotography' ); ?></option>
-                        </select>
-                        <p class="sphotography-desc"><?php _e( '每批/每页 10 条顶层评论，子评论随其父评论一起加载。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <h3 class="sphotography-subhead"><?php _e( '评论区显示', 'sphotography' ); ?></h3>
-
-                    <!-- Avatar align -->
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-comment-avatar-align"><?php _e( '评论头像垂直位置', 'sphotography' ); ?></label>
-                        <select id="sphotography-comment-avatar-align" name="sphotography[comment_avatar_align]">
-                            <option value="top" <?php selected( $values['comment_avatar_align'], 'top' ); ?>><?php _e( '居上', 'sphotography' ); ?></option>
-                            <option value="center" <?php selected( $values['comment_avatar_align'], 'center' ); ?>><?php _e( '居中', 'sphotography' ); ?></option>
-                        </select>
-                    </div>
-
-                    <!-- Edit history visibility -->
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-comment-edit-history-view"><?php _e( '谁可以查看评论编辑记录', 'sphotography' ); ?></label>
-                        <select id="sphotography-comment-edit-history-view" name="sphotography[comment_edit_history_view]">
-                            <option value="all" <?php selected( $values['comment_edit_history_view'], 'all' ); ?>><?php _e( '所有人', 'sphotography' ); ?></option>
-                            <option value="admin" <?php selected( $values['comment_edit_history_view'], 'admin' ); ?>><?php _e( '仅博主', 'sphotography' ); ?></option>
-                        </select>
-                        <p class="sphotography-desc"><?php _e( '选择"所有人"时，被编辑过的评论会显示"已编辑"标记，任何人可点开查看历次版本。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Pin -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_pin_enabled]" value="1" <?php checked( $values['comment_pin_enabled'], 1 ); ?>>
-                            <?php _e( '开启评论置顶功能', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，博主可置顶顶层评论，置顶评论显示在评论区最前方。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Like -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_like_enabled]" value="1" <?php checked( $values['comment_like_enabled'], 1 ); ?>>
-                            <?php _e( '启用评论点赞', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，每条评论显示点赞按钮，同一访客可取消赞。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- UA display -->
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-comment-ua-display"><?php _e( '评论者 UA 显示', 'sphotography' ); ?></label>
-                        <select id="sphotography-comment-ua-display" name="sphotography[comment_ua_display]">
-                            <option value="none" <?php selected( $values['comment_ua_display'], 'none' ); ?>><?php _e( '不显示', 'sphotography' ); ?></option>
-                            <option value="browser" <?php selected( $values['comment_ua_display'], 'browser' ); ?>><?php _e( '浏览器', 'sphotography' ); ?></option>
-                            <option value="browser_ver" <?php selected( $values['comment_ua_display'], 'browser_ver' ); ?>><?php _e( '浏览器 + 版本号', 'sphotography' ); ?></option>
-                            <option value="platform_browser_ver" <?php selected( $values['comment_ua_display'], 'platform_browser_ver' ); ?>><?php _e( '平台 + 浏览器 + 版本号', 'sphotography' ); ?></option>
-                            <option value="platform_browser" <?php selected( $values['comment_ua_display'], 'platform_browser' ); ?>><?php _e( '平台 + 浏览器', 'sphotography' ); ?></option>
-                            <option value="platform" <?php selected( $values['comment_ua_display'], 'platform' ); ?>><?php _e( '平台', 'sphotography' ); ?></option>
-                        </select>
-                        <p class="sphotography-desc"><?php _e( '仅解析并显示浏览器/平台。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- IP location -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_ip_location]" value="1" <?php checked( $values['comment_ip_location'], 1 ); ?>>
-                            <?php _e( '显示评论者 IP 属地', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，评论旁显示由 IP 解析的归属地（国内到省、国外到国家），不显示完整 IP 地址。首次开启会按需从数据分支下载离线 IP 库到 uploads 目录，在服务器本地解析。历史评论会在下次浏览时自动补全属地。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Text avatar -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_text_avatar]" value="1" <?php checked( $values['comment_text_avatar'], 1 ); ?>>
-                            <?php _e( '启用文字头像', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '评论者未设置 Gravatar 时自动生成文字头像，头像颜色由邮箱哈希计算。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Fold long -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_fold_long]" value="1" <?php checked( $values['comment_fold_long'], 1 ); ?>>
-                            <?php _e( '折叠过长评论', 'sphotography' ); ?>
-                        </label>
-                        <p class="sphotography-desc"><?php _e( '开启后，超过约 200px 高度的评论会被折叠，显示"展开阅读全文"。', 'sphotography' ); ?></p>
-                    </div>
-
-                    <!-- Show reply-to -->
-                    <div class="sphotography-field sphotography-field-checkbox">
-                        <label class="sphotography-label">
-                            <input type="checkbox" name="sphotography[comment_show_reply_to]" value="1" <?php checked( $values['comment_show_reply_to'], 1 ); ?>>
-                            <?php _e( '在子评论中显示被回复者用户名', 'sphotography' ); ?>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ============================================ -->
-            <!-- Module 10: 版本与更新 -->
-            <!-- ============================================ -->
+                <!-- Sub-board 2: 版本与更新 -->
             <div class="sphotography-module" id="sp-mod-version">
                 <div class="sphotography-module-header">
                     <span class="sphotography-module-icon dashicons dashicons-update"></span>
-                    <h2><?php _e( '版本与更新', 'sphotography' ); ?></h2>
+                    <h3><?php _e( '版本与更新', 'sphotography' ); ?></h3>
                 </div>
                 <div class="sphotography-module-body">
                     <div class="sphotography-field" id="sphotography-updater">
@@ -1446,8 +1567,8 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
             </div>
+            </section>
 
-            <!-- ============================================ -->
             <!-- Submit Buttons -->
             <!-- ============================================ -->
             <div class="sphotography-actions">
@@ -1471,18 +1592,14 @@ function sphotography_render_settings_page() {
                 <nav class="sphotography-toc-nav">
                     <?php
                     $toc_items = array(
-                        'sp-mod-theme'     => __( '全局主题', 'sphotography' ),
-                        'sp-mod-card'      => __( '卡片样式', 'sphotography' ),
-                        'sp-mod-date'      => __( '日期格式', 'sphotography' ),
-                        'sp-mod-sidebar'   => __( '左侧栏信息', 'sphotography' ),
-                        'sp-mod-animation' => __( '动画设置', 'sphotography' ),
-                        'sp-mod-reading'   => __( '阅读信息', 'sphotography' ),
-                        'sp-mod-footer'    => __( '页脚设置', 'sphotography' ),
-                        'sp-mod-mapstyle'  => __( '地图样式', 'sphotography' ),
-                        'sp-mod-cdn'       => __( 'CDN 来源', 'sphotography' ),
-                        'sp-mod-experimental' => __( '实验性功能', 'sphotography' ),
-                        'sp-mod-comments'  => __( '评论', 'sphotography' ),
-                        'sp-mod-version'   => __( '版本与更新', 'sphotography' ),
+                        'sp-cat-appearance'      => __( '外观与颜色', 'sphotography' ),
+                        'sp-cat-sidebar'         => __( '边栏与个人', 'sphotography' ),
+                        'sp-cat-animation'       => __( '动画', 'sphotography' ),
+                        'sp-cat-reading_comments' => __( '阅读与评论', 'sphotography' ),
+                        'sp-cat-map'             => __( '地图', 'sphotography' ),
+                        'sp-cat-social'          => __( '社交', 'sphotography' ),
+                        'sp-cat-other'           => __( '其他', 'sphotography' ),
+                        'sp-cat-system'          => __( '系统', 'sphotography' ),
                     );
                     foreach ( $toc_items as $anchor => $label ) :
                     ?>
@@ -1513,6 +1630,9 @@ function sphotography_admin_enqueue_settings( $hook ) {
     if ( $hook !== 'toplevel_page_sphotography-settings' ) {
         return;
     }
+
+    // Media library (for friend-links thumbnail picker)
+    wp_enqueue_media();
 
     // Color picker
     wp_enqueue_style( 'wp-color-picker' );
@@ -1669,6 +1789,28 @@ function sphotography_admin_enqueue_settings( $hook ) {
             overflow: hidden;
             box-shadow: var(--sp-shadow);
         }
+        /* Categories: group modules and add visual separation */
+        .sp-cat {
+            margin-bottom: 40px;
+        }
+        .sp-cat-title {
+            margin: 0 0 16px 0;
+            padding: 12px 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--sp-text);
+            font-family: {$sp_serif};
+            letter-spacing: 0.01em;
+            border-bottom: 2px solid var(--sp-border);
+        }
+        .sphotography-module {
+            background: var(--sp-surface);
+            border: 1px solid var(--sp-border);
+            border-radius: 14px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: var(--sp-shadow);
+        }
         .sphotography-module-header {
             display: flex;
             align-items: center;
@@ -1680,6 +1822,13 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-module-header h2 {
             margin: 0;
             font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--sp-text);
+            font-family: {$sp_serif};
+        }
+        .sphotography-module-header h3 {
+            margin: 0;
+            font-size: 1rem;
             font-weight: 600;
             color: var(--sp-text);
             font-family: {$sp_serif};
@@ -2002,6 +2151,24 @@ function sphotography_admin_enqueue_settings( $hook ) {
             animation: sphotographyPreviewSpin 0.7s linear infinite;
         }
         @keyframes sphotographyPreviewSpin { to { transform: rotate(360deg); } }
+        /* Live-preview board: pinned at the top; shrinks to a compact bar once
+           the user scrolls past it so it stays visible (v1.3.8). */
+        #sphotography-preview-sticky-wrap {
+            position: sticky;
+            top: 16px;
+            z-index: 30;
+            background: var(--sp-bg);
+            border-radius: 14px;
+            transition: box-shadow 200ms ease, padding 200ms ease;
+        }
+        #sphotography-preview-sticky-wrap.is-stuck {
+            box-shadow: var(--sp-shadow);
+            padding: 8px;
+        }
+        .sphotography-map-preview { transition: height 220ms ease; }
+        #sphotography-preview-sticky-wrap.is-stuck .sphotography-label,
+        #sphotography-preview-sticky-wrap.is-stuck .sphotography-desc { display: none; }
+        #sphotography-preview-sticky-wrap.is-stuck .sphotography-map-preview { height: 132px; }
         /* v1.2.9 — experimental AI risk banner */
         .sphotography-ai-risk {
             border: 1px solid rgba(224,90,77,0.35);

@@ -118,6 +118,20 @@
             $frame.attr('src', buildPreviewUrl());
         }
 
+        // ----- Live-preview sticky-shrink (v1.3.8) -----
+        // Once the pinned preview board reaches the top of the viewport, collapse
+        // it to a compact bar so it stays out of the way but always visible.
+        var stickyWrap = document.getElementById('sphotography-preview-sticky-wrap');
+        if (stickyWrap) {
+            var syncSticky = function () {
+                var rect = stickyWrap.getBoundingClientRect();
+                stickyWrap.classList.toggle('is-stuck', rect.top <= 20);
+            };
+            window.addEventListener('scroll', syncSticky, { passive: true });
+            window.addEventListener('resize', syncSticky);
+            syncSticky();
+        }
+
         $('.sphotography-color-picker').wpColorPicker({
             change: function () {
                 $('.sphotography-preset-btn').removeClass('active');

@@ -780,9 +780,20 @@ add_action( 'after_switch_theme', 'sphotography_theme_activation' );
 // 9. Register Admin Menu: 主题全局配置
 // ============================================
 function sphotography_register_admin_menu() {
+    $menu_title = __( '主题全局配置', 'sphotography' );
+
+    // Add pending friend-links applications badge to menu title
+    if ( function_exists( 'sphotography_get_friend_link_applications' ) ) {
+        $apps = sphotography_get_friend_link_applications();
+        $pending_count = count( $apps );
+        if ( $pending_count > 0 ) {
+            $menu_title .= ' <span class="awaiting-mod count-' . esc_attr( $pending_count ) . '"><span class="pending-count">' . number_format_i18n( $pending_count ) . '</span></span>';
+        }
+    }
+
     add_menu_page(
         __( '主题全局配置', 'sphotography' ),   // Page title
-        __( '主题全局配置', 'sphotography' ),   // Menu title
+        $menu_title,                            // Menu title (with badge if pending)
         'manage_options',                       // Capability
         'sphotography-settings',                // Menu slug
         'sphotography_render_settings_page',    // Callback function (from theme-settings.php)

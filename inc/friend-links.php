@@ -6,15 +6,10 @@ function sphotography_get_friend_link_notify() { return get_option('sphotography
 function sphotography_update_friend_links($links) { update_option('sphotography_friend_links', $links); }
 function sphotography_update_friend_link_applications($apps) { update_option('sphotography_friend_link_apps', $apps); }
 function sphotography_register_friend_links_page() {
-	$apps = sphotography_get_friend_link_applications();
-	$pending_count = count($apps);
-	$menu_title = __('友链', 'sphotography');
-	if ($pending_count > 0) {
-		$menu_title .= ' <span class="awaiting-mod count-' . esc_attr($pending_count) . '"><span class="pending-count">' . number_format_i18n($pending_count) . '</span></span>';
-	}
-	$GLOBALS['sp_fl_hook'] = add_submenu_page('sphotography-settings', __('友链管理', 'sphotography'), $menu_title, 'manage_options', 'sphotography-friend-links', 'sphotography_friend_links_page');
+	// REMOVED: add_submenu_page registration moved to main settings menu badge (see functions.php)
+	// Render function below is now called from sphotography_render_settings_page in admin/theme-settings.php
 }
-add_action('admin_menu', 'sphotography_register_friend_links_page');
+// REMOVED: add_action( 'admin_menu', 'sphotography_register_friend_links_page' ) - now managed in functions.php
 // Schedule the async title + thumbnail fetch for one friend link.
 function sphotography_schedule_friend_meta($id) {
 	$id = (int) $id;
@@ -23,12 +18,8 @@ function sphotography_schedule_friend_meta($id) {
 	}
 }
 
-// Load the media library picker on the friend-links admin page.
-function sphotography_friend_links_admin_assets($hook) {
-	if (!isset($GLOBALS['sp_fl_hook']) || $hook !== $GLOBALS['sp_fl_hook']) return;
-	wp_enqueue_media();
-}
-add_action('admin_enqueue_scripts', 'sphotography_friend_links_admin_assets');
+// REMOVED: Media library loaded globally on settings page now (see sphotography_admin_enqueue_settings)
+
 
 // Process a POST action on the friend-links page (all nonce-guarded).
 function sphotography_friend_links_handle_post() {
@@ -91,9 +82,14 @@ function sphotography_friend_links_handle_post() {
 	}
 }
 
-function sphotography_friend_links_page() {
-	if (!current_user_can('manage_options')) wp_die(esc_html__('权限不足。', 'sphotography'));
-	sphotography_friend_links_handle_post();
+/**
+ * Render the friend-links management board for the settings page.
+ * Returns markup (called from sphotography_render_settings_page in admin/theme-settings.php).
+ */
+function sphotography_render_friend_links_board() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return '';
+	}
 
 	$links = sphotography_get_friend_links();
 	usort($links, function ($a, $b) {
@@ -102,97 +98,120 @@ function sphotography_friend_links_page() {
 	});
 	$apps = sphotography_get_friend_link_applications();
 	$notify = sphotography_get_friend_link_notify();
+
+	ob_start();
 	?>
-	<div class="wrap">
-		<h1><?php esc_html_e('友链管理', 'sphotography'); ?></h1>
+	<!-- Friend-Links Management Board (folded into social category) -->
+	<div class="sphotography-module" id="sp-mod-friend-links">
+		<div class="sphotography-module-header">
+			<span class="sphotography-module-icon dashicons dashicons-link"></span>
+			<h3><?php esc_html_e( '友链管理', 'sphotography' ); ?></h3>
+		</div>
+		<div class="sphotography-module-body">
 
-		<h2><?php esc_html_e('添加友链', 'sphotography'); ?></h2>
-		<form method="post" action="">
-			<?php wp_nonce_field('sphotography_friend_links'); ?>
-			<input type="hidden" name="sp_fl_action" value="add">
-			<input type="hidden" name="fl_thumb_id" id="fl_thumb_id" value="0">
-			<table class="form-table">
-				<tr><th><label for="fl_url"><?php esc_html_e('网址（必填）', 'sphotography'); ?></label></th>
-					<td><input type="url" name="fl_url" id="fl_url" class="regular-text" placeholder="https://example.com" required></td></tr>
-				<tr><th><label for="fl_name"><?php esc_html_e('站点名称', 'sphotography'); ?></label></th>
-					<td><input type="text" name="fl_name" id="fl_name" class="regular-text" placeholder="<?php esc_attr_e('留空则自动获取网站标题', 'sphotography'); ?>"></td></tr>
-				<tr><th><?php esc_html_e('缩略图', 'sphotography'); ?></th>
-					<td>
+			<h4 style="margin:0 0 16px 0;font-size:0.9rem;font-weight:600;color:var(--sp-text);"><?php esc_html_e( '添加友链', 'sphotography' ); ?></h4>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:20px;">
+				<?php wp_nonce_field( 'sphotography_friend_links' ); ?>
+				<input type="hidden" name="action" value="sphotography_friend_links_action">
+				<input type="hidden" name="sp_fl_action" value="add">
+				<input type="hidden" name="fl_thumb_id" id="fl_thumb_id" value="0">
+
+				<div style="display:grid;gap:12px;">
+					<div>
+						<label class="sphotography-label" for="fl_url"><?php esc_html_e( '网址（必填）', 'sphotography' ); ?></label>
+						<input type="url" name="fl_url" id="fl_url" class="regular-text" placeholder="https://example.com" required style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
+					</div>
+					<div>
+						<label class="sphotography-label" for="fl_name"><?php esc_html_e( '站点名称', 'sphotography' ); ?></label>
+						<input type="text" name="fl_name" id="fl_name" class="regular-text" placeholder="<?php esc_attr_e( '留空则自动获取网站标题', 'sphotography' ); ?>" style="width:100%;max-width:none;padding:8px 12px;border-radius:8px;border:1px solid var(--sp-border);background:var(--sp-surface-2);color:var(--sp-text);">
+					</div>
+					<div>
+						<label class="sphotography-label"><?php esc_html_e( '缩略图', 'sphotography' ); ?></label>
 						<img id="fl_thumb_preview" src="" style="max-width:180px;max-height:120px;display:none;border-radius:6px;margin-bottom:8px;">
-						<p>
-							<button type="button" class="button" id="fl_thumb_pick"><?php esc_html_e('选择图片', 'sphotography'); ?></button>
-							<button type="button" class="button" id="fl_thumb_clear"><?php esc_html_e('移除', 'sphotography'); ?></button>
+						<p style="margin:0 0 8px 0;">
+							<button type="button" class="button" id="fl_thumb_pick"><?php esc_html_e( '选择图片', 'sphotography' ); ?></button>
+							<button type="button" class="button" id="fl_thumb_clear"><?php esc_html_e( '移除', 'sphotography' ); ?></button>
 						</p>
-						<p class="description"><?php esc_html_e('留空则在保存后自动抓取网站主页截图。', 'sphotography'); ?></p>
-					</td></tr>
-				<tr><th><?php esc_html_e('置顶', 'sphotography'); ?></th>
-					<td><label><input type="checkbox" name="fl_pinned" value="1"> <?php esc_html_e('置顶显示在最前', 'sphotography'); ?></label></td></tr>
-			</table>
-			<?php submit_button(__('添加友链', 'sphotography')); ?>
-		</form>
+						<p class="sphotography-desc"><?php esc_html_e( '留空则在保存后自动抓取网站主页截图。', 'sphotography' ); ?></p>
+					</div>
+					<div>
+						<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="fl_pinned" value="1"> <?php esc_html_e( '置顶显示在最前', 'sphotography' ); ?></label>
+					</div>
+				</div>
 
-		<h2><?php esc_html_e('现有友链', 'sphotography'); ?></h2>
-		<table class="widefat striped">
-			<thead><tr>
-				<th><?php esc_html_e('缩略图', 'sphotography'); ?></th>
-				<th><?php esc_html_e('名称', 'sphotography'); ?></th>
-				<th><?php esc_html_e('网址', 'sphotography'); ?></th>
-				<th><?php esc_html_e('操作', 'sphotography'); ?></th>
-			</tr></thead>
-			<tbody>
-			<?php if (empty($links)) : ?>
-				<tr><td colspan="4"><?php esc_html_e('还没有友链。', 'sphotography'); ?></td></tr>
-			<?php else : foreach ($links as $l) :
-				$thumb = $l['thumb_id'] ? wp_get_attachment_image_src($l['thumb_id'], 'thumbnail') : false; ?>
-				<tr>
-					<td><?php if ($thumb) : ?><img src="<?php echo esc_url($thumb[0]); ?>" style="width:60px;height:45px;object-fit:cover;border-radius:4px;"><?php else : ?>—<?php endif; ?></td>
-					<td><?php echo esc_html($l['name'] ? $l['name'] : '（待抓取）'); ?><?php echo !empty($l['pinned']) ? ' <span class="dashicons dashicons-sticky" title="置顶"></span>' : ''; ?></td>
-					<td><a href="<?php echo esc_url($l['url']); ?>" target="_blank" rel="noopener"><?php echo esc_html($l['url']); ?></a></td>
-					<td>
-						<form method="post" action="" style="display:inline"><?php wp_nonce_field('sphotography_friend_links'); ?><input type="hidden" name="sp_fl_action" value="toggle_pin"><input type="hidden" name="fl_id" value="<?php echo (int) $l['id']; ?>"><button class="button button-small"><?php echo !empty($l['pinned']) ? esc_html__('取消置顶', 'sphotography') : esc_html__('置顶', 'sphotography'); ?></button></form>
-						<form method="post" action="" style="display:inline"><?php wp_nonce_field('sphotography_friend_links'); ?><input type="hidden" name="sp_fl_action" value="refetch"><input type="hidden" name="fl_id" value="<?php echo (int) $l['id']; ?>"><button class="button button-small"><?php esc_html_e('重新获取缩略图', 'sphotography'); ?></button></form>
-						<form method="post" action="" style="display:inline" onsubmit="return confirm('确定删除此友链？');"><?php wp_nonce_field('sphotography_friend_links'); ?><input type="hidden" name="sp_fl_action" value="delete"><input type="hidden" name="fl_id" value="<?php echo (int) $l['id']; ?>"><button class="button button-small button-link-delete"><?php esc_html_e('删除', 'sphotography'); ?></button></form>
-					</td>
-				</tr>
-			<?php endforeach; endif; ?>
-			</tbody>
-		</table>
+				<?php submit_button( __( '添加友链', 'sphotography' ), 'primary', 'submit', false, array( 'style' => 'margin-top:12px;' ) ); ?>
+			</form>
 
-		<h2><?php esc_html_e('待处理申请', 'sphotography'); ?> <?php echo !empty($apps) ? '<span class="awaiting-mod count-' . count($apps) . '"><span class="pending-count">' . number_format_i18n(count($apps)) . '</span></span>' : ''; ?></h2>
-		<table class="widefat striped">
-			<thead><tr>
-				<th><?php esc_html_e('站点', 'sphotography'); ?></th>
-				<th><?php esc_html_e('网址', 'sphotography'); ?></th>
-				<th><?php esc_html_e('邮箱', 'sphotography'); ?></th>
-				<th><?php esc_html_e('留言', 'sphotography'); ?></th>
-				<th><?php esc_html_e('操作', 'sphotography'); ?></th>
-			</tr></thead>
-			<tbody>
-			<?php if (empty($apps)) : ?>
-				<tr><td colspan="5"><?php esc_html_e('暂无待处理申请。', 'sphotography'); ?></td></tr>
-			<?php else : foreach ($apps as $a) : ?>
-				<tr>
-					<td><?php echo esc_html($a['name']); ?></td>
-					<td><a href="<?php echo esc_url($a['url']); ?>" target="_blank" rel="noopener"><?php echo esc_html($a['url']); ?></a></td>
-					<td><?php echo esc_html($a['email']); ?></td>
-					<td><?php echo esc_html($a['message']); ?></td>
-					<td>
-						<form method="post" action="" style="display:inline"><?php wp_nonce_field('sphotography_friend_links'); ?><input type="hidden" name="sp_fl_action" value="approve_app"><input type="hidden" name="app_id" value="<?php echo (int) $a['id']; ?>"><button class="button button-primary button-small"><?php esc_html_e('通过', 'sphotography'); ?></button></form>
-						<form method="post" action="" style="display:inline"><?php wp_nonce_field('sphotography_friend_links'); ?><input type="hidden" name="sp_fl_action" value="ignore_app"><input type="hidden" name="app_id" value="<?php echo (int) $a['id']; ?>"><button class="button button-small"><?php esc_html_e('忽略', 'sphotography'); ?></button></form>
-					</td>
-				</tr>
-			<?php endforeach; endif; ?>
-			</tbody>
-		</table>
+			<h4 style="margin:20px 0 16px 0;font-size:0.9rem;font-weight:600;color:var(--sp-text);"><?php esc_html_e( '现有友链', 'sphotography' ); ?></h4>
+			<?php if ( empty( $links ) ) : ?>
+				<p style="color:var(--sp-text-muted);"><?php esc_html_e( '还没有友链。', 'sphotography' ); ?></p>
+			<?php else : ?>
+				<table class="widefat striped" style="margin-bottom:20px;">
+					<thead><tr>
+						<th><?php esc_html_e( '缩略图', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '名称', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '网址', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '操作', 'sphotography' ); ?></th>
+					</tr></thead>
+					<tbody>
+					<?php foreach ( $links as $l ) :
+						$thumb = $l['thumb_id'] ? wp_get_attachment_image_src( $l['thumb_id'], 'thumbnail' ) : false;
+					?>
+						<tr>
+							<td><?php if ( $thumb ) : ?><img src="<?php echo esc_url( $thumb[0] ); ?>" style="width:60px;height:45px;object-fit:cover;border-radius:4px;"><?php else : ?>—<?php endif; ?></td>
+							<td><?php echo esc_html( $l['name'] ? $l['name'] : '（待抓取）' ); ?><?php echo ! empty( $l['pinned'] ) ? ' <span class="dashicons dashicons-sticky" title="置顶"></span>' : ''; ?></td>
+							<td><a href="<?php echo esc_url( $l['url'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $l['url'] ); ?></a></td>
+							<td>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline"><?php wp_nonce_field( 'sphotography_friend_links' ); ?><input type="hidden" name="action" value="sphotography_friend_links_action"><input type="hidden" name="sp_fl_action" value="toggle_pin"><input type="hidden" name="fl_id" value="<?php echo (int) $l['id']; ?>"><button class="button button-small"><?php echo ! empty( $l['pinned'] ) ? esc_html__( '取消置顶', 'sphotography' ) : esc_html__( '置顶', 'sphotography' ); ?></button></form>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline"><?php wp_nonce_field( 'sphotography_friend_links' ); ?><input type="hidden" name="action" value="sphotography_friend_links_action"><input type="hidden" name="sp_fl_action" value="refetch"><input type="hidden" name="fl_id" value="<?php echo (int) $l['id']; ?>"><button class="button button-small"><?php esc_html_e( '重新获取缩略图', 'sphotography' ); ?></button></form>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline" onsubmit="return confirm('确定删除此友链？');"><?php wp_nonce_field( 'sphotography_friend_links' ); ?><input type="hidden" name="action" value="sphotography_friend_links_action"><input type="hidden" name="sp_fl_action" value="delete"><input type="hidden" name="fl_id" value="<?php echo (int) $l['id']; ?>"><button class="button button-small button-link-delete"><?php esc_html_e( '删除', 'sphotography' ); ?></button></form>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
 
-		<h2><?php esc_html_e('通知设置', 'sphotography'); ?></h2>
-		<form method="post" action="">
-			<?php wp_nonce_field('sphotography_friend_links'); ?>
-			<input type="hidden" name="sp_fl_action" value="save_notify">
-			<label><input type="checkbox" name="fl_notify" value="1" <?php checked($notify, '1'); ?>> <?php esc_html_e('收到新友链申请时通过邮件通知管理员', 'sphotography'); ?></label>
-			<?php submit_button(__('保存', 'sphotography')); ?>
-		</form>
+			<h4 style="margin:20px 0 16px 0;font-size:0.9rem;font-weight:600;color:var(--sp-text);"><?php esc_html_e( '待处理申请', 'sphotography' ); ?> <?php echo ! empty( $apps ) ? '<span class="awaiting-mod count-' . count( $apps ) . '"><span class="pending-count">' . number_format_i18n( count( $apps ) ) . '</span></span>' : ''; ?></h4>
+			<?php if ( empty( $apps ) ) : ?>
+				<p style="color:var(--sp-text-muted);"><?php esc_html_e( '暂无待处理申请。', 'sphotography' ); ?></p>
+			<?php else : ?>
+				<table class="widefat striped" style="margin-bottom:20px;">
+					<thead><tr>
+						<th><?php esc_html_e( '站点', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '网址', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '邮箱', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '留言', 'sphotography' ); ?></th>
+						<th><?php esc_html_e( '操作', 'sphotography' ); ?></th>
+					</tr></thead>
+					<tbody>
+					<?php foreach ( $apps as $a ) : ?>
+						<tr>
+							<td><?php echo esc_html( $a['name'] ); ?></td>
+							<td><a href="<?php echo esc_url( $a['url'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $a['url'] ); ?></a></td>
+							<td><?php echo esc_html( $a['email'] ); ?></td>
+							<td><?php echo esc_html( $a['message'] ); ?></td>
+							<td>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline"><?php wp_nonce_field( 'sphotography_friend_links' ); ?><input type="hidden" name="action" value="sphotography_friend_links_action"><input type="hidden" name="sp_fl_action" value="approve_app"><input type="hidden" name="app_id" value="<?php echo (int) $a['id']; ?>"><button class="button button-primary button-small"><?php esc_html_e( '通过', 'sphotography' ); ?></button></form>
+								<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline"><?php wp_nonce_field( 'sphotography_friend_links' ); ?><input type="hidden" name="action" value="sphotography_friend_links_action"><input type="hidden" name="sp_fl_action" value="ignore_app"><input type="hidden" name="app_id" value="<?php echo (int) $a['id']; ?>"><button class="button button-small"><?php esc_html_e( '忽略', 'sphotography' ); ?></button></form>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+
+			<h4 style="margin:20px 0 16px 0;font-size:0.9rem;font-weight:600;color:var(--sp-text);"><?php esc_html_e( '通知设置', 'sphotography' ); ?></h4>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'sphotography_friend_links' ); ?>
+				<input type="hidden" name="action" value="sphotography_friend_links_action">
+				<input type="hidden" name="sp_fl_action" value="save_notify">
+				<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="fl_notify" value="1" <?php checked( $notify, '1' ); ?>> <?php esc_html_e( '收到新友链申请时通过邮件通知管理员', 'sphotography' ); ?></label>
+				<?php submit_button( __( '保存', 'sphotography' ), 'primary', 'submit', false, array( 'style' => 'margin-top:8px;' ) ); ?>
+			</form>
+		</div>
 	</div>
+
 	<script>
 	(function(){
 		var pick=document.getElementById('fl_thumb_pick'),clear=document.getElementById('fl_thumb_clear'),idEl=document.getElementById('fl_thumb_id'),prev=document.getElementById('fl_thumb_preview'),frame;
@@ -201,20 +220,32 @@ function sphotography_friend_links_page() {
 	})();
 	</script>
 	<?php
+	return ob_get_clean();
 }
-function sphotography_friend_links_admin_notice() {
-	if (!current_user_can('manage_options')) return;
-	$screen = get_current_screen();
-	if ($screen && isset($GLOBALS['sp_fl_hook']) && $screen->id === $GLOBALS['sp_fl_hook']) return;
-	$apps = sphotography_get_friend_link_applications();
-	if (empty($apps)) return;
-	$count = count($apps);
-	$url = admin_url('admin.php?page=sphotography-friend-links');
-	echo '<div class="notice notice-info is-dismissible"><p>';
-	printf(__('你有 %d 条<a href="%s">友链申请</a>待处理。', 'sphotography'), number_format_i18n($count), esc_url($url));
-	echo '</p></div>';
+
+// Handle friend-links form submissions (admin_post action redirects back to settings)
+function sphotography_handle_friend_links_actions() {
+	if ( empty( $_POST['sp_fl_action'] ) ) return;
+	if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( '权限不足。', 'sphotography' ) );
+	check_admin_referer( 'sphotography_friend_links' );
+
+	sphotography_friend_links_handle_post();
+
+	wp_redirect( add_query_arg( 'page', 'sphotography-settings', admin_url( 'admin.php' ) ) . '#sp-cat-social' );
+	exit;
 }
-add_action('admin_notices', 'sphotography_friend_links_admin_notice');
+add_action( 'admin_post_sphotography_friend_links_action', 'sphotography_handle_friend_links_actions' );
+
+/**
+ * Old page function (no longer used, kept for reference)
+ */
+function sphotography_friend_links_page() {
+	// Legacy function - settings now folded into main settings page
+	wp_safe_redirect( admin_url( 'admin.php?page=sphotography-settings#sp-cat-social' ) );
+	exit;
+}
+
+// REMOVED: admin_notices hook - now shown in main menu badge (see functions.php sphotography_register_admin_menu)
 function sphotography_register_friend_links_routes() {
 	$ns = 'sphotography/v1';
 	register_rest_route($ns, '/friend-links', array('methods' => WP_REST_Server::READABLE, 'callback' => 'sphotography_rest_list_friend_links', 'permission_callback' => '__return_true'));
