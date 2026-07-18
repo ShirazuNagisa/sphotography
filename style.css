@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.3.7
+Version: 1.3.8
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -55,6 +55,9 @@ Text Domain: sphotography
     --text-muted: #666666;
     --primary: var(--sphotography-primary-color, #1abc9c);
     --bg: var(--sphotography-bg, #0b0b0b);
+    /* Form-field background (v1.3.8): dark by default, flipped to white in the
+       light-mode blocks below so front-end inputs aren't dark-on-dark. */
+    --field-bg: var(--bg);
 
     --color-surface: rgba(255,255,255,0.06);
     --color-surface-hover: rgba(255,255,255,0.10);
@@ -144,6 +147,7 @@ body.sphotography-night-force-light {
     --glass-elevated-bg: rgba(245, 245, 245, 0.78);
     --glass-floating-bg: rgba(245, 245, 245, 0.60);
     --glass-sidebar-bg: rgba(240, 240, 240, 0.65);
+    --field-bg: #ffffff;
     --color-border: rgba(0, 0, 0, 0.08);
     --color-border-hover: rgba(0, 0, 0, 0.14);
     --color-surface: rgba(0,0,0,0.04);
@@ -161,6 +165,7 @@ body.sphotography-night-force-light {
         --glass-elevated-bg: rgba(245, 245, 245, 0.78);
         --glass-floating-bg: rgba(245, 245, 245, 0.60);
         --glass-sidebar-bg: rgba(240, 240, 240, 0.65);
+        --field-bg: #ffffff;
         --color-border: rgba(0, 0, 0, 0.08);
         --color-border-hover: rgba(0, 0, 0, 0.14);
         --color-surface: rgba(0,0,0,0.04);
@@ -1760,7 +1765,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     padding: 9px 12px;
     border-radius: 9px;
     border: 1px solid var(--color-border);
-    background: var(--bg);
+    background: var(--field-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
     font-family: var(--font-body);
@@ -1817,7 +1822,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     padding: 9px 12px;
     border-radius: 9px;
     border: 1px dashed var(--color-border);
-    background: var(--bg);
+    background: var(--field-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
     line-height: var(--leading-normal);
@@ -2076,7 +2081,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     padding: 8px;
     border: 1px solid var(--color-border);
     border-radius: 9px;
-    background: var(--bg);
+    background: var(--field-bg);
     max-height: 148px;
     overflow-y: auto;
 }
@@ -3050,7 +3055,9 @@ body.sphotography-cursor-dot textarea {
 .side-panel {
     position: fixed;
     right: 16px;
-    top: 16px;
+    /* Sits just below the page-links bar (v1.3.8); the open/close FLIP grows
+       from / shrinks to the clicked bar button. */
+    top: 62px;
     bottom: 16px;
     width: min(620px, calc(100vw - 380px));
     z-index: 116;
@@ -3073,6 +3080,9 @@ body.sphotography-cursor-dot textarea {
     opacity: 1;
     pointer-events: auto;
 }
+/* During the JS FLIP the Web-Animations API drives transform/opacity; kill the
+   CSS transition so the two don't fight. */
+.side-panel--instant { transition: none !important; }
 .side-panel-scroll {
     position: absolute;
     inset: 0;
@@ -3160,7 +3170,7 @@ body.sphotography-cursor-dot textarea {
     padding: 9px 12px;
     border-radius: 9px;
     border: 1px solid var(--color-border);
-    background: var(--bg);
+    background: var(--field-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
     font-family: var(--font-body);
@@ -3232,7 +3242,7 @@ body.sphotography-cursor-dot textarea {
     padding: 8px 14px;
     border-radius: 999px;
     border: 1px solid var(--color-border);
-    background: var(--bg);
+    background: var(--field-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
     font-family: var(--font-body);
@@ -3247,7 +3257,7 @@ body.sphotography-cursor-dot textarea {
     padding: 9px 15px;
     border-radius: 18px;
     border: 1px solid var(--color-border);
-    background: var(--bg);
+    background: var(--field-bg);
     color: var(--text-primary);
     font-size: var(--text-sm);
     font-family: var(--font-body);

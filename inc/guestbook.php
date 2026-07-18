@@ -102,54 +102,66 @@ function sphotography_guestbook_random_count() {
 
 /**
  * Register the guestbook settings admin submenu and save handler.
+ * REMOVED: submenu registration moved to main settings (see admin/theme-settings.php render function)
  */
 function sphotography_register_guestbook_admin() {
-	add_submenu_page(
-		'sphotography-settings',
-		__( '留言板设置', 'sphotography' ),
-		__( '留言板', 'sphotography' ),
-		'manage_options',
-		'sphotography-guestbook',
-		'sphotography_render_guestbook_admin'
-	);
 	add_action( 'admin_post_sphotography_save_guestbook', 'sphotography_handle_guestbook_save' );
 }
 add_action( 'admin_menu', 'sphotography_register_guestbook_admin' );
 
 /**
- * Render the guestbook settings admin page.
+ * Render the guestbook settings board for the settings page.
+ * Returns markup (called from sphotography_render_settings_page in admin/theme-settings.php).
  */
-function sphotography_render_guestbook_admin() {
+function sphotography_render_guestbook_board() {
 	if ( ! current_user_can( 'manage_options' ) ) {
-		wp_die( esc_html__( '权限不足。', 'sphotography' ) );
+		return '';
 	}
 
 	$random_count = sphotography_guestbook_random_count();
+
+	ob_start();
 	?>
-	<div class="wrap sphotography-settings-wrap">
-		<h1 class="sphotography-settings-title"><?php _e( '留言板设置', 'sphotography' ); ?></h1>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sphotography-settings-main">
-			<input type="hidden" name="action" value="sphotography_save_guestbook">
-			<?php wp_nonce_field( 'sphotography_save_guestbook', 'sphotography_guestbook_nonce' ); ?>
+	<!-- Guestbook Settings Board (folded into social category) -->
+	<div class="sphotography-module" id="sp-mod-guestbook">
+		<div class="sphotography-module-header">
+			<span class="sphotography-module-icon dashicons dashicons-testimonial"></span>
+			<h3><?php _e( '留言板设置', 'sphotography' ); ?></h3>
+		</div>
+		<div class="sphotography-module-body">
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="sphotography_save_guestbook">
+				<?php wp_nonce_field( 'sphotography_save_guestbook', 'sphotography_guestbook_nonce' ); ?>
 
-			<div class="sphotography-field">
-				<label class="sphotography-label" for="sphotography-guestbook-random"><?php _e( '随机展示条数', 'sphotography' ); ?></label>
-				<input type="number"
-					id="sphotography-guestbook-random"
-					name="sphotography_guestbook_random"
-					value="<?php echo esc_attr( $random_count ); ?>"
-					min="1" max="30" step="1">
-				<p class="sphotography-desc"><?php _e( '随机模式下展示的留言条数，范围 1-30。默认 8。', 'sphotography' ); ?></p>
-			</div>
+				<div class="sphotography-field">
+					<label class="sphotography-label" for="sphotography-guestbook-random"><?php _e( '随机展示条数', 'sphotography' ); ?></label>
+					<input type="number"
+						id="sphotography-guestbook-random"
+						name="sphotography_guestbook_random"
+						value="<?php echo esc_attr( $random_count ); ?>"
+						min="1" max="30" step="1">
+					<p class="sphotography-desc"><?php _e( '随机模式下展示的留言条数，范围 1-30。默认 8。', 'sphotography' ); ?></p>
+				</div>
 
-			<?php submit_button(); ?>
-		</form>
+				<?php submit_button( __( '保存', 'sphotography' ), 'primary', 'submit', false ); ?>
+			</form>
+		</div>
 	</div>
 	<?php
+	return ob_get_clean();
 }
 
 /**
- * Handle guestbook settings save.
+ * Render the guestbook settings admin page (legacy, no longer used but kept for compatibility).
+ */
+function sphotography_render_guestbook_admin() {
+	// Legacy function - settings now folded into main settings page
+	wp_safe_redirect( admin_url( 'admin.php?page=sphotography-settings#sp-cat-social' ) );
+	exit;
+}
+
+/**
+ * Handle guestbook settings save - redirects to main settings page.
  */
 function sphotography_handle_guestbook_save() {
 	if ( ! current_user_can( 'manage_options' ) ) {
@@ -165,7 +177,7 @@ function sphotography_handle_guestbook_save() {
 	$random_count = min( max( $random_count, 1 ), 30 );
 	update_option( 'sphotography_guestbook_random', $random_count );
 
-	wp_redirect( add_query_arg( 'page', 'sphotography-guestbook', admin_url( 'admin.php' ) ) );
+	wp_redirect( add_query_arg( 'page', 'sphotography-settings', admin_url( 'admin.php' ) ) . '#sp-cat-social' );
 	exit;
 }
 

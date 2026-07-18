@@ -369,6 +369,8 @@
         visibleEntities: new Map(),
         photoPanels: new Map(),
         reconcileToken: 0,
+        photoClickSeq: 0,       // invalidates stale async map-click callbacks (v1.3.8)
+        photoClickLock: null,   // {key,time} — swallows rapid repeat clicks on one target
         openedPostId: null,
         activePhotoPanelKey: null,
         articleMotion: null,
@@ -927,7 +929,11 @@
             state.clickedMarker = true; // suppress the map-background close handler
             var props = e.features[0].properties || {};
             var id = props.id != null ? String(props.id) : '';
-            if (id) openRegionPanel(id);
+            if (id) {
+                if (photoClickThrottled('region:' + id)) { if (e.originalEvent) e.originalEvent.stopPropagation(); return; }
+                ++state.photoClickSeq; // supersede any pending cluster callback
+                openRegionPanel(id);
+            }
             if (e.originalEvent) e.originalEvent.stopPropagation();
         });
     }
@@ -941,6 +947,8 @@
             state.clickedMarker = true;
             var id = photoId(e.features[0].properties);
             if (id) {
+                if (photoClickThrottled('photo:' + id)) { if (e.originalEvent) e.originalEvent.stopPropagation(); return; }
+                ++state.photoClickSeq; // supersede any pending cluster callback
                 state.openPhotoIds.clear();
                 state.openPhotoIds.add(id);
                 reconcileOpenPhotoPanels();
@@ -952,7 +960,16 @@
             if (!e.features||e.features.length===0) return;
             state.clickedMarker = true;
             var clusterFeature = e.features[0];
+            var cid = clusterFeature.properties && clusterFeature.properties.cluster_id;
+            // (c) same-target opening-lock: swallow rapid repeat clicks on the
+            //     same cluster so a "did it work?" double-click can't spawn a
+            //     second panel while the first is still resolving.
+            if (photoClickThrottled('cluster:' + cid)) { if (e.originalEvent) e.originalEvent.stopPropagation(); return; }
+            // (a) sequence guard: getClusterLeaves is async; if another click
+            //     (or a close) happens first, this stale callback must bail.
+            var seq = ++state.photoClickSeq;
             getClusterLeaves(clusterFeature).then(function(leaves) {
+                if (seq !== state.photoClickSeq) return;
                 state.openPhotoIds.clear();
                 leaves.forEach(function(leaf) {
                     var id = photoId(leaf.properties);
@@ -970,6 +987,7 @@
             }
             closeAllPhotoPanels();
             closeArticlePanel();
+            closeAllSidePanels();
             if (state.isMobile) { closeSidebar(); }
         });
 
@@ -986,6 +1004,17 @@
     // ---------------------------------------------------------------
     function photoId(props) {
         return props && props.id !== undefined && props.id !== null ? String(props.id) : '';
+    }
+
+    // Opening-lock (v1.3.8): true if the same map target was clicked within the
+    // last 450ms — swallows accidental double-clicks that would otherwise queue
+    // a second panel while the first is still resolving.
+    function photoClickThrottled(key) {
+        var now = Date.now();
+        var last = state.photoClickLock;
+        if (last && last.key === key && (now - last.time) < 450) { return true; }
+        state.photoClickLock = { key: key, time: now };
+        return false;
     }
 
     function getClusterLeaves(feature) {
@@ -2028,7 +2057,7 @@
         bar.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-sp-panel]');
             if (!btn) return;
-            toggleSidePanel(btn.getAttribute('data-sp-panel'));
+            toggleSidePanel(btn.getAttribute('data-sp-panel'), btn);
         });
     }
 
@@ -2069,17 +2098,62 @@
         return panel;
     }
 
-    function toggleSidePanel(which) {
+    function toggleSidePanel(which, btn) {
         if (sidePanels.open === which) { closeSidePanel(which); return; }
-        openSidePanel(which);
+        openSidePanel(which, btn);
     }
 
-    function openSidePanel(which) {
+    // FLIP a side panel between its clicked bar-button rect and its resting box,
+    // reusing the article-panel motion. `srcRect` is the button rect; on open we
+    // grow from it, on close we shrink back to it.
+    function flipSidePanel(panel, srcRect, opening, onDone) {
+        var reduce = state.isMobile || prefersReducedMotion() || !srcRect;
+        if (reduce) {
+            // No FLIP — let the CSS transition handle the slide/fade.
+            panel.classList.toggle('active', !!opening);
+            if (onDone) { setTimeout(onDone, opening ? 0 : 340); }
+            return;
+        }
+        // Snap to the resting layout (transition off) so we can measure the true box.
+        panel.classList.add('side-panel--instant');
+        panel.classList.add('active');
+        void panel.offsetHeight;
+        var dst = panel.getBoundingClientRect();
+        if (!dst.width) {
+            panel.classList.toggle('active', !!opening);
+            requestAnimationFrame(function () { panel.classList.remove('side-panel--instant'); });
+            if (onDone) onDone();
+            return;
+        }
+        var shrunk = { transform: collapseTransform(srcRect, dst), opacity: 0.15, borderRadius: '999px' };
+        var full = { transform: 'translate(0,0) scale(1,1)', opacity: 1, borderRadius: window.getComputedStyle(panel).borderRadius };
+        var frames = opening ? [shrunk, full] : [full, shrunk];
+        if (panel._flip) { panel._flip.cancel(); panel._flip = null; }
+        panel.style.transformOrigin = 'top left';
+        var anim = panel.animate(frames, {
+            duration: opening ? ARTICLE_MOTION.openDuration : ARTICLE_MOTION.closeDuration,
+            easing: ARTICLE_MOTION.easing,
+            fill: 'both'
+        });
+        panel._flip = anim;
+        anim.onfinish = function () {
+            panel._flip = null;
+            panel.style.transform = '';
+            panel.style.transformOrigin = '';
+            if (!opening) panel.classList.remove('active');
+            panel.classList.remove('side-panel--instant');
+            if (onDone) onDone();
+        };
+    }
+
+    function openSidePanel(which, btn) {
         ensureSidePanels();
+        var srcRect = btn ? btn.getBoundingClientRect() : null;
         var doOpen = function () {
             sidePanels.open = which;
             var panel = sidePanels[which];
-            panel.classList.add('active');
+            panel._srcRect = srcRect; // remember origin so outside-close can shrink back
+            flipSidePanel(panel, srcRect, true);
             if (which === 'friend') { loadFriendPanel(panel); } else { loadGuestbookPanel(panel); }
         };
         // 友链 / 留言 share the right slot: collapse the other one first.
@@ -2092,10 +2166,15 @@
 
     function closeSidePanel(which, cb) {
         var panel = sidePanels[which];
-        if (!panel) { if (cb) cb(); return; }
-        panel.classList.remove('active');
+        if (!panel || !panel.classList.contains('active')) { if (panel) panel.classList.remove('active'); if (sidePanels.open === which) sidePanels.open = null; if (cb) cb(); return; }
         if (sidePanels.open === which) sidePanels.open = null;
-        if (cb) setTimeout(cb, 320);
+        flipSidePanel(panel, panel._srcRect, false, cb);
+    }
+
+    // Close whichever side panel (友链/留言) is open. Used by the map-blank
+    // click and the article-image map-fly so the panels don't obscure the map.
+    function closeAllSidePanels() {
+        if (sidePanels.open) closeSidePanel(sidePanels.open);
     }
 
     // ---- 友链 ----
@@ -2620,6 +2699,7 @@
                 img.addEventListener('click', function (event) {
                     event.preventDefault();
                     event.stopPropagation();
+                    closeAllSidePanels(); // don't let 友链/留言 obscure the fly-to
                     flyMapToPhoto(geo.coords);
                 });
             })(imgs[i]);
@@ -3795,6 +3875,7 @@
     // Shrink the panel back into its map point, then run onDone (removal).
     function animatePhotoPanelClose(el, coords, onDone) {
         if (!el) { if (onDone) onDone(); return; }
+        el._closing = true; // spare legitimately-closing panels from the hard sweep
         el.style.pointerEvents = 'none';
         var target = pointRectFor(coords);
         var panelRect = el.getBoundingClientRect();
@@ -3990,9 +4071,20 @@
 
     function closeAllPhotoPanels() {
         state.reconcileToken++;
+        state.photoClickSeq++;   // invalidate any in-flight cluster callback (v1.3.8)
         state.openPhotoIds.clear();
         dismissAllPhotoPanels();
         closeAllRegionPanels();
+        // (b) hard sweep: remove any stray .photo-grid-panel nodes that escaped
+        //     the state maps (the "can't-close orphan" from a lost race). Panels
+        //     that dismissAllPhotoPanels/closeAllRegionPanels just started
+        //     animating are flagged _closing, so only true orphans are removed.
+        if (dom.photoPanels) {
+            var strays = dom.photoPanels.querySelectorAll('.photo-grid-panel');
+            for (var i = 0; i < strays.length; i++) {
+                if (!strays[i]._closing) { strays[i].remove(); }
+            }
+        }
     }
 
     // ---------------------------------------------------------------
