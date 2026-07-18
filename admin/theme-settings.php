@@ -1778,21 +1778,23 @@ function sphotography_admin_enqueue_settings( $hook ) {
         /* Two-column layout: settings on the left, sticky index on the right.
            v1.4.0: main column is full-width with boards stacked one-per-row;
            TOC slimmed to 200px so the main column has comfortable breathing room. */
-        .sphotography-settings-layout {
-            display: flex;
-            align-items: flex-start;
+        /* v1.4.2 fix: 两列布局改用 CSS Grid（此前 display:flex 在部分环境下未生效，
+           整个索引栏退化为块级铺满整行、掉到页面最下方）。Grid 显式声明两列，物理上
+           不可能堆叠；选择器加长并对 display 用 !important，确保不被其它样式覆盖。
+           左列 minmax(0,1fr) 允许收缩不溢出，右列固定 200px 作为索引目录。 */
+        .sphotography-settings-wrap .sphotography-settings-layout {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 200px;
             gap: 28px;
+            align-items: start;
         }
         .sphotography-settings-main {
-            flex: 1 1 auto;
             min-width: 0;
-            width: 100%;
         }
         .sphotography-toc {
-            flex: 0 0 200px;
             position: sticky;
             top: 46px;
-            align-self: flex-start;
+            align-self: start;
         }
         /* v1.4.2: 每个大板块 = 一张独立卡片，彼此不相连（靠 margin 间隔）。
            卡片圆角跟随前台 card_radius 主题设置。内部子模块扁平化为带分隔线的
@@ -1989,7 +1991,7 @@ function sphotography_admin_enqueue_settings( $hook ) {
         }
         .sphotography-toc-save:active { transform: translateY(0); }
         @media (max-width: 960px) {
-            .sphotography-settings-layout { display: block; }
+            .sphotography-settings-wrap .sphotography-settings-layout { display: block !important; }
             .sphotography-toc { display: none; }
         }
         /* v1.4.2: 页顶主题动态图标占位容器——现留空（仅 HTML 注释标记），
