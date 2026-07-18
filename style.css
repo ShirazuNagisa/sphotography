@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.1
+Version: 1.4.2
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -849,7 +849,7 @@ body.sidebar-collapsed .sidebar {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: calc(var(--panel-radius) * 0.65);
+    border-radius: 50%; /* v1.4.2: 永久圆形 */
     border: 1px solid var(--color-border);
     background: var(--glass-floating-bg);
     backdrop-filter: var(--glass-floating-blur);
@@ -930,7 +930,7 @@ body.sidebar-collapsed .sidebar {
     backdrop-filter: var(--glass-floating-blur);
     -webkit-backdrop-filter: var(--glass-floating-blur);
     color: var(--text-secondary);
-    border-radius: calc(var(--panel-radius) * 0.65);
+    border-radius: 50%; /* v1.4.2: 永久圆形 */
     box-shadow: var(--shadow-floating);
     transition:
         background var(--duration-fast) var(--ease-out-expo),
@@ -1051,6 +1051,9 @@ body.sidebar-collapsed .sidebar-expand-btn {
     -webkit-mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 100%);
             mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 100%);
 }
+/* v1.4.2: 滚动到最底部时淡出底部毛玻璃带——下方已无内容需要虚化，避免最后一行被糊住。
+   与 .is-visible 同特异度，靠后声明取胜；沿用上方 260ms opacity 过渡平滑淡出。 */
+.sp-frost-band--bottom.is-at-bottom { opacity: 0; }
 
 .article-nav-btn {
     position: absolute;
@@ -2132,6 +2135,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     padding: 4px;
     flex-shrink: 0;
 }
+.comment-emoji-panel[hidden] { display: none; } /* v1.4.2: display:flex below would otherwise override the [hidden] attribute, leaving the panel always open. */
 .comment-emoji-panel {
     display: flex;
     flex-wrap: wrap;
@@ -3091,6 +3095,8 @@ body.sphotography-cursor-dot textarea {
 }
 .page-links-bar::-webkit-scrollbar { width: 0; height: 0; }
 .page-link-btn {
+    position: relative; /* v1.4.2: 抬到共享药丸之上 */
+    z-index: 1;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -3104,9 +3110,31 @@ body.sphotography-cursor-dot textarea {
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
-    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+    transition: color var(--duration-fast) ease;
 }
-.page-link-btn:hover { background: var(--color-surface-hover); color: var(--primary); }
+/* v1.4.2: 悬停高亮改由共享滑动药丸提供，按钮本身只切换文字色（不再各自铺背景）。 */
+.page-link-btn:hover { color: var(--primary); }
+
+/* v1.4.2 — iOS-26 风格“流动高亮”:一枚共享药丸,hover 时滑动+变宽到目标按钮下方,
+   高亮在按钮间流动而非各自独立点亮。离开整栏时淡出;尊重 reduced-motion。 */
+.page-link-pill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: 999px;
+    background: var(--color-surface-hover);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 0;
+    transition:
+        transform 300ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)),
+        width 300ms var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)),
+        opacity 220ms ease;
+}
+.page-links-bar.pill-active .page-link-pill { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+    .page-link-pill { transition: opacity 120ms ease; }
+}
 .page-link-ico { display: inline-flex; color: var(--primary); }
 
 /* Right-half side panels — mirror the article panel motion but slide from the

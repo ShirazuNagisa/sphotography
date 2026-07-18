@@ -1,6 +1,6 @@
 {
-  "version": "1.4.1",
-  "changelog": "1、后台「主题全局配置」恢复为扁平化布局：去掉 v1.3.8 的分类标题，原八大分组的板块改为单列平铺，仅在组与组之间留 1px 分隔线；右侧配置索引保留可展开的二级结构。2、修复照片墙按键收起时的闪烁：原本 CSS animation-fill-mode: forwards 在 close 动画的 delay 期间回到静态的 opacity:0，造成可见→不可见→可见的闪烁；现改用 Web Animations API（Element.animate）驱动 open/close，按钮显隐完全受 JS 控制，关闭时不再有跳帧。3、修复照片墙最左一列照片按键被面板左缘遮蔽：原 popup 是 cell 的子节点，受侧边面板的 overflow:hidden + backdrop-filter 堆叠上下文双重裁剪，最左列的按钮会被切掉；现将 popup 挂到 body 上的 #pw-popup-portal 容器中（z-index 9999），用 cell.getBoundingClientRect() 计算坐标并定位，避开面板的 stacking context；最左列的照片自动将 popup 翻到右侧。",
+  "version": "1.4.2",
+  "changelog": "1、重构后台「主题全局配置」页：每个大板块（外观与颜色 / 边栏与个人 / 动画 / 阅读与评论 / 地图 / 社交 / 其他 / 系统）各自成为一张独立卡片、彼此以间隙分隔，圆角跟随前台「卡片圆角」设置；实时预览作为最顶部的独立卡片；页顶预留主题动态图标占位容器；修复此前 sp-mod-card 缺失闭合标签导致的结构错乱。2、右侧配置索引改为手风琴式（同时只展开一个大板块的子索引），子索引滑下改用 240ms 减速曲线更丝滑并尊重「减弱动态效果」；保存按钮位于索引底部，保存/重置按钮对位于最后一张卡片底部。3、边栏展开/收起按钮永久改为正圆形。4、修复评论表情面板点击表情不插入输入框：改用 mousedown+preventDefault 保住光标，并补发 input 事件；同时修复表情面板 [hidden] 被 display:flex 覆盖而无法收起的问题。5、页面链接栏新增 iOS-26 风格「流动高亮」——悬停时共享药丸在按钮间滑动变宽，尊重「减弱动态效果」。6、文章展开页 / 友链 / 照片墙滚动到最底部时淡出底部毛玻璃带（留言板保持原样）。7、开屏动画「流光穿越」暂时停用（选项置灰不可选，代码保留待日后重启用）。8、重构后台「添加友链」：改为按钮 + 居中弹窗，表单移出设置大表单，彻底修复点「保存设置」误弹「请填写此字段」并阻断保存的问题。",
   "zip_url": "https://github.com/ShirazuNagisa/sphotography/archive/refs/heads/master.zip",
   "check_url": "https://raw.githubusercontent.com/ShirazuNagisa/sphotography/master/version.json"
 }
