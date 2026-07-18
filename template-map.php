@@ -105,8 +105,18 @@ if ( ! $sphotography_sidebar_default_open ) {
                 </button>
             </div>
             <div id="sidebar-filter-panel" class="sidebar-filter-panel" hidden>
-                <div class="filter-panel-title"><?php esc_html_e( '按分类筛选', 'sphotography' ); ?></div>
-                <div id="filter-chips" class="filter-chips"></div>
+                <div class="filter-panel-header">
+                    <span class="filter-panel-title"><?php esc_html_e( '筛选', 'sphotography' ); ?></span>
+                    <button type="button" id="filter-clear" class="filter-clear" hidden><?php esc_html_e( '清除', 'sphotography' ); ?></button>
+                </div>
+                <div class="filter-group">
+                    <div class="filter-group-label"><?php esc_html_e( '分类', 'sphotography' ); ?></div>
+                    <div id="filter-chips-categories" class="filter-chips"></div>
+                </div>
+                <div class="filter-group">
+                    <div class="filter-group-label"><?php esc_html_e( '地区', 'sphotography' ); ?></div>
+                    <div id="filter-chips-regions" class="filter-chips"></div>
+                </div>
             </div>
         </div>
 

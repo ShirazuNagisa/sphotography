@@ -1307,7 +1307,26 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '为每张已定位照片计算其所属的省/市行政区划（点-在-多边形），结果缓存在数据库中。首次运行会自动从 CDN 下载边界数据（约 3.7MB）到 uploads 目录并缓存，之后无需再下载；因此主题包本身保持精简。新上传或修改经纬度的照片会自动索引（前提是边界数据已下载）；点此可回填存量照片。若服务器无法访问外网，错误提示会给出手动放置文件的路径与来源。', 'sphotography' ); ?></p>
                     </div>
                 </div>
-            </div>
+                </div>
+
+                <!-- Sub-board 4: EXIF 工具 / 照片元数据 (v1.4.0) -->
+                <div class="sphotography-module" id="sp-mod-exif-tools">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-camera"></span>
+                    <h3><?php _e( 'EXIF 工具 / 照片元数据', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field">
+                        <label class="sphotography-label"><?php _e( '重新读取全部照片 EXIF', 'sphotography' ); ?></label>
+                        <button type="button" id="sphotography-exif-backfill" class="button button-secondary" style="display:inline-flex;align-items:center;gap:4px;">
+                            <span class="dashicons dashicons-update" style="font-size:16px;width:16px;height:16px;"></span>
+                            <?php _e( '开始回填', 'sphotography' ); ?>
+                        </button>
+                        <span id="sphotography-exif-backfill-status" style="margin-left:12px;font-size:0.8125rem;color:var(--sp-text-muted);font-variant-numeric:tabular-nums;"></span>
+                        <p class="sphotography-desc"><?php _e( '为所有已上传的图片重新读取 EXIF（光圈 / 快门 / ISO），常用于：v1.3.9 之前上传的存量照片没有这些字段；或者刚迁移站点后想刷新元数据。处理分批进行（每批 20 张），单张照片失败不会中断整批；处理完成后会清空照片墙缓存，下次打开照片墙即可看到新数据。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+                </div>
             </section>
 
             <!-- ============================================ -->
@@ -1591,20 +1610,70 @@ function sphotography_render_settings_page() {
                 <p class="sphotography-toc-heading"><?php _e( '配置索引', 'sphotography' ); ?></p>
                 <nav class="sphotography-toc-nav">
                     <?php
+                    // v1.4.0: nested TOC. Each category gets its sub-boards
+                    // (the same `.sphotography-module` ids in the main
+                    // column) listed beneath it. 实时预览 is a leaf.
                     $toc_items = array(
-                        'sphotography-preview-sticky-wrap' => __( '实时预览', 'sphotography' ),
-                        'sp-cat-appearance'      => __( '外观与颜色', 'sphotography' ),
-                        'sp-cat-sidebar'         => __( '边栏与个人', 'sphotography' ),
-                        'sp-cat-animation'       => __( '动画', 'sphotography' ),
-                        'sp-cat-reading_comments' => __( '阅读与评论', 'sphotography' ),
-                        'sp-cat-map'             => __( '地图', 'sphotography' ),
-                        'sp-cat-social'          => __( '社交', 'sphotography' ),
-                        'sp-cat-other'           => __( '其他', 'sphotography' ),
-                        'sp-cat-system'          => __( '系统', 'sphotography' ),
+                        array( 'id' => 'sphotography-preview-sticky-wrap', 'label' => __( '实时预览', 'sphotography' ) ),
+                        array( 'id' => 'sp-cat-appearance', 'label' => __( '外观与颜色', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-theme-color',     'label' => __( '配色', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-theme-darkmode',  'label' => __( '明暗', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-theme-font',      'label' => __( '字体光标', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-card',            'label' => __( '卡片', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-date',            'label' => __( '日期', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-sidebar', 'label' => __( '边栏与个人', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-sidebar-site',     'label' => __( '站点', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-sidebar-profile',  'label' => __( '个人信息', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-sidebar-external', 'label' => __( '外站', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-animation', 'label' => __( '动画', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-animation-basic',    'label' => __( '基础', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-animation-advanced', 'label' => __( '高级', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-reading_comments', 'label' => __( '阅读与评论', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-reading',          'label' => __( '阅读', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-comments',         'label' => __( '评论显示', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-comments-feature', 'label' => __( '评论功能', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-map', 'label' => __( '地图', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-mapstyle',         'label' => __( '底图', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-mapstyle-marker',  'label' => __( '标记聚合', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-mapstyle-region',  'label' => __( '区域着色', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-exif-tools',       'label' => __( 'EXIF 工具', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-social', 'label' => __( '社交', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-friend-links', 'label' => __( '友链管理', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-other', 'label' => __( '其他', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-footer', 'label' => __( '页脚', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-cdn',    'label' => __( 'CDN', 'sphotography' ) ),
+                        ) ),
+                        array( 'id' => 'sp-cat-system', 'label' => __( '系统', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-experimental', 'label' => __( '实验性功能', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-version',      'label' => __( '版本与更新', 'sphotography' ) ),
+                        ) ),
                     );
-                    foreach ( $toc_items as $anchor => $label ) :
+                    foreach ( $toc_items as $item ) :
+                        $has_children = ! empty( $item['children'] );
                     ?>
-                        <a class="sphotography-toc-link" href="#<?php echo esc_attr( $anchor ); ?>" data-target="<?php echo esc_attr( $anchor ); ?>"><?php echo esc_html( $label ); ?></a>
+                        <div class="sphotography-toc-group<?php echo $has_children ? ' has-children' : ''; ?>">
+                            <?php if ( $has_children ) : ?>
+                                <button type="button" class="sphotography-toc-link sphotography-toc-parent" data-target="<?php echo esc_attr( $item['id'] ); ?>" aria-expanded="false">
+                                    <span class="sphotography-toc-label"><?php echo esc_html( $item['label'] ); ?></span>
+                                    <span class="sphotography-toc-chevron dashicons dashicons-arrow-right" aria-hidden="true"></span>
+                                </button>
+                                <div class="sphotography-toc-children">
+                                    <div class="sphotography-toc-child-wrap">
+                                        <?php foreach ( $item['children'] as $child ) : ?>
+                                            <a class="sphotography-toc-link sphotography-toc-child" href="#<?php echo esc_attr( $child['id'] ); ?>" data-target="<?php echo esc_attr( $child['id'] ); ?>"><?php echo esc_html( $child['label'] ); ?></a>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php else : ?>
+                                <a class="sphotography-toc-link sphotography-toc-leaf" href="#<?php echo esc_attr( $item['id'] ); ?>" data-target="<?php echo esc_attr( $item['id'] ); ?>"><?php echo esc_html( $item['label'] ); ?></a>
+                            <?php endif; ?>
+                        </div>
                     <?php endforeach; ?>
                 </nav>
                 <button type="submit" form="sphotography-settings-form" class="button button-primary sphotography-toc-save">
@@ -1686,7 +1755,9 @@ function sphotography_admin_enqueue_settings( $hook ) {
             border-radius: 16px;
             font-family: {$sp_serif};
         }
-        /* Two-column layout: settings on the left, sticky index on the right. */
+        /* Two-column layout: settings on the left, sticky index on the right.
+           v1.4.0: main column is full-width with boards stacked one-per-row;
+           TOC slimmed to 200px so the main column has comfortable breathing room. */
         .sphotography-settings-layout {
             display: flex;
             align-items: flex-start;
@@ -1695,12 +1766,21 @@ function sphotography_admin_enqueue_settings( $hook ) {
         .sphotography-settings-main {
             flex: 1 1 auto;
             min-width: 0;
+            width: 100%;
         }
         .sphotography-toc {
-            flex: 0 0 210px;
+            flex: 0 0 200px;
             position: sticky;
             top: 46px;
             align-self: flex-start;
+        }
+        /* v1.4.0: force every board to fill the main column regardless of
+           parent flex/grid quirks. */
+        .sphotography-settings-main > .sphotography-module,
+        .sphotography-settings-main > .sp-cat,
+        .sphotography-settings-main > #sphotography-preview-sticky-wrap {
+            width: 100%;
+            min-width: 0;
         }
         .sphotography-toc-inner {
             background: var(--sp-surface);
@@ -1741,6 +1821,56 @@ function sphotography_admin_enqueue_settings( $hook ) {
             background: var(--sp-surface-2);
             color: var(--sp-accent);
             border-left-color: var(--sp-accent);
+            font-weight: 600;
+        }
+        /* v1.4.0: nested TOC. Each parent is a button with a chevron; the
+           children list is hidden by default and slides down when the
+           group gains .is-expanded. The scroll-spy auto-expands the
+           currently-visible category. */
+        .sphotography-toc-group { display: block; }
+        .sphotography-toc-parent {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            width: 100%;
+            background: transparent;
+            border: none;
+            font-family: inherit;
+            cursor: pointer;
+            text-align: left;
+        }
+        .sphotography-toc-parent .sphotography-toc-label { flex: 1 1 auto; }
+        .sphotography-toc-chevron {
+            width: 14px; height: 14px;
+            font-size: 14px; line-height: 1;
+            color: var(--sp-text-muted);
+            transition: transform 160ms ease, color 160ms ease;
+            flex: 0 0 auto;
+        }
+        .sphotography-toc-group.is-expanded > .sphotography-toc-parent .sphotography-toc-chevron {
+            transform: rotate(90deg);
+            color: var(--sp-accent);
+        }
+        .sphotography-toc-children {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 160ms ease;
+            overflow: hidden;
+        }
+        .sphotography-toc-children > .sphotography-toc-child-wrap {
+            min-height: 0;
+            overflow: hidden;
+        }
+        .sphotography-toc-group.is-expanded > .sphotography-toc-children {
+            grid-template-rows: 1fr;
+        }
+        .sphotography-toc-child {
+            padding-left: 24px !important;
+            font-size: 0.8125rem !important;
+        }
+        .sphotography-toc-group.is-expanded > .sphotography-toc-parent {
+            color: var(--sp-accent);
             font-weight: 600;
         }
         .sphotography-toc-save {
@@ -2214,6 +2344,11 @@ function sphotography_admin_enqueue_settings( $hook ) {
         'releaseUrl'     => 'https://github.com/ShirazuNagisa/sphotography/releases',
         'updateNonce'    => wp_create_nonce( 'sphotography_update_nonce' ),
         'geoRebuildNonce' => wp_create_nonce( 'sphotography_geo_rebuild' ),
+        // v1.4.0: nonce for the EXIF backfill batch AJAX.
+        'exifBackfillNonce' => wp_create_nonce( 'sphotography_exif_backfill' ),
+        'exifBackfillRunning' => __( '处理中…', 'sphotography' ),
+        'exifBackfillDone'    => __( '✓ 完成，已处理 %1$d 张照片，新提取了 %2$d 个 EXIF 字段。', 'sphotography' ),
+        'exifBackfillFail'    => __( '回填失败：', 'sphotography' ),
         'aiTestNonce'    => wp_create_nonce( 'sphotography_ai_test' ),
         'aiTesting'      => __( '测试中…', 'sphotography' ),
         'aiTestOk'       => __( '连接成功', 'sphotography' ),

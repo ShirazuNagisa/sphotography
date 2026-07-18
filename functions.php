@@ -359,6 +359,92 @@ function sphotography_ajax_read_exif() {
 }
 add_action( 'wp_ajax_sphotography_read_exif', 'sphotography_ajax_read_exif' );
 
+// ============================================
+// v1.4.0 — Batch backfill of EXIF (aperture / shutter / ISO) for all
+// existing image attachments. The per-image `sphotography_read_exif` AJAX
+// handles single files; this new handler iterates every image attachment
+// in paginated batches of 20, re-running the EXIF read for any photo that
+// is missing at least one of the three fields. On the final batch it
+// drops the `sphotography_wall_photos` transient so the next photo-wall
+// load shows fresh data.
+// ============================================
+function sphotography_ajax_exif_backfill_batch() {
+    check_ajax_referer( 'sphotography_exif_backfill', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( array( 'message' => __( '权限不足。', 'sphotography' ) ) );
+    }
+
+    $offset = isset( $_POST['offset'] ) ? max( 0, (int) $_POST['offset'] ) : 0;
+    $batch  = 20;
+
+    // All image attachments. We do NOT pre-filter on missing meta because
+    // a single attachment can have aperture but no shutter, and we want
+    // to backfill every missing field.
+    $ids = get_posts( array(
+        'post_type'      => 'attachment',
+        'post_mime_type' => 'image',
+        'post_status'    => 'inherit',
+        'fields'         => 'ids',
+        'numberposts'    => -1,
+        'orderby'        => 'ID',
+        'order'          => 'ASC',
+    ) );
+    $total = count( $ids );
+    $slice = array_slice( $ids, $offset, $batch );
+
+    $new_fields = 0;
+    $skipped    = 0;
+    foreach ( $slice as $id ) {
+        $before = array(
+            'aperture' => (string) get_post_meta( $id, 'aperture', true ),
+            'shutter'  => (string) get_post_meta( $id, 'shutter', true ),
+            'iso'      => (string) get_post_meta( $id, 'iso', true ),
+        );
+        // Skip the file if all three are already present.
+        if ( $before['aperture'] !== '' && $before['shutter'] !== '' && $before['iso'] !== '' ) {
+            $skipped++;
+            continue;
+        }
+        $file_path = get_attached_file( $id );
+        if ( ! $file_path || ! file_exists( $file_path ) ) {
+            $skipped++;
+            continue;
+        }
+        // Run the EXIF read. Failures are swallowed inside
+        // sphotography_read_exif_and_save (it logs a debug string); we
+        // continue with the next attachment.
+        sphotography_read_exif_and_save( $id, $file_path );
+        $after = array(
+            'aperture' => (string) get_post_meta( $id, 'aperture', true ),
+            'shutter'  => (string) get_post_meta( $id, 'shutter', true ),
+            'iso'      => (string) get_post_meta( $id, 'iso', true ),
+        );
+        foreach ( array( 'aperture', 'shutter', 'iso' ) as $k ) {
+            if ( $before[ $k ] === '' && $after[ $k ] !== '' ) {
+                $new_fields++;
+            }
+        }
+    }
+
+    $done = $offset + count( $slice );
+
+    // On the last batch, drop the wall-photos cache so the next
+    // request re-reads with fresh meta.
+    if ( $done >= $total ) {
+        delete_transient( 'sphotography_wall_photos' );
+    }
+
+    wp_send_json_success( array(
+        'total'       => $total,
+        'done'        => $done,
+        'next_offset' => $done,
+        'finished'    => $done >= $total,
+        'new_fields'  => $new_fields,
+        'skipped'     => $skipped,
+    ) );
+}
+add_action( 'wp_ajax_sphotography_exif_backfill', 'sphotography_ajax_exif_backfill_batch' );
+
 // Add "Read EXIF" button to media library fields
 function sphotography_attachment_exif_button( $form_fields, $post ) {
     $form_fields['sphotography_read_exif'] = array(
