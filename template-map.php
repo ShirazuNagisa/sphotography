@@ -23,10 +23,15 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <?php wp_head(); ?>
 </head>
 <?php
-// Sidebar starts collapsed unless the "default expand sidebar" setting is on.
-// Emitting the class server-side avoids a collapsed→open flash on load.
+// Sidebar starts collapsed unless the device-appropriate "default expand
+// sidebar" setting is on. Emitting the class server-side avoids a
+// collapsed→open flash on load. Desktop and mobile have separate defaults
+// (v1.3.7); wp_is_mobile() picks which one applies to this request.
 $sphotography_body_classes = array( 'map-template-body' );
-if ( ! sphotography_get_mod( 'sidebar_default_open' ) ) {
+$sphotography_sidebar_default_open = wp_is_mobile()
+    ? sphotography_get_mod( 'sidebar_default_open_mobile' )
+    : sphotography_get_mod( 'sidebar_default_open_desktop' );
+if ( ! $sphotography_sidebar_default_open ) {
     $sphotography_body_classes[] = 'sidebar-collapsed';
 }
 ?>

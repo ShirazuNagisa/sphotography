@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.3.6
+Version: 1.3.7
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -953,9 +953,40 @@ body.sidebar-collapsed .sidebar-expand-btn {
     z-index: 130;
     pointer-events: none;
     opacity: 0;
+    overflow: hidden;
+    border-radius: var(--panel-radius);
     transition: opacity 200ms var(--ease-out-expo, ease);
 }
 .article-nav-overlay.is-active { opacity: 1; }
+
+/* Frosted gradient bands (v1.3.7) — reused by the article panel and the
+   友链 / 留言 panels. A backdrop-blurred strip masked to fade toward the
+   content, so text blurs as it scrolls under the nav-button rows. */
+.sp-frost-band {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 84px;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0;
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+    transition: opacity 260ms var(--ease-out-expo, ease);
+}
+.sp-frost-band.is-visible { opacity: 1; }
+.sp-frost-band--top {
+    top: 0;
+    background: linear-gradient(to bottom, var(--glass-elevated-bg), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 42%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 0%, #000 42%, transparent 100%);
+}
+.sp-frost-band--bottom {
+    bottom: 0;
+    background: linear-gradient(to top, var(--glass-elevated-bg), transparent);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0%, #000 42%, transparent 100%);
+}
 
 .article-nav-btn {
     position: absolute;
@@ -1220,7 +1251,9 @@ button.article-nav-btn:active { transform: scale(0.94); }
     box-shadow: var(--sphotography-card-shadow, 0 2px 12px rgba(0,0,0,0.15));
     line-height: 0;
 }
-.share-qr-code img { display: block; width: 160px; height: 160px; image-rendering: pixelated; }
+.share-qr-code img,
+.share-qr-code svg { display: block; width: 160px; height: 160px; image-rendering: pixelated; }
+.share-qr-code svg { image-rendering: auto; }
 .share-qr-hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0; }
 
 /* ---------------------------------------------------------------
@@ -1586,15 +1619,45 @@ button.article-nav-btn:active { transform: scale(0.94); }
     padding-top: 22px;
 }
 
+.comments-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
 .comments-title {
     font-family: var(--font-display);
     font-size: var(--text-lg);
     font-weight: 700;
-    margin-bottom: 18px;
     color: var(--text-primary);
     display: flex;
     align-items: baseline;
     gap: 8px;
+}
+.comment-sort {
+    display: inline-flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.comment-sort-btn {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+    white-space: nowrap;
+}
+.comment-sort-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.comment-sort-btn.is-active {
+    color: #fff;
+    background: var(--primary, var(--color-accent, #1abc9c));
+    border-color: transparent;
 }
 .comments-count {
     font-size: var(--text-sm);
@@ -1717,6 +1780,52 @@ button.article-nav-btn:active { transform: scale(0.94); }
 }
 .comment-input::placeholder,
 .comment-textarea::placeholder { color: var(--text-muted); }
+
+/* Markdown toolbar + live preview (v1.3.7) */
+.comment-md-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.comment-md-btn,
+.comment-md-preview-toggle {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    line-height: 1;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    padding: 5px 8px;
+    min-width: 28px;
+    cursor: pointer;
+    transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+.comment-md-btn:hover,
+.comment-md-preview-toggle:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.comment-md-preview-toggle { margin-left: auto; }
+.comment-md-preview-toggle.is-active {
+    color: #fff;
+    background: var(--primary);
+    border-color: transparent;
+}
+.comment-md-preview {
+    width: 100%;
+    min-height: 72px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px dashed var(--color-border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    overflow-wrap: anywhere;
+}
+.comment-md-preview > :first-child { margin-top: 0; }
+.comment-md-preview > :last-child { margin-bottom: 0; }
+.comment-md-preview-empty { color: var(--text-muted); }
 
 .comment-form-footer {
     display: flex;
@@ -2891,7 +3000,284 @@ body.sphotography-cursor-dot textarea {
         left: 290px;
         width: min(480px, calc(100vw - 320px));
     }
+    .side-panel { width: min(520px, calc(100vw - 300px)); }
 }
+
+/* ============================================
+   12b. Page-links bar + 友链 / 留言 panels (v1.3.7)
+   ============================================ */
+.page-links-bar {
+    position: fixed;
+    top: 12px;
+    right: 58px; /* clear the MapLibre zoom/compass control on the far right */
+    z-index: 118;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px;
+    max-width: calc(100vw - 120px);
+    border-radius: 999px;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.page-links-bar::-webkit-scrollbar { width: 0; height: 0; }
+.page-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+.page-link-btn:hover { background: var(--color-surface-hover); color: var(--primary); }
+.page-link-ico { display: inline-flex; color: var(--primary); }
+
+/* Right-half side panels — mirror the article panel motion but slide from the
+   right; they coexist with an open article on the left. */
+.side-panel {
+    position: fixed;
+    right: 16px;
+    top: 16px;
+    bottom: 16px;
+    width: min(620px, calc(100vw - 380px));
+    z-index: 116;
+    overflow: hidden;
+    border-radius: var(--panel-radius);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+    transform: translateX(20px) scale(0.98);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo);
+}
+.side-panel.active {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+}
+.side-panel-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 24px 26px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.side-panel-scroll::-webkit-scrollbar { width: 0; height: 0; }
+.side-panel-close { position: absolute; top: 14px; right: 14px; z-index: 8; }
+.side-panel-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.side-panel-header h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+/* 友链 cards: three per row, thumbnail with a frosted bottom-half name. */
+.friend-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+}
+.friend-card {
+    position: relative;
+    display: block;
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--color-surface-hover);
+    text-decoration: none;
+    box-shadow: var(--sphotography-card-shadow, 0 2px 10px rgba(0,0,0,0.12));
+    transition: transform var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+.friend-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0,0,0,0.2); }
+.friend-card-thumb { position: absolute; inset: 0; }
+.friend-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.friend-card-thumb--empty { background: linear-gradient(135deg, var(--primary), transparent); opacity: 0.45; }
+.friend-card-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 22px 10px 9px;
+    color: #fff;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    -webkit-mask-image: linear-gradient(to top, #000 55%, transparent);
+            mask-image: linear-gradient(to top, #000 55%, transparent);
+}
+.friend-empty, .friend-loading { color: var(--text-muted); padding: 24px 0; text-align: center; }
+
+.friend-apply {
+    margin-top: 26px;
+    padding-top: 18px;
+    border-top: 1px solid var(--color-border);
+}
+.friend-apply-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    margin: 0 0 12px;
+    color: var(--text-primary);
+}
+.friend-apply-form { display: flex; flex-direction: column; gap: 10px; }
+.friend-apply-form input,
+.friend-apply-form textarea {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px solid var(--color-border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    outline: none;
+    resize: vertical;
+    transition: border-color var(--duration-fast) ease;
+}
+.friend-apply-form input:focus,
+.friend-apply-form textarea:focus { border-color: var(--primary); }
+.friend-apply-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.friend-apply-feedback { font-size: var(--text-xs); color: var(--text-muted); flex: 1; min-width: 0; }
+.friend-apply-feedback.is-error { color: #e05a4d; }
+.friend-apply-feedback.is-success { color: var(--primary); }
+.friend-apply-submit {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #fff;
+    font-size: var(--text-sm);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.friend-apply-submit:disabled { opacity: 0.6; cursor: default; }
+
+/* 留言 list + composer */
+.side-panel--guestbook .side-panel-scroll { padding-bottom: 150px; }
+.gb-head { align-items: center; }
+.gb-sort-wrap { margin-left: auto; }
+.gb-list { list-style: none; margin: 0; padding: 0; }
+.gb-loading, .gb-empty { color: var(--text-muted); text-align: center; padding: 22px 0; list-style: none; }
+.gb-more { text-align: center; margin-top: 14px; }
+.gb-showall, .gb-loadmore {
+    padding: 8px 18px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: color var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+.gb-showall:hover, .gb-loadmore:hover { color: var(--primary); border-color: var(--primary); }
+
+.gb-composer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 7;
+    padding: 14px 18px 16px;
+}
+.gb-composer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(to top, var(--glass-elevated-bg), transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-mask-image: linear-gradient(to top, #000 62%, transparent);
+            mask-image: linear-gradient(to top, #000 62%, transparent);
+}
+.gb-composer-inner { display: flex; flex-direction: column; gap: 8px; }
+.gb-fields { display: flex; gap: 8px; }
+.gb-email, .gb-nick {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    outline: none;
+    transition: border-color var(--duration-fast) ease;
+}
+.gb-nick { flex: 0 0 40%; }
+.gb-msg-row { display: flex; align-items: flex-end; gap: 8px; }
+.gb-msg {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 15px;
+    border-radius: 18px;
+    border: 1px solid var(--color-border);
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-family: var(--font-body);
+    line-height: 1.4;
+    outline: none;
+    resize: none;
+    max-height: 140px;
+    overflow-y: auto;
+}
+.gb-email:focus, .gb-nick:focus, .gb-msg:focus { border-color: var(--primary); }
+.gb-send {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform var(--duration-fast) ease, filter var(--duration-fast) ease;
+}
+.gb-send:hover { filter: brightness(1.08); }
+.gb-send:active { transform: scale(0.94); }
+.gb-send:disabled { opacity: 0.6; cursor: default; }
+.gb-feedback { font-size: var(--text-xs); color: var(--text-muted); min-height: 1em; }
+.gb-feedback.is-error { color: #e05a4d; }
+.gb-feedback.is-success { color: var(--primary); }
 
 /* ============================================
    13. Responsive: Mobile (< 768px)
@@ -2929,6 +3315,20 @@ body.sphotography-cursor-dot textarea {
         z-index: 130;
         padding: 20px;
     }
+
+    /* Side panels go near-fullscreen; the page-links bar stays but shrinks to
+       icons to clear the map controls. */
+    .side-panel {
+        left: 8px; right: 8px; top: 8px; bottom: 8px;
+        width: auto;
+        z-index: 128;
+    }
+    .side-panel-scroll { padding: 18px 16px; }
+    .friend-grid { gap: 10px; }
+    .page-links-bar { top: 8px; right: 52px; padding: 4px; gap: 2px; }
+    .page-link-btn { padding: 7px 9px; }
+    .page-link-txt { display: none; }
+    .page-link-ext .page-link-txt { display: none; }
 
     .photo-grid-panel {
         width: calc(100vw - 24px);
