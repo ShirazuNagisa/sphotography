@@ -2295,6 +2295,11 @@
     }
 
     function closeSidePanel(which, cb) {
+        // v1.4.1: when the photo-wall panel is closing, tear down any open
+        // per-photo popup first so it doesn't outlive its host panel.
+        if (which === 'photowall' && typeof closePhotoWallPopup === 'function') {
+            closePhotoWallPopup();
+        }
         var panel = sidePanels[which];
         if (!panel || !panel.classList.contains('active')) { if (panel) panel.classList.remove('active'); if (sidePanels.open === which) sidePanels.open = null; if (cb) cb(); return; }
         if (sidePanels.open === which) sidePanels.open = null;
@@ -2706,34 +2711,132 @@
         });
     }
 
+    // v1.4.1: per-photo popup state. The popup is now portal-mounted to
+    // <body> (via a single shared #pw-popup-portal) so it lives outside
+    // the side panel's overflow:hidden + backdrop-filter stacking context
+    // — that fixes the "leftmost cell's popup is clipped by the panel's
+    // left border" bug. Open/close animations are driven by the Web
+    // Animations API (Element.animate), not CSS keyframes, so the close
+    // path has no animation-fill-mode flicker.
+    var PW_POPUP = {
+        openAnim: null,        // Array<Animation> for in-flight open
+        closing: false,        // true while a close is in progress
+        active: null,          // the current popup element (or null)
+        cell: null,            // the cell the popup is anchored to
+        panel: null,           // the side panel (for scroll/resize listeners)
+        portal: null,          // the #pw-popup-portal element
+        scrollHandler: null,   // panel-scroll listener (closes the popup)
+        resizeHandler: null    // window-resize listener (closes the popup)
+    };
+
+    function ensurePopupPortal() {
+        if (PW_POPUP.portal && PW_POPUP.portal.isConnected) return PW_POPUP.portal;
+        var p = document.getElementById('pw-popup-portal');
+        if (!p) {
+            p = document.createElement('div');
+            p.id = 'pw-popup-portal';
+            p.className = 'pw-popup-portal';
+            document.body.appendChild(p);
+        }
+        PW_POPUP.portal = p;
+        return p;
+    }
+
+    // True if the cell is the leftmost in its CSS-grid row (no other cell
+    // at the same offsetTop has a smaller offsetLeft). Used to flip the
+    // popup to the right side of the cell so it never gets clipped by the
+    // side panel's left edge.
+    function isLeftmostInRow(cell) {
+        var top = cell.offsetTop;
+        var left = cell.offsetLeft;
+        var siblings = cell.parentNode.children;
+        for (var i = 0; i < siblings.length; i++) {
+            var s = siblings[i];
+            if (s === cell) continue;
+            if (s.offsetTop === top && s.offsetLeft < left) return false;
+        }
+        return true;
+    }
+
+    // Detach scroll/resize listeners and clear the active popup ref. Called
+    // when the popup is removed for any reason (close, scroll, resize, panel
+    // close, action-click). Does NOT animate or remove the element.
+    function teardownPopupState() {
+        if (PW_POPUP.scrollHandler && PW_POPUP.panel) {
+            var scroll = PW_POPUP.panel.querySelector('.side-panel-scroll');
+            if (scroll) scroll.removeEventListener('scroll', PW_POPUP.scrollHandler);
+        }
+        if (PW_POPUP.resizeHandler) {
+            window.removeEventListener('resize', PW_POPUP.resizeHandler);
+        }
+        PW_POPUP.scrollHandler = null;
+        PW_POPUP.resizeHandler = null;
+        PW_POPUP.active = null;
+        PW_POPUP.cell = null;
+        PW_POPUP.panel = null;
+        PW_POPUP.closing = false;
+        PW_POPUP.openAnim = null;
+    }
+
+    // Animate one button. Pure helper; the caller passes the keyframe pair
+    // and the per-button delay. The returned Animation is in .openAnim
+    // (open path) or its .finished promise is awaited (close path).
+    function animatePwBtn(btn, keyframes, delay) {
+        return btn.animate(keyframes, {
+            duration: 180,
+            delay: delay || 0,
+            easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            fill: 'forwards'
+        });
+    }
+
     function closePhotoWallPopup() {
-        // v1.4.0: play the reverse-stagger close animation before removing
-        // the popup, so the column collapses smoothly top-to-bottom. If
-        // the popup is already mid-close, fall through to instant removal.
-        var p = PW.scrollEl && PW.scrollEl.querySelector('.pw-popup');
+        // v1.4.1: Web Animations API owns the open/close lifecycle. The close
+        // path cancels any in-flight open animations, then animates each
+        // button to the closed state with a reverse stagger (button 1 starts
+        // at 80ms, 2 at 40ms, 3 at 0ms), and removes the popup only after
+        // all three animations finish. If a close is already in progress,
+        // remove the element instantly (defensive).
+        var p = PW_POPUP.active;
         if (!p) return;
-        if (p.classList.contains('is-closing')) {
+        if (PW_POPUP.closing) {
             if (p.parentNode) p.parentNode.removeChild(p);
+            teardownPopupState();
             return;
         }
-        p.classList.add('is-closing');
-        // 180ms duration + 80ms last delay = 260ms total; round up to 320ms
-        // to give the slowest button (third) a margin to finish.
-        setTimeout(function () { if (p && p.parentNode) p.parentNode.removeChild(p); }, 320);
+        PW_POPUP.closing = true;
+
+        // Cancel any open animations still in flight.
+        if (PW_POPUP.openAnim) {
+            PW_POPUP.openAnim.forEach(function (a) { try { a.cancel(); } catch (e) {} });
+            PW_POPUP.openAnim = null;
+        }
+
+        var buttons = Array.prototype.slice.call(p.querySelectorAll('.pw-side-btn'));
+        var closeDelays = [80, 40, 0];
+        var promises = buttons.map(function (btn, i) {
+            return animatePwBtn(btn, [
+                { opacity: 1, transform: 'translateX(0)' },
+                { opacity: 0, transform: 'translateX(8px)' }
+            ], closeDelays[i] || 0).finished;
+        });
+
+        Promise.all(promises).then(function () {
+            // Guard against re-entrancy: if a new popup opened in the
+            // meantime, the old one's element might already be detached.
+            if (p && p.parentNode) p.parentNode.removeChild(p);
+            // Only reset state if `p` is still the same active popup.
+            if (PW_POPUP.active === p) teardownPopupState();
+        }).catch(function () {
+            if (p && p.parentNode) p.parentNode.removeChild(p);
+            if (PW_POPUP.active === p) teardownPopupState();
+        });
     }
 
     function onPhotoWallClick(e, scroll) {
-        var actBtn = e.target.closest('[data-pw-act]');
-        if (actBtn) {
-            e.stopPropagation();
-            var idx = parseInt(actBtn.getAttribute('data-pw-idx'), 10);
-            var act = actBtn.getAttribute('data-pw-act');
-            closePhotoWallPopup();
-            if (act === 'article') photoWallViewArticle(PW.items[idx]);
-            else if (act === 'detail') openPhotoWallDetail(idx);
-            else if (act === 'location') photoWallViewLocation(PW.items[idx]);
-            return;
-        }
+        // The popup lives in the portal now; its buttons carry data-pw-act
+        // and the cell click handler is still on the panel scroll. Only the
+        // "click elsewhere" branch closes any open popup.
         var cell = e.target.closest('.pw-cell');
         if (cell) {
             e.stopPropagation();
@@ -2741,23 +2844,25 @@
             togglePhotoWallPopup(cell, i);
             return;
         }
-        // Click elsewhere in the scroll area closes any open popup.
+        // Click anywhere else in the scroll area (other than a cell or a
+        // portal-resident popup) closes any open popup.
         closePhotoWallPopup();
     }
 
     function togglePhotoWallPopup(cell, idx) {
-        var existing = PW.scrollEl.querySelector('.pw-popup');
+        var existing = PW_POPUP.active;
         var wasForThis = existing && existing.getAttribute('data-for') === String(idx);
         closePhotoWallPopup();
         if (wasForThis) return; // second click on same photo → just close
         var it = PW.items[idx];
         var hasGeo = it && it.lat !== '' && it.lat != null && it.lng !== '' && it.lng != null;
-        // v1.4.0: the popup is now a column of circular icon buttons
-        // absolutely-positioned to the LEFT of the clicked cell, top-aligned.
-        // It is appended INSIDE the cell (cell is position: relative) so it
-        // anchors to the cell's top-left without affecting any sibling in the
-        // grid. Renders above the grid (z-index 10). Layout of the photo-wall
-        // page is unchanged — no DOM siblings added, no flow changes.
+        // v1.4.1: the popup is portal-mounted to <body>, not the cell.
+        // That puts it OUTSIDE the side panel's overflow:hidden and its
+        // backdrop-filter stacking context, so it can never be clipped
+        // by the panel's left border. Position is set in JS from the
+        // cell's bounding rect (left or right of the cell depending on
+        // whether the cell is the leftmost in its row).
+        var portal = ensurePopupPortal();
         var pop = document.createElement('div');
         pop.className = 'pw-popup pw-popup--side';
         pop.setAttribute('data-for', String(idx));
@@ -2773,11 +2878,63 @@
             + (hasGeo ? '<button type="button" class="pw-side-btn" data-pw-act="location" data-pw-idx="' + idx + '" title="' + escAttr(photoWallPopupTitle('location')) + '" aria-label="' + escAttr(photoWallPopupTitle('location')) + '">'
             +   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'
             + '</button>' : '');
-        // Insert inside the cell (not as a sibling) so position:absolute
-        // anchors to the cell's top-left, and the popup extends out to the
-        // cell's left edge (right:100% + 8px gap). z-index 10 keeps the
-        // popup above the grid rows below.
-        cell.appendChild(pop);
+        // Self-contained click handler: the popup no longer lives inside
+        // the panel scroll, so the panel's event delegation can't see it.
+        pop.addEventListener('click', function (e) {
+            var actBtn = e.target.closest('[data-pw-act]');
+            if (!actBtn) return;
+            e.stopPropagation();
+            var i = parseInt(actBtn.getAttribute('data-pw-idx'), 10);
+            var act = actBtn.getAttribute('data-pw-act');
+            closePhotoWallPopup();
+            if (act === 'article') photoWallViewArticle(PW.items[i]);
+            else if (act === 'detail') openPhotoWallDetail(i);
+            else if (act === 'location') photoWallViewLocation(PW.items[i]);
+        });
+        portal.appendChild(pop);
+
+        // Position: left or right of the cell, aligned to the cell's top.
+        // The flip avoids the panel's left border on the leftmost column.
+        var POP_W = 38, POP_GAP = 8;
+        var rect = cell.getBoundingClientRect();
+        if (isLeftmostInRow(cell)) {
+            pop.style.left = (rect.right + POP_GAP) + 'px';
+        } else {
+            pop.style.left = (rect.left - POP_W - POP_GAP) + 'px';
+        }
+        pop.style.top = rect.top + 'px';
+
+        // Animate open. The Web Animations API gives us cancel() and
+        // finished for free, so we don't have to manage the setTimeout /
+        // classList dance that v1.4.0 had.
+        var buttons = Array.prototype.slice.call(pop.querySelectorAll('.pw-side-btn'));
+        PW_POPUP.openAnim = buttons.map(function (btn, i) {
+            return animatePwBtn(btn, [
+                { opacity: 0, transform: 'translateX(8px)' },
+                { opacity: 1, transform: 'translateX(0)' }
+            ], [0, 40, 80][i] || 0);
+        });
+        PW_POPUP.active = pop;
+        PW_POPUP.cell = cell;
+        PW_POPUP.panel = PW.panel;
+        PW_POPUP.closing = false;
+
+        // v1.4.1: close-on-scroll / close-on-resize. The popup is anchored
+        // to the cell via getBoundingClientRect at creation time, but the
+        // cell moves when the user scrolls within the panel or when the
+        // window resizes; rather than re-anchor on every tick, we just
+        // close the popup — that's the standard click-triggered-popover
+        // pattern and avoids needing rAF + scroll math.
+        var panel = PW.panel;
+        if (panel) {
+            var scroll = panel.querySelector('.side-panel-scroll');
+            if (scroll) {
+                PW_POPUP.scrollHandler = function () { closePhotoWallPopup(); };
+                scroll.addEventListener('scroll', PW_POPUP.scrollHandler, { passive: true });
+            }
+        }
+        PW_POPUP.resizeHandler = function () { closePhotoWallPopup(); };
+        window.addEventListener('resize', PW_POPUP.resizeHandler, { passive: true });
     }
 
     // Localized tooltip labels for the side popup (extracted so they can be

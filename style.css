@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.0
+Version: 1.4.1
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -3391,21 +3391,32 @@ body.sphotography-cursor-dot textarea {
 .pw-empty { color: var(--text-muted); text-align: center; padding: 30px 0; }
 .pw-more { min-height: 20px; text-align: center; color: var(--text-muted); font-size: var(--text-xs); padding: 8px 0; }
 
-/* v1.4.0: per-photo popup is now a column of circular icon buttons
-   absolutely-positioned to the LEFT of the clicked cell, top-aligned with
-   the photo. Renders ABOVE the grid (z-index 10). The buttons slide in
-   top-to-bottom with 40ms stagger; closing plays the same animation in
-   reverse. Layout of the photo-wall page is unaffected (no DOM siblings
-   added, no flow changes). */
+/* v1.4.1: per-photo popup is a column of circular icon buttons
+   portal-mounted to <body> via #pw-popup-portal (see the .pw-popup-portal
+   rules below) and position: fixed at the cell's viewport position. JS
+   sets `left`/`top` on the popup from cell.getBoundingClientRect(), and
+   flips it to the right of the cell when the cell is the leftmost in
+   its row (so the popup never gets clipped by the side panel's left
+   edge or covered by its border). Animation is owned by JS via the
+   Web Animations API (Element.animate), not by CSS, so the open /
+   close stagger is precise and the close path has no
+   animation-fill-mode flicker. */
+.pw-popup-portal {
+    position: fixed;
+    inset: 0;
+    /* The empty portal must not eat clicks for the page below. */
+    pointer-events: none;
+    /* Above every panel / article / map control. The panel's z-index
+       is 116, the article is 110, map controls top out around 200. */
+    z-index: 9999;
+}
 .pw-popup--side {
-    position: absolute;
-    top: 0;
-    right: 100%;
-    margin-right: 8px;
+    position: fixed;
+    /* `left` and `top` are set in JS from the cell's bounding rect. */
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 10;
+    z-index: 9999;
     pointer-events: auto;
     /* Sit slightly above the row of cells on the same horizontal line. */
     padding: 2px 0;
@@ -3424,10 +3435,14 @@ body.sphotography-cursor-dot textarea {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    /* v1.4.1: defensive default — keeps the button invisible for the
+       sub-millisecond window between appendChild and the first
+       Element.animate() call. JS sets opacity/transform during the
+       open animation; with `fill: 'forwards'` the close animation's
+       final state is also held by JS, not by static CSS. */
     opacity: 0;
     transform: translateX(8px);
     transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
-    animation: pwSidePopIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     flex: 0 0 auto;
     padding: 0;
 }
@@ -3441,34 +3456,6 @@ body.sphotography-cursor-dot textarea {
 .pw-side-btn:focus-visible {
     outline: 2px solid var(--primary, #1abc9c);
     outline-offset: 2px;
-}
-.pw-popup--side .pw-side-btn:nth-child(1) { animation-delay: 0ms; }
-.pw-popup--side .pw-side-btn:nth-child(2) { animation-delay: 40ms; }
-.pw-popup--side .pw-side-btn:nth-child(3) { animation-delay: 80ms; }
-.pw-popup--side.is-closing .pw-side-btn {
-    animation: pwSidePopOut 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-.pw-popup--side.is-closing .pw-side-btn:nth-child(1) { animation-delay: 80ms; }
-.pw-popup--side.is-closing .pw-side-btn:nth-child(2) { animation-delay: 40ms; }
-.pw-popup--side.is-closing .pw-side-btn:nth-child(3) { animation-delay: 0ms; }
-@keyframes pwSidePopIn {
-    from { opacity: 0; transform: translateX(8px); }
-    to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes pwSidePopOut {
-    from { opacity: 1; transform: translateX(0); }
-    to   { opacity: 0; transform: translateX(8px); }
-}
-/* On narrow viewports the side-positioned popup may run off the panel's
-   left edge; nudge it to the RIGHT of the cell instead so it stays inside
-   the side panel. */
-@media (max-width: 520px) {
-    .pw-popup--side {
-        right: auto;
-        left: 100%;
-        margin-right: 0;
-        margin-left: 8px;
-    }
 }
 /* Legacy v1.3.9 row-style popup kept as a no-op so any stale references
    don't break. The v1.3.9 text-button popup is superseded by the side

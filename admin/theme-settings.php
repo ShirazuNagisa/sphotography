@@ -433,8 +433,8 @@ function sphotography_render_settings_page() {
             <!-- ============================================ -->
             <!-- Category 1: 外观与颜色 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-appearance">
-                <h2 class="sp-cat-title"><?php _e( '外观与颜色', 'sphotography' ); ?></h2>
+            <!-- Category: 外观与颜色 -->
+            <div class="sp-cat-anchor" id="sp-cat-appearance"></div>
 
                 <!-- Sub-board 1: 配色 -->
                 <div class="sphotography-module" id="sp-mod-theme-color">
@@ -660,13 +660,14 @@ function sphotography_render_settings_page() {
                         </div>
                     </div>
                 </div>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 2: 边栏与个人 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-sidebar">
-                <h2 class="sp-cat-title"><?php _e( '边栏与个人', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 边栏与个人 -->
+            <div class="sp-cat-anchor" id="sp-cat-sidebar"></div>
 
                 <!-- Sub-board 1: 站点与边栏 -->
                 <div class="sphotography-module" id="sp-mod-sidebar-site">
@@ -809,13 +810,14 @@ function sphotography_render_settings_page() {
 
                 </div>
                 </div>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 3: 动画 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-animation">
-                <h2 class="sp-cat-title"><?php _e( '动画', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 动画 -->
+            <div class="sp-cat-anchor" id="sp-cat-animation"></div>
 
                 <!-- Sub-board 1: 基础动画 -->
                 <div class="sphotography-module" id="sp-mod-animation-basic">
@@ -946,13 +948,14 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
                 </div>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 4: 阅读与评论 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-reading_comments">
-                <h2 class="sp-cat-title"><?php _e( '阅读与评论', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 阅读与评论 -->
+            <div class="sp-cat-anchor" id="sp-cat-reading_comments"></div>
 
                 <!-- Sub-board 1: 阅读信息 -->
                 <div class="sphotography-module" id="sp-mod-reading">
@@ -1175,13 +1178,14 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
                 </div>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 5: 地图 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-map">
-                <h2 class="sp-cat-title"><?php _e( '地图', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 地图 -->
+            <div class="sp-cat-anchor" id="sp-cat-map"></div>
 
                 <!-- Sub-board 1: 底图 -->
             <div class="sphotography-module" id="sp-mod-mapstyle">
@@ -1327,13 +1331,14 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
                 </div>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 7: 社交 (Social) -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-social">
-                <h2 class="sp-cat-title"><?php _e( '社交', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 社交 -->
+            <div class="sp-cat-anchor" id="sp-cat-social"></div>
 
                 <!-- Sub-board 1: 友链管理 -->
                 <?php if ( function_exists( 'sphotography_render_friend_links_board' ) ) : ?>
@@ -1344,13 +1349,14 @@ function sphotography_render_settings_page() {
                 <?php if ( function_exists( 'sphotography_render_guestbook_board' ) ) : ?>
                     <?php echo sphotography_render_guestbook_board(); ?>
                 <?php endif; ?>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 8: 其他 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-other">
-                <h2 class="sp-cat-title"><?php _e( '其他', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 其他 -->
+            <div class="sp-cat-anchor" id="sp-cat-other"></div>
 
                 <!-- Sub-board 1: 页脚 -->
                 <div class="sphotography-module" id="sp-mod-footer">
@@ -1389,13 +1395,14 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
                 </div>
-            </section>
+            
 
             <!-- ============================================ -->
             <!-- Category 8: 系统 -->
             <!-- ============================================ -->
-            <section class="sp-cat" id="sp-cat-system">
-                <h2 class="sp-cat-title"><?php _e( '系统', 'sphotography' ); ?></h2>
+            <div class="sp-cat-divider"></div>
+            <!-- Category: 系统 -->
+            <div class="sp-cat-anchor" id="sp-cat-system"></div>
 
                 <!-- Sub-board 1: 实验性功能 -->
             <div class="sphotography-module" id="sp-mod-experimental">
@@ -1586,7 +1593,7 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
             </div>
-            </section>
+            
 
             <!-- Submit Buttons -->
             <!-- ============================================ -->
@@ -1773,6 +1780,27 @@ function sphotography_admin_enqueue_settings( $hook ) {
             position: sticky;
             top: 46px;
             align-self: flex-start;
+        }
+        /* v1.4.1: settings page is now a flat list of boards (the v1.3.8
+           category <section> wrappers were dropped). Category groups are
+           separated by a thin divider line so the eye can still feel the
+           grouping without seeing big section headings. The TOC still
+           scrolls to invisible anchor divs at the top of each group. */
+        .sp-cat-anchor {
+            /* Invisible scroll target — sits at the top of each category
+               group so the right-side TOC parent link can still jump there.
+               1px tall is enough for the browser to consider it a valid
+               scroll target (zero-height elements are unreliable). */
+            height: 1px;
+            margin: 0;
+            padding: 0;
+            visibility: hidden;
+        }
+        .sp-cat-divider {
+            height: 1px;
+            background: var(--sp-border);
+            margin: 32px 0;
+            padding: 0;
         }
         /* v1.4.0: force every board to fill the main column regardless of
            parent flex/grid quirks. */
