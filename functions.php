@@ -1,14 +1,7 @@
 <?php
-/**
- * Sphotography Theme Functions
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 主题主函数
 
-// ============================================
-// 0. Theme Version (auto-read from style.css) & Load Includes
-// ============================================
+// 0. 加载包含文件
 $sphotography_theme = wp_get_theme();
 if ( ! defined( 'SPHOTOGRAPHY_VERSION' ) ) {
     define( 'SPHOTOGRAPHY_VERSION', $sphotography_theme->get( 'Version' ) );
@@ -28,10 +21,10 @@ require_once get_template_directory() . '/inc/friend-links.php';
 require_once get_template_directory() . '/inc/guestbook.php';
 require_once get_template_directory() . '/inc/photo-wall.php';
 require_once get_template_directory() . '/inc/i18n.php';
+require_once get_template_directory() . '/inc/geocode.php';       // v1.4.4: 逆地理编码代理（图片位置弹窗）
+require_once get_template_directory() . '/inc/announcement.php';  // v1.4.4: 公告页
 
-// ============================================
-// 1. (removed) Custom Post Type "photograph"
-// ============================================
+// 1.（已移除）自定义文章类型
 // Sphotography now uses native WordPress posts exclusively. Articles are
 // authored as ordinary posts; any image inside a post that carries
 // latitude/longitude (set in the media library or auto-read from EXIF) is
@@ -39,9 +32,7 @@ require_once get_template_directory() . '/inc/i18n.php';
 // "photograph" post type has been retired — see the sphotography/v1/photos
 // REST route below for how markers are now derived.
 
-// ============================================
-// 2. Register Custom Taxonomy: region_tag (attached to native posts)
-// ============================================
+// 2. 注册分类法 region_tag
 function sphotography_register_region_tag_taxonomy() {
     $labels = array(
         'name'                       => _x( 'Region Tags', 'Taxonomy General Name', 'sphotography' ),
@@ -81,9 +72,7 @@ function sphotography_register_region_tag_taxonomy() {
 }
 add_action( 'init', 'sphotography_register_region_tag_taxonomy' );
 
-// ============================================
-// 3. Register Custom Meta Fields (no ACF required)
-// ============================================
+// 3. 注册自定义元数据
 function sphotography_register_photograph_meta() {
     $meta_fields = array(
         'latitude' => array(
@@ -152,14 +141,10 @@ function sphotography_register_photograph_meta() {
 }
 add_action( 'init', 'sphotography_register_photograph_meta' );
 
-// ============================================
-// 3b. Load media fields admin
-// ============================================
+// 3b. 加载媒体库字段
 require_once get_template_directory() . '/admin/media-fields.php';
 
-// ============================================
-// 3c. Auto-detect EXIF GPS on image upload
-// ============================================
+// 3c. 上传图片时自动读取 EXIF GPS
 function sphotography_read_exif_and_save( $attachment_id, $file_path ) {
     $result = array( 'gps' => false, 'camera' => false, 'date' => false, 'debug' => '' );
 
@@ -632,15 +617,7 @@ function sphotography_format_shutter_speed( $val ) {
     return '1/' . $denominator;
 }
 
-// ============================================
-// 4. Map markers REST endpoint: sphotography/v1/photos
-//
-// Markers are derived from native posts. For every published post we gather
-// the images it uses — featured image, media attached to the post, and any
-// image inserted into the body (matched by the wp-image-<id> class) — and
-// emit one marker per image that carries latitude/longitude. Each marker
-// links back to its parent post so the frontend can open the article.
-// ============================================
+// 4. 地图标记 REST 端点：sphotography/v1/photos
 function sphotography_register_marker_route() {
     register_rest_route( 'sphotography/v1', '/photos', array(
         'methods'             => WP_REST_Server::READABLE,
@@ -793,9 +770,7 @@ function sphotography_get_photo_markers( $request ) {
     return rest_ensure_response( sphotography_collect_all_markers( $region_tag ) );
 }
 
-// ============================================
-// 7. Load Frontend Assets
-// ============================================
+// 7. 加载前台资源
 function sphotography_get_cdn_urls() {
     $source = get_theme_mod( 'sphotography_cdn_source', 'jsdelivr' );
     $urls = array(
@@ -914,6 +889,10 @@ function sphotography_enqueue_scripts() {
             'restNonce'       => wp_create_nonce( 'wp_rest' ),
             // v1.4.3: 语言切换控件仅在 AI 开启时显示（动态正文翻译依赖文本模型）。
             'aiEnabled'       => ( function_exists( 'sphotography_ai_is_enabled' ) && sphotography_ai_is_enabled() ),
+            // v1.4.4: 翻译功能独立开关（AI 开启 + 翻译子开关）。语言切换控件据此显示。
+            'translateEnabled' => ( function_exists( 'sphotography_i18n_translate_enabled' ) && sphotography_i18n_translate_enabled() ),
+            // v1.4.4 (item 6): 公告页数据（enabled/autoOpen/hash/html）。
+            'announcement'    => function_exists( 'sphotography_announcement_data' ) ? sphotography_announcement_data() : array( 'enabled' => false ),
             'loggedIn'        => is_user_logged_in(),
             'currentUserName' => is_user_logged_in() ? $sp_current_user->display_name : '',
             'currentUserEmail' => is_user_logged_in() ? $sp_current_user->user_email : '',
@@ -928,9 +907,7 @@ function sphotography_enqueue_scripts() {
 }
 add_action( 'wp_enqueue_scripts', 'sphotography_enqueue_scripts' );
 
-// ============================================
-// 8. Theme Activation: Auto-create map page & set as front
-// ============================================
+// 8. 主题激活：自动创建地图页面
 function sphotography_theme_activation() {
     // Register taxonomies first so rewrite rules flush cleanly.
     sphotography_register_region_tag_taxonomy();
@@ -974,9 +951,7 @@ function sphotography_theme_activation() {
 }
 add_action( 'after_switch_theme', 'sphotography_theme_activation' );
 
-// ============================================
-// 9. Register Admin Menu: 主题全局配置
-// ============================================
+// 9. 注册管理菜单
 function sphotography_register_admin_menu() {
     $menu_title = __( '主题全局配置', 'sphotography' );
 

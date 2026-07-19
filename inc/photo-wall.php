@@ -1,24 +1,11 @@
 <?php
-/**
- * Sphotography — Photo Wall (照片墙) Backend
- *
- * Collector for published post images with photo metadata (EXIF, geolocation),
- * ordered by pinning status and date, exposed via REST API.
- *
- * @package Sphotography
- */
+// 照片墙后端：收集已发布文章的图片及元数据（EXIF、地理坐标），支持置顶和按日期排序
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-/**
- * Collect all photos from published posts' content, ordered by pin + date.
- *
- * Returns an ordered array of photo objects, cached via transient.
- *
- * @return array Array of photo objects with id, thumbnail, full, title, postId, postTitle, date, time, lat, lng, camera, aperture, shutter, iso, group, pinned
- */
+// 收集所有照片并按置顶+日期排序，结果缓存在 transient 中
 function sphotography_collect_article_photos() {
 	$transient_key = 'sphotography_wall_photos';
 	$cached = get_transient( $transient_key );
@@ -142,12 +129,7 @@ function sphotography_collect_article_photos() {
 	return $result;
 }
 
-/**
- * REST callback: GET /sphotography/v1/wall-photos
- *
- * @param WP_REST_Request $request
- * @return WP_REST_Response
- */
+// REST 回调：GET /sphotography/v1/wall-photos
 function sphotography_get_wall_photos( $request ) {
 	$page = (int) $request->get_param( 'page' ) ?: 1;
 	$per_page = (int) $request->get_param( 'per_page' ) ?: 30;
@@ -173,20 +155,14 @@ function sphotography_get_wall_photos( $request ) {
 	) );
 }
 
-/**
- * Photo wall configuration for frontend.
- *
- * @return array
- */
+// 前台配置
 function sphotography_photo_wall_config() {
 	return array(
 		'perPage' => 30,
 	);
 }
 
-/**
- * Register the REST route.
- */
+// 注册 REST 路由
 function sphotography_register_photo_wall_route() {
 	register_rest_route( 'sphotography/v1', '/wall-photos', array(
 		'methods'             => WP_REST_Server::READABLE,

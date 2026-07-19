@@ -1,29 +1,5 @@
 <?php
-/**
- * Sphotography — Comment IP region (归属地) resolver (v1.3.4)
- *
- * When the "显示评论者 IP 属地" setting is on, each comment's stored
- * comment_author_IP is resolved to a coarse region — province for China,
- * country for the rest of the world — and displayed next to the comment meta.
- * The full IP address is never shown.
- *
- * Resolution is fully offline: an ip2region v2 xdb database (IPv4) is
- * downloaded on demand from the repo's dedicated `ip-data` branch (served by
- * jsDelivr) into wp-content/uploads/sphotography-ip/ the first time the feature
- * is enabled, then cached on disk — exactly like the boundary data in
- * inc/region-index.php. The database is NOT shipped in the theme package
- * (~11 MB) so it never bloats the upload or self-update archive.
- *
- * Per-comment results are cached in commentmeta (_sp_ip_region) so a comment is
- * only ever resolved once; historical comments backfill lazily the next time a
- * thread is viewed.
- *
- * ip2region © lionsoul2014, Apache-2.0. The xdb search routine below is a
- * self-contained PHP port of the official file-based searcher.
- *
- * @package Sphotography
- * @version 1.3.4
- */
+// 评论 IP 属地区域解析器（使用 ip2region v2 xdb 离线数据库）
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -37,9 +13,7 @@ const SPHOTOGRAPHY_IP_FILE         = 'ip2region.xdb';
 // commentmeta key for the cached region label ('' means resolved-but-unknown).
 const SPHOTOGRAPHY_IP_META = '_sp_ip_region';
 
-// ============================================
-// Settings / gate
-// ============================================
+// 设置开关
 /**
  * Whether the IP-region feature is switched on.
  *
@@ -52,9 +26,7 @@ function sphotography_ip_region_enabled() {
 	return (bool) get_theme_mod( 'sphotography_comment_ip_location', false );
 }
 
-// ============================================
-// Database storage (downloaded to uploads on demand)
-// ============================================
+// 数据库存储
 /**
  * Directory the IP database is cached in.
  */
@@ -141,9 +113,7 @@ function sphotography_ip_maybe_autodownload() {
 }
 add_action( 'admin_init', 'sphotography_ip_maybe_autodownload' );
 
-// ============================================
-// Public resolution API
-// ============================================
+// 公共解析 API
 /**
  * Resolve a comment's IP to a display region, caching the result in commentmeta.
  * Returns '' when the feature is off, the database is missing, the IP is
@@ -236,14 +206,7 @@ function sphotography_ip_trim_province( $name ) {
 	return $name;
 }
 
-// ============================================
-// ip2region v2 xdb file-based searcher
-//
-// Self-contained PHP port of the official searcher (Apache-2.0). The xdb layout
-// is: [256-byte header][vector index 256*256*8][index + data segments]. A query
-// uses the two high bytes of the IP as a vector-index lookup to bound a binary
-// search over fixed 14-byte index entries (startIP, endIP, dataLen, dataPtr).
-// ============================================
+// ip2region v2 xdb 搜索器（自包含 PHP 实现）
 /**
  * Search the database for an IPv4 address, returning the raw region string or
  * '' on any error. The file handle and vector index are cached per request.
@@ -369,9 +332,7 @@ function sphotography_ip_to_long( $ip ) {
 	return $n;
 }
 
-// ============================================
-// Admin-ajax: (re)download the database on demand from the settings page
-// ============================================
+// AJAX：按需下载/重新下载 IP 数据库
 function sphotography_ajax_download_ip_db() {
 	check_ajax_referer( 'sphotography_ip_db', 'nonce' );
 	if ( ! current_user_can( 'manage_options' ) ) {

@@ -1,30 +1,11 @@
 <?php
-/**
- * Sphotography - Admin Appearance
- *
- * Two related concerns live here:
- *   1. A shared scheme body-class (light / dark / system) driven by the same
- *      night_mode setting the frontend map uses.
- *   2. An optional global "Sphotography style" that themes the whole of
- *      wp-admin — elegant serif type, the theme primary colour, and light/dark
- *      following night_mode. This is gated entirely behind the
- *      `admin_global_style` toggle and is ON by default.
- *
- * The settings page (admin/theme-settings.php) always adopts the Sphotography
- * look regardless of the global toggle; it relies on the scheme class added
- * here.
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 后台外观（明暗模式 body-class + 全局 Sphotography 风格）
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// ============================================
-// Small helpers
-// ============================================
+// 辅助函数
 function sphotography_admin_primary_color() {
     return get_theme_mod( 'sphotography_primary_color', '#1abc9c' );
 }
@@ -49,9 +30,7 @@ function sphotography_is_settings_screen( $hook = '' ) {
     return $screen && 'toplevel_page_sphotography-settings' === $screen->id;
 }
 
-// ============================================
-// Scheme body class (light / dark / system)
-// ============================================
+// 明暗模式 body-class
 function sphotography_admin_body_class( $classes ) {
     $on_settings = sphotography_is_settings_screen();
     $global      = sphotography_admin_global_enabled();
@@ -68,9 +47,7 @@ function sphotography_admin_body_class( $classes ) {
 }
 add_filter( 'admin_body_class', 'sphotography_admin_body_class' );
 
-// ============================================
-// Enqueue serif font + global theming CSS
-// ============================================
+// 加载衬线字体 + 全局主题 CSS
 function sphotography_admin_enqueue_appearance( $hook ) {
     $on_settings = sphotography_is_settings_screen( $hook );
     $global      = sphotography_admin_global_enabled();

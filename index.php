@@ -1,14 +1,5 @@
 <?php
-/**
- * Sphotography - Fallback template
- *
- * This file is required by WordPress. If no page with the "Fullscreen Map"
- * template has been set as the front page, this fallback will display a
- * simple setup notice.
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 备用模板（无地图页面时的提示页）
 
 ?><!DOCTYPE html>
 <html <?php language_attributes(); ?>>

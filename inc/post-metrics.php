@@ -1,25 +1,5 @@
 <?php
-/**
- * Sphotography — Post metrics (v1.3.5)
- *
- * Two lightweight per-post numbers surfaced on the frontend:
- *   • 阅读量 (view count) — stored in post meta `_sp_views`, incremented by a
- *     small REST endpoint the article panel calls when an article is opened.
- *     De-duplication (per browser / per post / once a day) is handled on the
- *     client via localStorage; the endpoint just does the atomic +1. Gated by
- *     the `view_counter` setting (default on): when off, no counting happens
- *     and the number is hidden everywhere on the frontend.
- *   • 字数 (word count) — computed from the post body with the same CJK-aware
- *     rule the frontend uses for the reading estimate, so the sidebar cards can
- *     show it without shipping the full content down with the posts list.
- *
- * Both are exposed as REST fields (`sp_views`, `sp_word_count`) so the article
- * panel and the sidebar list — which fetch posts through wp/v2/posts — get them
- * for free, and they are also mirrored into the inline-data path.
- *
- * @package Sphotography
- * @version 1.3.5
- */
+// 文章指标（阅读量、字数统计），通过 REST 字段暴露给前台
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -27,34 +7,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 const SPHOTOGRAPHY_VIEWS_META = '_sp_views';
 
-/**
- * Whether the view counter is enabled (setting, default on).
- *
- * @return bool
- */
+// 阅读量计数是否启用（默认开启）
 function sphotography_views_enabled() {
 	return (bool) sphotography_get_mod( 'view_counter' );
 }
 
-/**
- * Current view count for a post.
- *
- * @param int $post_id
- * @return int
- */
+// 获取文章阅读量
 function sphotography_get_views( $post_id ) {
 	return (int) get_post_meta( (int) $post_id, SPHOTOGRAPHY_VIEWS_META, true );
 }
 
-/**
- * Word count for a post body, CJK-aware and mirroring the frontend rule in
- * assets/js/app.js (CJK characters counted individually; runs of Latin
- * letters/digits counted as words). Shortcodes and HTML are stripped so only
- * visible text feeds the count.
- *
- * @param int $post_id
- * @return int
- */
+// CJK 感知的字数统计
 function sphotography_post_word_count( $post_id ) {
 	$post = get_post( (int) $post_id );
 	if ( ! $post ) {
@@ -82,9 +45,7 @@ function sphotography_post_word_count( $post_id ) {
 	return $cjk + $latin;
 }
 
-// ============================================================================
-// REST fields on posts (auto-included in wp/v2/posts and single-post fetches).
-// ============================================================================
+// REST 字段注册
 function sphotography_metrics_register_rest_fields() {
 	register_rest_field( 'post', 'sp_views', array(
 		'get_callback' => function ( $arr ) {
@@ -108,13 +69,7 @@ function sphotography_metrics_register_rest_fields() {
 }
 add_action( 'rest_api_init', 'sphotography_metrics_register_rest_fields' );
 
-// ============================================================================
-// View-count increment endpoint: POST sphotography/v1/view/<id>
-//
-// Returns the (possibly incremented) count. De-dup is a client concern; the
-// endpoint simply adds 1 unless the feature is disabled, in which case it
-// returns the stored value untouched.
-// ============================================================================
+// 阅读量递增接口：POST sphotography/v1/view/<id>
 function sphotography_metrics_register_routes() {
 	register_rest_route( 'sphotography/v1', '/view/(?P<id>\d+)', array(
 		'methods'             => WP_REST_Server::CREATABLE,
@@ -131,12 +86,7 @@ function sphotography_metrics_register_routes() {
 }
 add_action( 'rest_api_init', 'sphotography_metrics_register_routes' );
 
-/**
- * Increment (or just read, when disabled) a post's view count.
- *
- * @param WP_REST_Request $request
- * @return WP_REST_Response|WP_Error
- */
+// 递增阅读量
 function sphotography_rest_increment_view( $request ) {
 	$post_id = (int) $request['id'];
 	$post    = get_post( $post_id );

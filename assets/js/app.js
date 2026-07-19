@@ -1,9 +1,4 @@
-/**
- * Sphotography - Frontend Map Application v2
- *
- * @package Sphotography
- * @version 1.2.5
- */
+// Sphotography 前台地图应用 v2
 
 (function () {
     'use strict';
@@ -512,7 +507,7 @@
     // too). Reduced-motion still short-circuits to the full text instantly.
     // ---------------------------------------------------------------
     var summaryTypeTimer = null;
-    function renderArticleSummary(post) {
+    function renderArticleSummary(post, summaryPregen) {
         var el = dom.articleSummary;
         if (!el) return;
         if (summaryTypeTimer) { clearTimeout(summaryTypeTimer); summaryTypeTimer = null; }
@@ -533,7 +528,7 @@
         // 直接落原文后交给按需翻译（加载提示 → 淡入译文）。中文仍走打字机。
         if (siteLang !== 'zh') {
             textEl.textContent = summary;
-            i18nRegister(textEl, 'text');
+            i18nRegisterPregen(textEl, 'text', summaryPregen || null); // v1.4.4: 概述优先用预生成译文
             return;
         }
         // v1.4.0: typewriter runs on every open. The localStorage "already
@@ -801,6 +796,7 @@
             '浅色': 'Light', '深色': 'Dark', '跟随系统': 'System', '明暗模式': 'Appearance',
             '中文': 'Chinese', 'English': 'English', '日本语': 'Japanese', '站点语言': 'Language',
             '翻译中…': 'Translating…',
+            '解析中…': 'Resolving…',
             'AI 概述': 'AI summary',
             '匿名': 'Anonymous',
             '暂无内容': 'No content',
@@ -815,12 +811,21 @@
             '回到顶部': 'Back to top', '到文章末尾': 'Jump to end', '阅读进度': 'Reading progress', '跳到评论': 'Jump to comments',
             '昵称 *': 'Nickname *', '邮箱（不公开）*': 'Email (private) *',
             '插入表情': 'Insert emoji', '粗体': 'Bold', '斜体': 'Italic', '删除线': 'Strikethrough', '行内代码': 'Inline code',
-            '日期时间': 'Date & time', '经纬度': 'Coordinates', '拍摄设备': 'Camera', '光圈快门ISO': 'Aperture / Shutter / ISO', '暂无参数': 'No metadata'
+            '日期时间': 'Date & time', '经纬度': 'Coordinates', '拍摄设备': 'Camera', '光圈快门ISO': 'Aperture / Shutter / ISO', '暂无参数': 'No metadata',
+            // v1.4.4 (item 1): page-links bar + side-panel chrome
+            '友链': 'Links', '留言': 'Guestbook', '照片墙': 'Photos', '公告': 'Notice',
+            '还没有友链。': 'No links yet.', '申请友链': 'Apply for a link',
+            '你的邮箱 *': 'Your email *', '你的网站链接 *': 'Your site URL *', '站点名称（可选）': 'Site name (optional)',
+            '留言（可选）': 'Message (optional)', '提交申请': 'Submit', '请填写邮箱和链接。': 'Please fill in email and URL.', '提交中…': 'Submitting…',
+            '还没有照片。': 'No photos yet.', '写下留言…支持 Markdown': 'Write a message… Markdown supported',
+            '申请已提交，等待站长审核。': 'Submitted — awaiting the admin’s review.',
+            '查看照片位置': 'View photo location', '查看对应文章': 'View the article', '查看照片详情': 'Photo details', '上一张': 'Previous', '下一张': 'Next', '退出': 'Close'
         },
         ja: {
             '浅色': 'ライト', '深色': 'ダーク', '跟随系统': 'システム', '明暗模式': '外観',
             '中文': '中国語', 'English': '英語', '日本语': '日本語', '站点语言': '言語',
             '翻译中…': '翻訳中…',
+            '解析中…': '解析中…',
             'AI 概述': 'AI 概要',
             '匿名': '匿名',
             '暂无内容': 'コンテンツがありません',
@@ -835,7 +840,15 @@
             '回到顶部': '先頭へ', '到文章末尾': '末尾へ', '阅读进度': '読書進捗', '跳到评论': 'コメントへ',
             '昵称 *': 'ニックネーム *', '邮箱（不公开）*': 'メール（非公開）*',
             '插入表情': '絵文字を挿入', '粗体': '太字', '斜体': '斜体', '删除线': '取り消し線', '行内代码': 'インラインコード',
-            '日期时间': '日時', '经纬度': '緯度経度', '拍摄设备': 'カメラ', '光圈快门ISO': '絞り / シャッター / ISO', '暂无参数': 'データなし'
+            '日期时间': '日時', '经纬度': '緯度経度', '拍摄设备': 'カメラ', '光圈快门ISO': '絞り / シャッター / ISO', '暂无参数': 'データなし',
+            // v1.4.4 (item 1): page-links bar + side-panel chrome
+            '友链': 'リンク', '留言': 'ゲストブック', '照片墙': '写真', '公告': 'お知らせ',
+            '还没有友链。': 'まだリンクがありません。', '申请友链': 'リンクを申請',
+            '你的邮箱 *': 'あなたのメール *', '你的网站链接 *': 'あなたのサイト URL *', '站点名称（可选）': 'サイト名（任意）',
+            '留言（可选）': 'メッセージ（任意）', '提交申请': '申請する', '请填写邮箱和链接。': 'メールと URL を入力してください。', '提交中…': '送信中…',
+            '还没有照片。': 'まだ写真がありません。', '写下留言…支持 Markdown': 'メッセージを書く… Markdown 対応',
+            '申请已提交，等待站长审核。': '申請を送信しました。管理者の承認をお待ちください。',
+            '查看照片位置': '写真の位置を表示', '查看对应文章': '記事を表示', '查看照片详情': '写真の詳細', '上一张': '前へ', '下一张': '次へ', '退出': '閉じる'
         }
     };
 
@@ -903,6 +916,18 @@
         if (siteLang !== 'zh') i18nTranslateEls([el], siteLang);
     }
 
+    // v1.4.4 (item 1): register an element that already has server-side
+    // pre-generated translations (article title / body / summary, generated in
+    // the background on save). `pregen` maps lang → translated string. When the
+    // active language has a pre-generated value, the swap is instant with ZERO
+    // model call; languages without one fall back to the on-demand /translate
+    // path. Chinese always restores the original.
+    function i18nRegisterPregen(el, format, pregen, after) {
+        if (!el) return;
+        el._spPregen = (pregen && typeof pregen === 'object') ? pregen : null;
+        i18nRegister(el, format, after);
+    }
+
     // Scan a subtree for known translatable content nodes (comment/guestbook
     // bodies) and register any not yet marked.
     function i18nScan(root) {
@@ -933,6 +958,13 @@
         els.forEach(function (el, i) {
             var orig = el._spOrig;
             if (orig == null || !String(orig).trim()) return;
+            // v1.4.4 (item 1): pre-generated translation available for this
+            // language → apply instantly, skip the model call entirely.
+            if (el._spPregen && typeof el._spPregen[lang] === 'string' && el._spPregen[lang].trim()) {
+                el.classList.remove('sp-tr-loading');
+                i18nSetContent(el, el._spPregen[lang], true);
+                return;
+            }
             var id = 's' + i + '_' + Math.random().toString(36).slice(2, 7);
             map[id] = el;
             el.classList.add('sp-tr-loading');
@@ -968,6 +1000,8 @@
             if (NIGHT_LABELS[m]) { b.title = t(NIGHT_LABELS[m]); b.setAttribute('aria-label', t(NIGHT_LABELS[m])); }
         });
         i18nIndicator();
+        if (typeof updatePageLinkLabels === 'function') updatePageLinkLabels(); // v1.4.4: 页面链接栏按钮
+        if (typeof updateAnnouncementChrome === 'function') updateAnnouncementChrome(); // v1.4.4: 公告面板 chrome
     }
 
     function applyLang(lang) {
@@ -1043,8 +1077,9 @@
         // Stacks in top-right immediately below the zoom/compass group.
         state.map.addControl(new NightSwitchControl(), 'top-right');
         // v1.4.3: language switch stacks directly below the night switch. Only
-        // shown when AI is enabled (dynamic content translation needs the model).
-        if (APP.aiEnabled) {
+        // shown when the translation feature is on (v1.4.4: dedicated ai_translate
+        // toggle, falls back to aiEnabled for older configs).
+        if (APP.translateEnabled || (typeof APP.translateEnabled === 'undefined' && APP.aiEnabled)) {
             state.map.addControl(new LangSwitchControl(), 'top-right');
             // Reflect the resolved language on persistent chrome at first paint
             // (night-switch titles, <html lang>). Content translates lazily as
@@ -1268,12 +1303,11 @@
             if (state.isMobile) { closeSidebar(); }
         });
 
-        // Region-mode pulse dot: any manual pan/zoom is the "next interaction"
-        // that clears it. Fires harmlessly before a dot exists.
-        if (REGION.active) {
-            state.map.on('dragstart', removePulseDot);
-            state.map.on('zoomstart', removePulseDot);
-        }
+        // Pulse dot + location popup: any manual pan/zoom is the "next
+        // interaction" that clears them. Bound in BOTH modes (v1.4.4 item 4 shows
+        // the dot in normal mode too). Fires harmlessly before a dot exists.
+        state.map.on('dragstart', removePulseDot);
+        state.map.on('zoomstart', removePulseDot);
     }
 
     // ---------------------------------------------------------------
@@ -2324,8 +2358,20 @@
                 return;
             }
             var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
+            // v1.4.4 (item 1): pull the background-generated translations exposed
+            // on the post (sp_i18n = { en:{title,body,summary}, ja:{...} }). When
+            // present, title/body/summary translate instantly with no model call;
+            // absent langs fall back to the on-demand /translate path (v1.4.3).
+            var spI18n = (post.sp_i18n && typeof post.sp_i18n === 'object') ? post.sp_i18n : null;
+            var pregenFor = function (field) {
+                if (!spI18n) return null;
+                var out = {};
+                if (spI18n.en && spI18n.en[field]) out.en = spI18n.en[field];
+                if (spI18n.ja && spI18n.ja[field]) out.ja = spI18n.ja[field];
+                return (out.en || out.ja) ? out : null;
+            };
             dom.articleTitle.textContent = post.title.rendered || '';
-            i18nRegister(dom.articleTitle, 'text'); // v1.4.3: 标题按需翻译（en/ja）
+            i18nRegisterPregen(dom.articleTitle, 'text', pregenFor('title')); // v1.4.4: 标题优先用预生成译文
             var metaHtml = '';
             if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
             if (SETTINGS.viewCounter) {
@@ -2354,10 +2400,11 @@
                 }); });
             }
             dom.articleMeta.innerHTML = metaHtml;
-            renderArticleSummary(post);
+            renderArticleSummary(post, pregenFor('summary'));
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">' + t('暂无内容') + '</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articlePanel.scrollTop = 0;
+            if (dom.articlePanel._spRepinClose) dom.articlePanel._spRepinClose(); // v1.4.4 item 3: reset close-btn pin to top
             // v1.4.3: 正文按需翻译（en/ja）；每次内容被写入（含译文替换）后都需重新
             // 处理外链新窗口与图片交互，故用 _spAfter 回调复跑这两步。
             var wireArticleDom = function () {
@@ -2365,7 +2412,7 @@
                 wireArticleImages();
             };
             wireArticleDom();
-            i18nRegister(dom.articleContent, 'html', wireArticleDom);
+            i18nRegisterPregen(dom.articleContent, 'html', pregenFor('body'), wireArticleDom); // v1.4.4: 正文优先用预生成译文
             renderShareBar(post);
             renderComments(requestPostId, post.comment_status);
             animateWindowsOpen(requestPostId);
@@ -2401,6 +2448,8 @@
         state.articleOpen = false;
         state.openedPostId = null;
         hideArticleNav();
+        // v1.4.4 (item 2): stop watching content height once the panel closes.
+        if (state.readingTailRO) { try { state.readingTailRO.disconnect(); } catch (e) {} state.readingTailRO = null; }
         // Photograph articles have no source card — fall back to a plain fade.
         if (targetPostId == null || !getPostCardGeometry(targetPostId)) {
             clearMotion();
@@ -2422,6 +2471,17 @@
     var GB_STATE = { mode: 'random', page: 1, sort: 'time', order: 'asc', hasMore: false, loading: false };
     var sidePanels = { built: false, friend: null, guestbook: null, open: null };
 
+    // v1.4.4 (item 1): page-links bar button labels, translated via the static
+    // dictionary and refreshed in place on language switch (the bar is built once).
+    var PAGE_LINK_LABELS = { friend: '友链', guestbook: '留言', photowall: '照片墙', announcement: '公告' };
+    function updatePageLinkLabels() {
+        Array.prototype.forEach.call(document.querySelectorAll('#page-links-bar .page-link-btn[data-sp-panel]'), function (b) {
+            var k = b.getAttribute('data-sp-panel');
+            var txt = b.querySelector('.page-link-txt');
+            if (txt && PAGE_LINK_LABELS[k]) txt.textContent = t(PAGE_LINK_LABELS[k]);
+        });
+    }
+
     function initPageLinks() {
         buildPageLinksBar();
     }
@@ -2432,14 +2492,22 @@
         var msgIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
         var extIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
         var wallIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+        var annIcon = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>';
 
         var bar = document.createElement('div');
         bar.id = 'page-links-bar';
         bar.className = 'page-links-bar';
+        // v1.4.4 (item 1): 栏内按钮文字走静态词典翻译（t()），语言切换时由
+        // updatePageLinkLabels() 就地更新。外站链接名保持作者原文（专有名词）。
+        // v1.4.4 (item 6): 公告按钮（仅在公告开启时）排在最前，点击切换公告面板。
+        var annBtn = (APP.announcement && APP.announcement.enabled)
+            ? '<button type="button" class="page-link-btn" data-sp-panel="announcement"><span class="page-link-ico">' + annIcon + '</span><span class="page-link-txt">' + escapeHtml(t('公告')) + '</span></button>'
+            : '';
         var html = ''
-            + '<button type="button" class="page-link-btn" data-sp-panel="friend"><span class="page-link-ico">' + friendIcon + '</span><span class="page-link-txt">友链</span></button>'
-            + '<button type="button" class="page-link-btn" data-sp-panel="guestbook"><span class="page-link-ico">' + msgIcon + '</span><span class="page-link-txt">留言</span></button>'
-            + '<button type="button" class="page-link-btn" data-sp-panel="photowall"><span class="page-link-ico">' + wallIcon + '</span><span class="page-link-txt">照片墙</span></button>';
+            + annBtn
+            + '<button type="button" class="page-link-btn" data-sp-panel="friend"><span class="page-link-ico">' + friendIcon + '</span><span class="page-link-txt">' + escapeHtml(t('友链')) + '</span></button>'
+            + '<button type="button" class="page-link-btn" data-sp-panel="guestbook"><span class="page-link-ico">' + msgIcon + '</span><span class="page-link-txt">' + escapeHtml(t('留言')) + '</span></button>'
+            + '<button type="button" class="page-link-btn" data-sp-panel="photowall"><span class="page-link-ico">' + wallIcon + '</span><span class="page-link-txt">' + escapeHtml(t('照片墙')) + '</span></button>';
         var ext = Array.isArray(APP.externalLinks) ? APP.externalLinks : [];
         ext.forEach(function (e) {
             if (!e || !e.url) return;
@@ -2494,8 +2562,111 @@
         bar.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-sp-panel]');
             if (!btn) return;
-            toggleSidePanel(btn.getAttribute('data-sp-panel'), btn);
+            var which = btn.getAttribute('data-sp-panel');
+            // v1.4.4 (item 6): announcement is a top-right dropdown, not a
+            // right-half side panel — toggle it separately.
+            if (which === 'announcement') { toggleAnnouncement(btn); return; }
+            toggleSidePanel(which, btn);
         });
+    }
+
+    // ---------------------------------------------------------------
+    // 10a3. Announcement panel (v1.4.4 item 6)
+    //
+    // A closable glass dropdown pinned top-right, below the page-links bar and
+    // left of the map controls. Width tracks the page-links bar; height follows
+    // content (the .announcement-content region scrolls when long, so the close
+    // button + header stay pinned — item 3). Auto-opens on load (backend toggle)
+    // unless the reader dismissed the current announcement (remembered by content
+    // hash in localStorage; a new announcement re-opens). Content is admin Markdown
+    // rendered server-side and registered for i18n so a non-Chinese language shows
+    // the pre-generated (cache-warmed) translation.
+    // ---------------------------------------------------------------
+    var ANNOUNCE = { built: false, panel: null, open: false, contentEl: null };
+    var ANNOUNCE_DISMISS_KEY = 'sp-announce-dismissed';
+
+    function announcementCfg() { return (APP.announcement && APP.announcement.enabled) ? APP.announcement : null; }
+
+    function buildAnnouncement() {
+        if (ANNOUNCE.built) return;
+        var cfg = announcementCfg();
+        if (!cfg) return;
+        var panel = document.createElement('div');
+        panel.className = 'announcement-panel glass-panel';
+        panel.id = 'announcement-panel';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-label', t('公告'));
+        panel.innerHTML = ''
+            + '<button type="button" class="panel-close-btn announcement-close" aria-label="' + escAttr(t('退出')) + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+            + '<header class="announcement-header"><h3>' + escapeHtml(t('公告')) + '</h3></header>'
+            + '<div class="announcement-content side-panel-scroll"></div>';
+        document.body.appendChild(panel);
+        var content = panel.querySelector('.announcement-content');
+        content.innerHTML = cfg.html || '';
+        // Register for translation: zh is a no-op, en/ja translate via the
+        // /translate cache warmed on save (falls back to a live call if cold).
+        i18nRegister(content, 'html');
+        panel.querySelector('.announcement-close').addEventListener('click', function () { closeAnnouncement(true); });
+        ANNOUNCE.panel = panel;
+        ANNOUNCE.contentEl = content;
+        ANNOUNCE.built = true;
+        window.addEventListener('resize', function () { if (ANNOUNCE.open) syncAnnouncementGeom(); });
+    }
+
+    // Position below the page-links bar; width = the bar's current width so the
+    // two align, right edges flush (v1.4.4 item 6).
+    function syncAnnouncementGeom() {
+        var panel = ANNOUNCE.panel;
+        var bar = document.getElementById('page-links-bar');
+        if (!panel || !bar) return;
+        var r = bar.getBoundingClientRect();
+        panel.style.width = r.width + 'px';
+        panel.style.left = r.left + 'px';
+        panel.style.top = (r.bottom + 8) + 'px';
+    }
+
+    function openAnnouncement() {
+        buildAnnouncement();
+        if (!ANNOUNCE.panel) return;
+        syncAnnouncementGeom();
+        ANNOUNCE.open = true;
+        ANNOUNCE.panel.classList.add('active');
+    }
+
+    function closeAnnouncement(remember) {
+        if (!ANNOUNCE.panel) return;
+        ANNOUNCE.open = false;
+        ANNOUNCE.panel.classList.remove('active');
+        if (remember) {
+            var cfg = announcementCfg();
+            try { if (cfg) localStorage.setItem(ANNOUNCE_DISMISS_KEY, cfg.hash); } catch (e) {}
+        }
+    }
+
+    function toggleAnnouncement() {
+        if (ANNOUNCE.open) closeAnnouncement(true); else openAnnouncement();
+    }
+
+    // Auto-open on load unless disabled or the reader already dismissed THIS
+    // announcement (matched by content hash).
+    function maybeAutoOpenAnnouncement() {
+        var cfg = announcementCfg();
+        if (!cfg || !cfg.autoOpen) return;
+        var dismissed = '';
+        try { dismissed = localStorage.getItem(ANNOUNCE_DISMISS_KEY) || ''; } catch (e) {}
+        if (dismissed === cfg.hash) return;
+        openAnnouncement();
+    }
+
+    // Refresh translatable chrome on language switch (header + labels). Content
+    // itself re-translates via i18nRetranslateAll (it carries data-sp-tr).
+    function updateAnnouncementChrome() {
+        if (!ANNOUNCE.panel) return;
+        var h = ANNOUNCE.panel.querySelector('.announcement-header h3');
+        if (h) h.textContent = t('公告');
+        ANNOUNCE.panel.setAttribute('aria-label', t('公告'));
+        var close = ANNOUNCE.panel.querySelector('.announcement-close');
+        if (close) close.setAttribute('aria-label', t('退出'));
     }
 
     function ensureSidePanels() {
@@ -2641,7 +2812,7 @@
     function loadFriendPanel(panel) {
         var scroll = panel.querySelector('.side-panel-scroll');
         scroll.scrollTop = 0;
-        scroll.innerHTML = '<header class="side-panel-header"><h3>友链</h3></header><div class="friend-grid"><p class="friend-loading">加载中…</p></div>';
+        scroll.innerHTML = '<header class="side-panel-header"><h3>' + escapeHtml(t('友链')) + '</h3></header><div class="friend-grid"><p class="friend-loading">' + escapeHtml(t('加载中…')) + '</p></div>';
         fetchFromRest('sphotography/v1/friend-links').then(function (data) {
             if (sidePanels.open !== 'friend') return;
             var items = (data && Array.isArray(data.items)) ? data.items : [];
@@ -2663,22 +2834,22 @@
             }).join('');
             grid = '<div class="friend-grid">' + cards + '</div>';
         } else {
-            grid = '<p class="friend-empty">还没有友链。</p>';
+            grid = '<p class="friend-empty">' + escapeHtml(t('还没有友链。')) + '</p>';
         }
-        scroll.innerHTML = '<header class="side-panel-header"><h3>友链</h3></header>' + grid + buildFriendApplyForm();
+        scroll.innerHTML = '<header class="side-panel-header"><h3>' + escapeHtml(t('友链')) + '</h3></header>' + grid + buildFriendApplyForm();
         wireFriendApply(scroll);
     }
 
     function buildFriendApplyForm() {
         return ''
             + '<div class="friend-apply">'
-            +   '<h4 class="friend-apply-title">申请友链</h4>'
+            +   '<h4 class="friend-apply-title">' + escapeHtml(t('申请友链')) + '</h4>'
             +   '<form class="friend-apply-form" novalidate>'
-            +     '<input type="email" class="friend-apply-email" placeholder="你的邮箱 *" autocomplete="email">'
-            +     '<input type="url" class="friend-apply-url" placeholder="你的网站链接 *">'
-            +     '<input type="text" class="friend-apply-name" placeholder="站点名称（可选）">'
-            +     '<textarea class="friend-apply-msg" rows="2" placeholder="留言（可选）"></textarea>'
-            +     '<div class="friend-apply-footer"><span class="friend-apply-feedback"></span><button type="submit" class="friend-apply-submit">提交申请</button></div>'
+            +     '<input type="email" class="friend-apply-email" placeholder="' + escAttr(t('你的邮箱 *')) + '" autocomplete="email">'
+            +     '<input type="url" class="friend-apply-url" placeholder="' + escAttr(t('你的网站链接 *')) + '">'
+            +     '<input type="text" class="friend-apply-name" placeholder="' + escAttr(t('站点名称（可选）')) + '">'
+            +     '<textarea class="friend-apply-msg" rows="2" placeholder="' + escAttr(t('留言（可选）')) + '"></textarea>'
+            +     '<div class="friend-apply-footer"><span class="friend-apply-feedback"></span><button type="submit" class="friend-apply-submit">' + escapeHtml(t('提交申请')) + '</button></div>'
             +   '</form>'
             + '</div>';
     }
@@ -2694,14 +2865,14 @@
             var msg = (form.querySelector('.friend-apply-msg').value || '').trim();
             var fb = form.querySelector('.friend-apply-feedback');
             fb.className = 'friend-apply-feedback';
-            if (!email || !url) { fb.textContent = '请填写邮箱和链接。'; fb.classList.add('is-error'); return; }
+            if (!email || !url) { fb.textContent = t('请填写邮箱和链接。'); fb.classList.add('is-error'); return; }
             var btn = form.querySelector('.friend-apply-submit');
-            btn.disabled = true; btn.textContent = '提交中…';
+            btn.disabled = true; btn.textContent = t('提交中…');
             postJson(CONFIG.restBase + '/sphotography/v1/friend-links/apply', { email: email, url: url, name: name, message: msg }).then(function (r) {
-                btn.disabled = false; btn.textContent = '提交申请';
+                btn.disabled = false; btn.textContent = t('提交申请');
                 if (!r.ok) { fb.textContent = ccError(r); fb.classList.add('is-error'); return; }
                 form.reset();
-                fb.textContent = '申请已提交，等待站长审核。';
+                fb.textContent = t('申请已提交，等待站长审核。');
                 fb.classList.add('is-success');
             });
         });
@@ -2733,8 +2904,8 @@
         var scroll = panel.querySelector('.side-panel-scroll');
         scroll.scrollTop = 0;
         scroll.innerHTML = ''
-            + '<header class="side-panel-header gb-head"><h3>留言</h3><div class="gb-sort-wrap" hidden>' + guestbookSortHtml() + '</div><span class="gb-count" hidden></span></header>'
-            + '<ul class="comment-list gb-list" id="gb-list"><li class="gb-loading">加载中…</li></ul>'
+            + '<header class="side-panel-header gb-head"><h3>' + escapeHtml(t('留言')) + '</h3><div class="gb-sort-wrap" hidden>' + guestbookSortHtml() + '</div><span class="gb-count" hidden></span></header>'
+            + '<ul class="comment-list gb-list" id="gb-list"><li class="gb-loading">' + escapeHtml(t('加载中…')) + '</li></ul>'
             + '<div class="gb-more" id="gb-more"></div>';
         ensureGuestbookComposer(panel);
         wireGuestbookList(panel, scroll);
@@ -2882,7 +3053,7 @@
             +     '<input type="text" class="gb-nick" placeholder="昵称（可选）" autocomplete="nickname">'
             +   '</div>'
             +   '<div class="gb-msg-row">'
-            +     '<textarea class="gb-msg" rows="1" placeholder="写下留言…支持 Markdown"></textarea>'
+            +     '<textarea class="gb-msg" rows="1" placeholder="' + escAttr(t('写下留言…支持 Markdown')) + '"></textarea>'
             +     '<button type="button" class="gb-send" aria-label="发送"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>'
             +   '</div>'
             + '</div>';
@@ -2974,7 +3145,7 @@
         PW.scrollEl = scroll;
         scroll.scrollTop = 0;
         scroll.innerHTML = ''
-            + '<header class="side-panel-header"><h3>照片墙</h3></header>'
+            + '<header class="side-panel-header"><h3>' + escapeHtml(t('照片墙')) + '</h3></header>'
             + '<div class="pw-container" id="pw-container"></div>'
             + '<div class="pw-more" id="pw-more"></div>';
 
@@ -3014,7 +3185,7 @@
             var items = Array.isArray(data.items) ? data.items : [];
             var container = PW.scrollEl.querySelector('#pw-container');
             if (PW.items.length === 0 && items.length === 0) {
-                container.innerHTML = '<p class="pw-empty">还没有照片。</p>';
+                container.innerHTML = '<p class="pw-empty">' + escapeHtml(t('还没有照片。')) + '</p>';
             }
             items.forEach(function (it) {
                 var idx = PW.items.length;
@@ -3267,9 +3438,9 @@
     // Localized tooltip labels for the side popup (extracted so they can be
     // tested / re-used if a third action is added later).
     function photoWallPopupTitle(act) {
-        if (act === 'article') return '查看对应文章';
-        if (act === 'detail')  return '查看照片详情';
-        if (act === 'location') return '查看照片位置';
+        if (act === 'article') return t('查看对应文章');
+        if (act === 'detail')  return t('查看照片详情');
+        if (act === 'location') return t('查看照片位置');
         return '';
     }
     function escAttr(s) { return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -3325,11 +3496,11 @@
 
         var atStart = idx <= 0, atEnd = idx >= PW.items.length - 1;
         var arrow = function (dir, disabled, path) {
-            return '<button type="button" class="pw-detail-arrow pw-detail-arrow--' + dir + '"' + (disabled ? ' disabled' : '') + ' data-pw-nav="' + (dir === 'prev' ? -1 : 1) + '" aria-label="' + (dir === 'prev' ? '上一张' : '下一张') + '"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="' + path + '"/></svg></button>';
+            return '<button type="button" class="pw-detail-arrow pw-detail-arrow--' + dir + '"' + (disabled ? ' disabled' : '') + ' data-pw-nav="' + (dir === 'prev' ? -1 : 1) + '" aria-label="' + escAttr(t(dir === 'prev' ? '上一张' : '下一张')) + '"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="' + path + '"/></svg></button>';
         };
-        var locBtn = hasGeo ? '<button type="button" class="pw-detail-round" data-pw-dact="location" title="查看照片位置"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>' : '';
+        var locBtn = hasGeo ? '<button type="button" class="pw-detail-round" data-pw-dact="location" title="' + escAttr(t('查看照片位置')) + '"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>' : '';
         detail.innerHTML = ''
-            + '<button type="button" class="pw-detail-exit" data-pw-dact="exit" aria-label="退出"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+            + '<button type="button" class="pw-detail-exit" data-pw-dact="exit" aria-label="' + escAttr(t('退出')) + '"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
             + '<div class="pw-detail-stage">'
             +   arrow('prev', atStart, '15 18 9 12 15 6')
             +   '<img class="pw-detail-img" src="' + escapeHtml(it.full || it.thumbnail || '') + '" alt="' + escapeHtml(it.title || '') + '">'
@@ -3338,7 +3509,7 @@
             + '<div class="pw-detail-info">'
             +   '<div class="pw-detail-params">' + (rows.join('') || '<div class="pw-detail-row"><span>' + t('暂无参数') + '</span></div>') + '</div>'
             +   '<div class="pw-detail-actions">'
-            +     '<button type="button" class="pw-detail-round" data-pw-dact="article" title="查看对应文章"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>'
+            +     '<button type="button" class="pw-detail-round" data-pw-dact="article" title="' + escAttr(t('查看对应文章')) + '"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>'
             +     locBtn
             +   '</div>'
             + '</div>';
@@ -3361,6 +3532,9 @@
 
     function flyMapToPhotoWallPhoto(coords) {
         if (!state.map || !coords || state.isMobile) return;
+        // v1.4.4 (item 5): 触发地图位移时，同时收起地图上已打开的图片展开面板
+        // （地图标记点开的照片网格面板 + 地区面板），让飞行目标不被遮挡。
+        closeAllPhotoPanels();
         var lngLat = new maplibregl.LngLat(coords[0], coords[1]);
         var center = photoWallLeftAreaCenter();
         var offset = [center.x - window.innerWidth / 2, center.y - window.innerHeight / 2];
@@ -3374,9 +3548,9 @@
             setTimeout(function () {
                 if (flyId !== state.mapFlyId) return;
                 state.map.easeTo({ zoom: targetZoom, around: lngLat, duration: 1600, easing: easeInOutSine });
-                if (REGION.active) {
-                    state.map.once('moveend', function () { if (flyId === state.mapFlyId) showPulseDot(coords); });
-                }
+                // v1.4.4 (item 4): drop the pulse dot + location popup in BOTH
+                // region and normal mode once the zoom settles.
+                state.map.once('moveend', function () { if (flyId === state.mapFlyId) showPulseDot(coords); });
             }, 100);
         });
     }
@@ -3646,6 +3820,8 @@
     // Two eased stages read like a hand dragging, then zooming in.
     function flyMapToPhoto(coords) {
         if (!state.map || !coords || state.isMobile) return;
+        // v1.4.4 (item 5): 触发地图位移时，同时收起地图上已打开的图片展开面板。
+        closeAllPhotoPanels();
         var lngLat = new maplibregl.LngLat(coords[0], coords[1]);
         var target = rightMapAreaCenter();
         var offset = [target.x - window.innerWidth / 2, target.y - window.innerHeight / 2];
@@ -3676,14 +3852,13 @@
                     duration: 1600,
                     easing: easeInOutSine
                 });
-                // Region mode: mark the exact photo location once the zoom
-                // settles (no droplet exists there to show it otherwise).
-                if (REGION.active) {
-                    state.map.once('moveend', function () {
-                        if (flyId !== state.mapFlyId) return;
-                        showPulseDot(coords);
-                    });
-                }
+                // v1.4.4 (item 4): mark the exact photo location once the zoom
+                // settles, in BOTH region and normal mode, and pop the location
+                // popup below it (showPulseDot drives both).
+                state.map.once('moveend', function () {
+                    if (flyId !== state.mapFlyId) return;
+                    showPulseDot(coords);
+                });
             }, 100);
         });
     }
@@ -3849,7 +4024,7 @@
             requestAnimationFrame(function () { scheduled = false; updateArticleNav(); });
         });
         window.addEventListener('resize', function () {
-            if (state.articleOpen) { syncArticleNavGeom(); updateArticleNav(); }
+            if (state.articleOpen) { syncArticleNavGeom(); ensureReadingTailSpace(); updateArticleNav(); }
         });
 
         dom.articleNavBuilt = true;
@@ -3918,10 +4093,16 @@
         // over the first line), fades in as soon as scrolling begins.
         if (dom.articleNavBandTop) dom.articleNavBandTop.classList.toggle('is-visible', scrollTop > 6);
 
-        // Bottom trio: visible while the article text still extends below the
-        // panel bottom (its end has not yet risen above the viewport bottom).
-        var deltaToTextEnd = contentRect.bottom - panelRect.bottom;
-        var trioVisible = deltaToTextEnd > 2;
+        // v1.4.4 (item 2): 100% 的判定位置从「正文末尾到达面板底部」改为「正文
+        // 末尾到达面板垂直中点」。deltaToCenter 是正文底边还需上移多少才触及中点，
+        // <=0 即已到/越过中点 → 100%。底部留白（ensureReadingTailSpace）保证再短的
+        // 文章也能滚到让末尾抵达中点。
+        var panelCenterY = panelRect.top + panelRect.height / 2;
+        var deltaToCenter = contentRect.bottom - panelCenterY;
+
+        // Bottom trio: visible only before 100%; disappears once the last line of
+        // article text reaches the panel centre (v1.4.4 item 2).
+        var trioVisible = deltaToCenter > 2;
         dom.articleNavBottom.classList.toggle('is-visible', trioVisible);
 
         // v1.4.2: 滚动到最底部时淡出底部毛玻璃带（下方已无正文需要虚化）。
@@ -3931,10 +4112,61 @@
         }
 
         // Reading progress: how far the reader is toward the text end resting at
-        // the panel bottom (0 → 100%).
-        var textEnd = scrollTop + deltaToTextEnd;
-        var pct = textEnd > 4 ? Math.round(Math.max(0, Math.min(1, scrollTop / textEnd)) * 100) : 100;
+        // the panel centre (0 → 100%).
+        var textCenterScroll = scrollTop + deltaToCenter;
+        var pct = textCenterScroll > 4 ? Math.round(Math.max(0, Math.min(1, scrollTop / textCenterScroll)) * 100) : 100;
         if (dom.articleNavProgressNum) dom.articleNavProgressNum.textContent = pct + '%';
+    }
+
+    // v1.4.4 (item 3): keep a scrolling panel's absolute close button pinned to
+    // the panel's top-right while the panel scrolls. The button is positioned
+    // absolutely relative to the (self-scrolling) panel, so it drifts up with the
+    // content; feeding the live scrollTop back into its `top` re-pins it visually.
+    // We adjust `top` (not transform) so the hover rotate/scale animation on
+    // .panel-close-btn stays intact. Panels whose content lives in a separate
+    // non-scrolling inner region (side/photo/region panels) never call this.
+    function pinScrollingPanelClose(panel, closeBtn, baseTop) {
+        if (!panel || !closeBtn) return;
+        baseTop = baseTop || 12;
+        var scheduled = false;
+        function repin() { closeBtn.style.top = (baseTop + panel.scrollTop) + 'px'; }
+        panel._spRepinClose = repin;
+        repin();
+        panel.addEventListener('scroll', function () {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(function () { scheduled = false; repin(); });
+        }, { passive: true });
+    }
+
+    // v1.4.4 (item 2): ensure there is always enough scroll room below the
+    // article text so its last line can rise to the panel centre — i.e. progress
+    // can always reach 100% and the bottom trio can always disappear. When the
+    // natural content below #article-content (share + comments) is too short, a
+    // transparent tail spacer at the very bottom of the scroll makes up the gap.
+    function ensureReadingTailSpace() {
+        var panel = dom.articlePanel;
+        var content = dom.articleContent;
+        if (!panel || !content) return;
+        var spacer = dom.articleTailSpacer;
+        if (!spacer || !spacer.isConnected) {
+            spacer = document.createElement('div');
+            spacer.className = 'article-reading-tail';
+            spacer.setAttribute('aria-hidden', 'true');
+            panel.appendChild(spacer); // last child of the scroll container
+            dom.articleTailSpacer = spacer;
+        }
+        // Measure without the spacer's own contribution.
+        spacer.style.height = '0px';
+        void panel.offsetHeight;
+        var panelRect = panel.getBoundingClientRect();
+        var contentRect = content.getBoundingClientRect();
+        var centerY = panelRect.top + panelRect.height / 2;
+        var deltaToCenter = contentRect.bottom - centerY;      // at current scrollTop
+        var needScrollTop = panel.scrollTop + deltaToCenter;   // scrollTop to hit centre
+        var maxScroll = panel.scrollHeight - panel.clientHeight;
+        var shortfall = needScrollTop - maxScroll;
+        spacer.style.height = shortfall > 0 ? Math.ceil(shortfall) + 'px' : '0px';
     }
 
     // Called once an article's content is in place: ensure controls exist, start
@@ -3944,6 +4176,12 @@
         buildArticleNav();
         if (dom.articleNavOverlay) dom.articleNavOverlay.classList.add('is-active');
         syncArticleNavGeom();
+        ensureReadingTailSpace();
+        // v1.4.4 (item 2): content height changes over time — comments load
+        // async, images decode late — so keep the tail spacer + progress in sync
+        // whenever #article-content / #article-comments resize. One observer,
+        // rebuilt per open, torn down on close.
+        setupReadingTailObserver();
         var until = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.openDuration ? ARTICLE_MOTION.openDuration : 600) + 80;
         var t0 = null;
         requestAnimationFrame(function loop(t) {
@@ -3951,8 +4189,29 @@
             if (t0 === null) t0 = t;
             syncArticleNavGeom();
             if (t - t0 < until) requestAnimationFrame(loop);
-            else updateArticleNav();
+            else { ensureReadingTailSpace(); updateArticleNav(); }
         });
+    }
+
+    // Observe the article body + comments for height changes and re-fit the tail
+    // spacer (debounced via rAF). Rebuilt each open; disconnected on close.
+    function setupReadingTailObserver() {
+        if (typeof ResizeObserver === 'undefined') return;
+        if (state.readingTailRO) { try { state.readingTailRO.disconnect(); } catch (e) {} }
+        var scheduled = false;
+        var ro = new ResizeObserver(function () {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(function () {
+                scheduled = false;
+                if (!state.articleOpen) return;
+                ensureReadingTailSpace();
+                updateArticleNav();
+            });
+        });
+        if (dom.articleContent) ro.observe(dom.articleContent);
+        if (dom.articleComments) ro.observe(dom.articleComments);
+        state.readingTailRO = ro;
     }
 
     // ---------------------------------------------------------------
@@ -5085,10 +5344,96 @@
                 .setLngLat(new maplibregl.LngLat(coords[0], coords[1]))
                 .addTo(state.map);
         } catch (e) { state.pulseDot = null; }
+        // v1.4.4 (item 4): a small popup hangs below the dot with lng/lat + name.
+        showLocationPopup(coords);
     }
 
     function removePulseDot() {
         if (state.pulseDot) { try { state.pulseDot.remove(); } catch (e) {} state.pulseDot = null; }
+        removeLocationPopup(); // v1.4.4 item 4: same lifecycle as the pulse dot
+    }
+
+    // v1.4.4 (item 4): location popup below the pulse dot — lng/lat immediately,
+    // reverse-geocoded place name filled in when it returns. Lifecycle is tied to
+    // the pulse dot (created/removed together). Open/close grow from / shrink
+    // toward the dot using the article-panel motion tokens, via WAAPI with
+    // onfinish/oncancel guards so the animation ALWAYS runs to completion.
+    function locPopupCoordText(coords) {
+        var lat = coords[1], lng = coords[0];
+        var ns = lat >= 0 ? 'N' : 'S', ew = lng >= 0 ? 'E' : 'W';
+        return Math.abs(lat).toFixed(5) + '° ' + ns + ' · ' + Math.abs(lng).toFixed(5) + '° ' + ew;
+    }
+
+    function showLocationPopup(coords) {
+        removeLocationPopup(true); // instantly clear a superseded popup
+        if (!state.map || !coords) return;
+        var el = document.createElement('div');
+        el.className = 'sp-loc-popup' + (prefersReducedMotion() ? ' sp-loc-popup--static' : '');
+        el.innerHTML =
+            '<span class="sp-loc-popup-arrow" aria-hidden="true"></span>'
+          + '<div class="sp-loc-popup-body">'
+          +   '<div class="sp-loc-popup-coord">' + escapeHtml(locPopupCoordText(coords)) + '</div>'
+          +   '<div class="sp-loc-popup-name">' + escapeHtml(t('解析中…')) + '</div>'
+          + '</div>';
+        var token = (state.locPopupSeq = (state.locPopupSeq || 0) + 1);
+        var marker;
+        try {
+            marker = new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, 16] })
+                .setLngLat(new maplibregl.LngLat(coords[0], coords[1]))
+                .addTo(state.map);
+        } catch (e) { return; }
+        state.locPopup = { marker: marker, el: el, token: token, closing: false, anim: null };
+
+        if (!prefersReducedMotion() && el.animate) {
+            var dur = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.openDuration) ? ARTICLE_MOTION.openDuration : 320;
+            var ease = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.easing) ? ARTICLE_MOTION.easing : 'cubic-bezier(0.16,1,0.3,1)';
+            var anim = el.animate([
+                { transform: 'scale(0.2)', opacity: 0 },
+                { opacity: 1, offset: 0.3 },
+                { transform: 'scale(1)', opacity: 1 }
+            ], { duration: dur, easing: ease, fill: 'both' });
+            state.locPopup.anim = anim;
+            anim.onfinish = function () { if (state.locPopup && state.locPopup.token === token) state.locPopup.anim = null; };
+        }
+
+        // Async reverse-geocode; fill the name when it returns (if still current).
+        fetchReverseGeocode(coords).then(function (name) {
+            if (!state.locPopup || state.locPopup.token !== token || state.locPopup.closing) return;
+            var nameEl = el.querySelector('.sp-loc-popup-name');
+            if (!nameEl) return;
+            if (name) { nameEl.textContent = name; }
+            else { nameEl.remove(); } // resolve failed → keep only lng/lat
+        });
+    }
+
+    function removeLocationPopup(instant) {
+        var p = state.locPopup;
+        if (!p) return;
+        state.locPopup = null;   // detach now so a new popup can supersede cleanly
+        p.closing = true;
+        var done = function () { try { p.marker.remove(); } catch (e) {} };
+        if (instant || prefersReducedMotion() || !p.el.animate) { done(); return; }
+        if (p.anim) { try { p.anim.cancel(); } catch (e) {} }
+        var dur = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.closeDuration) ? ARTICLE_MOTION.closeDuration : 280;
+        var ease = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.easing) ? ARTICLE_MOTION.easing : 'cubic-bezier(0.16,1,0.3,1)';
+        var anim = p.el.animate([
+            { transform: 'scale(1)', opacity: 1 },
+            { opacity: 1, offset: 0.18 },
+            { transform: 'scale(0.2)', opacity: 0 }
+        ], { duration: dur, easing: ease, fill: 'both' });
+        anim.onfinish = done;
+        anim.oncancel = done; // guarantee removal even if interrupted
+    }
+
+    function fetchReverseGeocode(coords) {
+        var url = CONFIG.restBase + '/sphotography/v1/reverse-geocode'
+            + '?lat=' + encodeURIComponent(coords[1])
+            + '&lng=' + encodeURIComponent(coords[0])
+            + '&lang=' + encodeURIComponent((typeof siteLang === 'string' && siteLang) ? siteLang : 'zh');
+        return fetch(url, { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { return (d && d.name) ? String(d.name) : ''; })
+            .catch(function () { return ''; });
     }
 
     // ---------------------------------------------------------------
@@ -5132,6 +5477,8 @@
             }
         }
 
+        dom.detailSheet.scrollTop = 0;
+        if (dom.detailSheet._spRepinClose) dom.detailSheet._spRepinClose(); // v1.4.4 item 3
         dom.detailSheet.classList.add('active');
         state.detailOpen = true;
     }
@@ -5680,6 +6027,10 @@
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
+        // v1.4.4 (item 3): pin the close button of the two self-scrolling panels
+        // (article panel + photo detail sheet) so it stays top-right on scroll.
+        pinScrollingPanelClose(dom.articlePanel, dom.articleClose);
+        pinScrollingPanelClose(dom.detailSheet, dom.closeDetail);
         startPreloader();
 
         var hasInlineData = useInlineData();
@@ -5708,6 +6059,7 @@
             bindUIEvents();
             initProfileExpand();
             initPageLinks();
+            maybeAutoOpenAnnouncement(); // v1.4.4 (item 6): 默认展开公告（可后台关闭 / 用户关闭后记忆）
             // Sidebar defaults to collapsed unless the "default expand sidebar"
             // setting is enabled.
             if (SETTINGS.sidebarDefaultOpen) {
