@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.4
+Version: 1.4.5
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -1080,6 +1080,15 @@ body.sidebar-collapsed .sidebar-expand-btn {
 }
 .article-nav-btn:hover { filter: brightness(1.08); }
 button.article-nav-btn:active { transform: scale(0.94); }
+
+/* v1.4.5 (item 7): the article close button, relocated into the fixed nav
+   overlay. The overlay is pointer-events:none, so re-enable events here; z-index
+   sits above the frost bands (z-index:4) so the top band never blurs over it.
+   Keeps all .panel-close-btn visuals (position/top/right/hover rotate). */
+.article-nav-close {
+    pointer-events: auto;
+    z-index: 12;
+}
 
 /* Back-to-top: pinned to the top-centre of the panel, over the text. Hidden
    until the reader scrolls down. */
@@ -2457,7 +2466,10 @@ button.article-nav-btn:active { transform: scale(0.94); }
     box-shadow: 0 -4px 32px rgba(0,0,0,0.35);
     transform: translateY(100%);
     opacity: 0;
-    overflow-y: auto;
+    /* v1.4.5 (item 7): the sheet itself no longer scrolls — .detail-content does.
+       This keeps #close-detail (a non-scrolling child of the sheet) pinned to the
+       top-right with no JS chase (retires pinScrollingPanelClose for the sheet). */
+    overflow: hidden;
     transition:
         transform var(--duration-slow) var(--ease-out-expo),
         opacity var(--duration-slow) var(--ease-out-expo),
@@ -2470,7 +2482,16 @@ button.article-nav-btn:active { transform: scale(0.94); }
     border-radius: var(--panel-radius) var(--panel-radius) 0 0; /* 展开为卡片形 */
 }
 
-.detail-content { padding: 16px 20px 24px; }
+.detail-content {
+    padding: 16px 20px 24px;
+    /* v1.4.5 (item 7): the scroll container (was #detail-sheet). Clamp to the
+       sheet's max height and scroll internally so the close button stays pinned. */
+    max-height: 70vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.detail-content::-webkit-scrollbar { width: 0; height: 0; }
 
 .drag-handle {
     width: 36px; height: 4px;
@@ -2704,6 +2725,70 @@ body.sphotography-cursor-dot input[type="url"],
 body.sphotography-cursor-dot input[type="number"],
 body.sphotography-cursor-dot textarea {
     cursor: text !important;
+}
+
+/* ============================================
+   9c. Rounded / magnetic cursor (v1.4.5, cursor_style = rounded, default)
+   JS (app.js §20b) drives two fixed follower elements — an idle rounded V-arrow
+   and an adsorb ring that hugs interactive elements. `sp-rounded-cursor-on` is
+   added by JS only on hover+fine-pointer devices after the intro, so touch
+   devices never lose their native behaviour. The OS cursor is hidden while on;
+   focused text fields get the I-beam back so typing stays usable.
+   ============================================ */
+body.sp-rounded-cursor-on,
+body.sp-rounded-cursor-on * { cursor: none !important; }
+body.sp-rounded-cursor-on input:focus,
+body.sp-rounded-cursor-on textarea:focus,
+body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
+
+.sp-cursor-arrow,
+.sp-cursor-ring {
+    position: fixed;
+    left: 0; top: 0;
+    z-index: 2147483000; /* above every panel / overlay / map control */
+    pointer-events: none;
+    will-change: transform;
+}
+/* Idle arrow — grey translucent fill + theme ring, soft shadow reads as frosted. */
+.sp-cursor-arrow {
+    width: 26px; height: 26px;
+    margin: -4px 0 0 -5px; /* align the SVG tip (path starts at 5,4) to the hotspot */
+    color: var(--primary); /* drives the SVG stroke (currentColor) */
+    opacity: 0;
+    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
+    transition: opacity 180ms ease;
+}
+.sp-cursor-arrow svg { display: block; }
+.sp-cursor-arrow.is-on { opacity: 1; }
+.sp-cursor-arrow.is-faded { opacity: 0; }           /* hidden while adsorbed */
+.sp-cursor-arrow.is-hidden,
+.sp-cursor-ring.is-hidden { opacity: 0 !important; } /* yielding to a focused field */
+
+/* Adsorb ring — hugs the target's exact border (theme stroke, faint theme fill). */
+.sp-cursor-ring {
+    width: 10px; height: 10px;
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    opacity: 0;
+}
+.sp-cursor-ring.is-adsorbed { opacity: 1; }
+/* Transition only during the grow/release morph, not per-frame tracking. */
+.sp-cursor-ring.is-morphing {
+    transition:
+        width 300ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)),
+        height 300ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)),
+        border-radius 300ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)),
+        transform 300ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)),
+        opacity 220ms ease;
+}
+/* Smooth the parallax drift + snap-back on elements that lack their own
+   transform transition. */
+.sp-magnet-active { transition: transform 220ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)); }
+
+@media (prefers-reduced-motion: reduce) {
+    .sp-cursor-arrow { transition: opacity 120ms ease; }
+    .sp-cursor-ring.is-morphing { transition: opacity 120ms ease; }
 }
 
 /* 10. 弹窗与通知 */
@@ -3130,7 +3215,7 @@ body.sphotography-cursor-dot textarea {
     display: flex;
     flex-direction: column;
     max-height: min(60vh, calc(100vh - 120px));
-    padding: 14px 16px 8px;
+    padding: 14px 16px 14px; /* v1.4.5 (item 2): 底部由 8px→14px，避免末行贴边被下边框遮蔽 */
     border-radius: var(--panel-radius);
     background: var(--glass-elevated-bg);
     backdrop-filter: var(--glass-elevated-blur);
@@ -3966,9 +4051,13 @@ body.sphotography-cursor-dot textarea {
    shrinks toward the dot (transform-origin at the top, near the dot). The
    MapLibre marker anchors the popup's top edge just under the dot. */
 .sp-loc-popup {
-    transform-origin: top center;
+    /* v1.4.5 (item 5): the marker root is left untouched so MapLibre owns its
+       transform (translate positioning); animation lives on .sp-loc-popup-inner. */
     pointer-events: none;
     max-width: 260px;
+}
+.sp-loc-popup-inner {
+    transform-origin: top center;
     filter: drop-shadow(0 6px 20px rgba(0,0,0,0.28));
 }
 .sp-loc-popup-arrow {
