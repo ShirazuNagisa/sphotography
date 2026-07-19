@@ -4,16 +4,14 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.3
+Version: 1.4.4
 License: GPL v2 or later
 Text Domain: sphotography
 */
 
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-/* ============================================
-   1. Design Tokens & CSS Variables (统一设计令牌)
-   ============================================ */
+/* 1. 设计令牌与 CSS 变量 */
 :root {
     /* === Layout === */
     --sidebar-width: 300px;
@@ -116,9 +114,7 @@ img { display:block; max-width:100%; }
     }
 }
 
-/* ============================================
-   2. Glass Panel Base + Light Mode
-   ============================================ */
+/* 2. 玻璃面板基础 + 浅色模式 */
 
 /* Base glass panel — 统一过渡 */
 .glass-panel {
@@ -185,9 +181,7 @@ body {
                 background-color var(--duration-slow) var(--ease-in-out-sine);
 }
 
-/* ============================================
-   3. Map (always fullscreen)
-   ============================================ */
+/* 3. 地图（全屏） */
 #map {
     position: fixed;
     top: 0;
@@ -197,9 +191,7 @@ body {
     z-index: 1;
 }
 
-/* ============================================
-   4. Sidebar (overlays map)
-   ============================================ */
+/* 4. 侧边栏 */
 .sidebar {
     position: fixed;
     left: 16px;
@@ -961,9 +953,7 @@ body.sidebar-collapsed .sidebar-expand-btn {
     100% { transform: scale(1); opacity: 1; }
 }
 
-/* ============================================
-   5. Article Panel (overlay) — cascade 入场
-   ============================================ */
+/* 5. 文章面板 */
 .article-panel {
     position: fixed;
     left: 340px;
@@ -1008,6 +998,15 @@ body.sidebar-collapsed .sidebar-expand-btn {
    absolutely-positioned buttons inside it stay pinned to the panel frame while
    the panel content scrolls underneath.
    ============================================ */
+/* v1.4.4 (item 2): 阅读进度 100% 判定改为「正文末尾抵达面板中点」。当正文下方
+   的分享条+评论不足以把末尾推到中点时，用这块透明留白补足滚动空间，保证进度总能
+   到 100%、底部三按键总能消失。高度由 JS(ensureReadingTailSpace) 动态设定。 */
+.article-reading-tail {
+    display: block;
+    width: 100%;
+    pointer-events: none;
+}
+
 .article-nav-overlay {
     position: fixed;
     left: 0;
@@ -2261,9 +2260,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     .comment-captcha-row { flex-wrap: wrap; }
 }
 
-/* ============================================
-   6. Dynamic Photo Grid Panels — 瀑布流入场
-   ============================================ */
+/* 6. 图片网格面板 */
 .photo-panels {
     position: fixed;
     inset: 0;
@@ -2400,9 +2397,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     transform: translateY(0);
 }
 
-/* ============================================
-   7. Panel Close Button (统一 btn-s 尺寸)
-   ============================================ */
+/* 7. 图片详情面板 */
 .panel-close-btn {
     position: absolute;
     top: 12px;
@@ -2444,9 +2439,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
     height: calc(var(--btn-s) - 10px);
 }
 
-/* ============================================
-   8. Detail Sheet — 圆角变化动效
-   ============================================ */
+/* 8. 右下角个人信息卡片 */
 .detail-sheet {
     position: fixed;
     left: 0;
@@ -2583,9 +2576,7 @@ button.article-nav-btn:active { transform: scale(0.94); }
 
 .detail-view-article-btn[hidden] { display: none; }
 
-/* ============================================
-   9. About Trigger & Card — 气泡弹出
-   ============================================ */
+/* 9. 页面链接栏（右上角） */
 
 /* 统一 Icon Button 样式 — About Trigger (btn-m) */
 /* Persistent author card, pinned bottom-right. Its bottom offset clears the
@@ -2715,9 +2706,7 @@ body.sphotography-cursor-dot textarea {
     cursor: text !important;
 }
 
-/* ============================================
-   10. Footer
-   ============================================ */
+/* 10. 弹窗与通知 */
 .map-footer {
     position: fixed;
     left: 50%;
@@ -2753,9 +2742,7 @@ body.sphotography-cursor-dot textarea {
     }
 }
 
-/* ============================================
-   11. Loading Overlay — 高级品牌化加载体验
-   ============================================ */
+/* 11. 加载动画 */
 .loading-overlay {
     position: fixed; inset: 0; z-index: 9999;
     display: flex; flex-direction: column;
@@ -3054,9 +3041,7 @@ body.sphotography-cursor-dot textarea {
     100% { transform: scale(18); opacity: 0; }
 }
 
-/* ============================================
-   12. Responsive: Tablet
-   ============================================ */
+/* 12. 响应式与移动端适配 */
 @media (max-width: 1199px) {
     .sidebar {
         width: 260px;
@@ -3071,9 +3056,7 @@ body.sphotography-cursor-dot textarea {
     .side-panel { width: min(520px, calc(100vw - 300px)); }
 }
 
-/* ============================================
-   12b. Page-links bar + 友链 / 留言 panels (v1.3.7)
-   ============================================ */
+/* 13. 地图样式覆盖 */
 .page-links-bar {
     position: fixed;
     top: 12px;
@@ -3136,6 +3119,70 @@ body.sphotography-cursor-dot textarea {
     .page-link-pill { transition: opacity 120ms ease; }
 }
 .page-link-ico { display: inline-flex; color: var(--primary); }
+
+/* v1.4.4 (item 6): 公告面板。右上角浮层，页面链接栏正下方、右侧地图控件左边。
+   left/top/width 由 JS(syncAnnouncementGeom) 同步为页面链接栏的实际位置与宽度；
+   高度随内容变化，内容超长时 .announcement-content 内部滚动（关闭键+标题常驻）。
+   出现/消失：从顶部缩放淡入淡出（transform-origin 顶部，贴着栏“长出”）。 */
+.announcement-panel {
+    position: fixed;
+    z-index: 117; /* 在页面链接栏(118)之下、右半侧面板(116)之上 */
+    display: flex;
+    flex-direction: column;
+    max-height: min(60vh, calc(100vh - 120px));
+    padding: 14px 16px 8px;
+    border-radius: var(--panel-radius);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    box-shadow: var(--shadow-elevated);
+    transform-origin: top center;
+    transform: translateY(-8px) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo);
+}
+.announcement-panel.active {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+}
+.announcement-header { margin: 0 0 8px; padding-right: 28px; }
+.announcement-header h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+.announcement-content {
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.7;
+    padding-bottom: 6px;
+}
+.announcement-content::-webkit-scrollbar { width: 0; height: 0; }
+.announcement-content h3, .announcement-content h4, .announcement-content h5 {
+    color: var(--text-primary);
+    margin: 0.6em 0 0.3em;
+}
+.announcement-content p { margin: 0.4em 0; }
+.announcement-content a { color: var(--primary); }
+.announcement-content ul, .announcement-content ol { margin: 0.4em 0; padding-left: 1.4em; }
+.announcement-content img { max-width: 100%; border-radius: 8px; }
+.announcement-panel .announcement-close { top: 10px; right: 10px; }
+@media (prefers-reduced-motion: reduce) {
+    .announcement-panel { transition: opacity 140ms ease; transform: none; }
+    .announcement-panel.active { transform: none; }
+}
+@media (max-width: 767px) {
+    .announcement-panel { max-height: min(70vh, calc(100vh - 90px)); }
+}
 
 /* Right-half side panels — mirror the article panel motion but slide from the
    right; they coexist with an open article on the left. */
@@ -3912,6 +3959,54 @@ body.sphotography-cursor-dot textarea {
 .sp-pulse-dot--static .sp-pulse-ring { animation: none; opacity: 0.5; }
 @media (prefers-reduced-motion: reduce) {
     .sp-pulse-ring { animation: none; opacity: 0.5; }
+}
+
+/* v1.4.4 (item 4): location popup hanging below the pulse dot. Shows lng/lat
+   immediately + a reverse-geocoded place name once it resolves. Grows from /
+   shrinks toward the dot (transform-origin at the top, near the dot). The
+   MapLibre marker anchors the popup's top edge just under the dot. */
+.sp-loc-popup {
+    transform-origin: top center;
+    pointer-events: none;
+    max-width: 260px;
+    filter: drop-shadow(0 6px 20px rgba(0,0,0,0.28));
+}
+.sp-loc-popup-arrow {
+    display: block;
+    width: 0; height: 0;
+    margin: 0 auto -1px;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 7px solid var(--glass-elevated-bg);
+}
+.sp-loc-popup-body {
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    text-align: center;
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+}
+.sp-loc-popup-coord {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+}
+.sp-loc-popup-name {
+    margin-top: 2px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    max-width: 236px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
 }
 
 /* ---------------------------------------------------------------

@@ -1,10 +1,6 @@
 <?php
-/**
- * Template Name: Fullscreen Map
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 模板名称：Fullscreen Map
+// 全屏地图页面模板
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
@@ -23,10 +19,7 @@ $site_name = get_bloginfo( 'name' ) ?: 'Shirazu Nagisa Photography';
     <?php wp_head(); ?>
 </head>
 <?php
-// Sidebar starts collapsed unless the device-appropriate "default expand
-// sidebar" setting is on. Emitting the class server-side avoids a
-// collapsed→open flash on load. Desktop and mobile have separate defaults
-// (v1.3.7); wp_is_mobile() picks which one applies to this request.
+// 服务端决定侧边栏初始折叠状态（避免闪烁），桌面端和移动端有独立设置
 $sphotography_body_classes = array( 'map-template-body' );
 $sphotography_sidebar_default_open = wp_is_mobile()
     ? sphotography_get_mod( 'sidebar_default_open_mobile' )
@@ -38,42 +31,36 @@ if ( ! $sphotography_sidebar_default_open ) {
 <body <?php body_class( $sphotography_body_classes ); ?>>
 <?php wp_body_open(); ?>
 <script>
-/* Night-mode override (v1.3.2): apply the remembered light/dark/system choice
-   to the body class before paint so there is no flash of the backend default. */
+// 在页面渲染前恢复本地存储的明暗模式选择，避免闪烁
 (function(){try{var v=localStorage.getItem('sp-night-mode');if(v!=='light'&&v!=='dark'&&v!=='system')return;var b=document.body;b.classList.remove('sphotography-night-force-dark','sphotography-night-force-light','sphotography-night-system');b.classList.add(v==='dark'?'sphotography-night-force-dark':v==='light'?'sphotography-night-force-light':'sphotography-night-system');}catch(e){}})();
 </script>
 
     <?php $sphotography_preloader = sphotography_get_mod( 'preloader_style' ); ?>
     <?php if ( 'aperture' === $sphotography_preloader ) : ?>
-    <!-- Loading Overlay — 品牌化光圈加载体验 -->
+    <!-- 光圈加载动画 -->
     <div id="loading-overlay" class="loading-overlay">
         <div class="loading-aperture">
-            <!-- SVG 光圈环 -->
-            <svg class="loading-aperture-ring" viewBox="0 0 88 88">
+                    <svg class="loading-aperture-ring" viewBox="0 0 88 88">
                 <circle class="ring-outer" cx="44" cy="44" r="38"/>
                 <circle class="ring-inner" cx="44" cy="44" r="28"/>
             </svg>
-            <!-- 呼吸核心圆点 -->
             <div class="loading-aperture-core"></div>
         </div>
-        <!-- 站点名称 -->
         <span class="loading-site-name"><?php echo esc_html( $site_name ); ?></span>
-        <!-- 随机加载提示（每 3 秒更换一次，由 app.js 驱动） -->
         <div class="loading-tip" id="loading-tip" aria-live="polite"></div>
-        <!-- 底部进度条 -->
         <div class="loading-progress"></div>
     </div>
     <?php elseif ( 'flythrough' === $sphotography_preloader ) : ?>
-    <!-- Loading Overlay — 流光穿越（站点名称流光登场，加载完成后镜头穿过文字进入地图，由 app.js 驱动） -->
+    <!-- 流光穿越加载动画 -->
     <div id="loading-overlay" class="loading-overlay loading-overlay--flythrough" data-preloader="flythrough">
         <span class="ft-name"><?php echo esc_html( $site_name ); ?></span>
     </div>
     <?php endif; ?>
 
-    <!-- Fullscreen Map Container -->
+    <!-- 地图容器 -->
     <div id="map"></div>
 
-    <!-- Gooey (metaball) filter for the water-droplet cluster markers -->
+    <!-- 水滴融合滤镜 -->
     <svg class="droplet-goo-defs" width="0" height="0" aria-hidden="true" focusable="false">
         <defs>
             <filter id="droplet-goo">
@@ -84,11 +71,9 @@ if ( ! $sphotography_sidebar_default_open ) {
         </defs>
     </svg>
 
-    <!-- ============================================ -->
-    <!-- Sidebar (left)                               -->
-    <!-- ============================================ -->
+    <!-- 侧边栏 -->
     <aside id="sidebar" class="sidebar glass-panel" role="complementary" aria-label="<?php esc_attr_e( 'Article sidebar', 'sphotography' ); ?>">
-        <!-- Search + Filter -->
+        <!-- 搜索与筛选 -->
         <div class="sidebar-search">
             <div class="sidebar-search-row">
                 <div class="sidebar-search-field">
@@ -120,15 +105,13 @@ if ( ! $sphotography_sidebar_default_open ) {
             </div>
         </div>
 
-        <!-- Article list -->
+        <!-- 文章列表 -->
         <div id="sidebar-posts" class="sidebar-posts">
-            <!-- Dynamically populated by JS -->
+            <!-- JS 动态填充 -->
         </div>
 
         <?php
-        // Personal-info — sidebar one-line mode (v1.2.9). Sits just above the
-        // footer row (collapse button / brand / GitHub). Avatar + nickname only,
-        // no bio / hitokoto. Empty avatar falls back to a letter circle.
+        // 侧边栏个人信息行（头像 + 昵称，无头像时显示首字）
         if ( 'sidebar' === sphotography_get_mod( 'profile_display' ) ) :
             $sp_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
             $sp_name   = get_theme_mod( 'sphotography_author_nickname', '' );
@@ -160,7 +143,7 @@ if ( ! $sphotography_sidebar_default_open ) {
         </div>
         <?php endif; ?>
 
-        <!-- Bottom: collapse button + branding -->
+        <!-- 底部：折叠按钮 + 品牌 -->
         <div class="sidebar-footer">
             <button id="sidebar-toggle" class="sidebar-toggle-mini" aria-label="<?php esc_attr_e( 'Toggle sidebar', 'sphotography' ); ?>">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -174,16 +157,14 @@ if ( ! $sphotography_sidebar_default_open ) {
         </div>
     </aside>
 
-    <!-- Sidebar expand button (visible when sidebar is collapsed) -->
+    <!-- 侧边栏展开按钮（折叠时可见） -->
     <button id="sidebar-expand" class="sidebar-expand-btn glass-panel" aria-label="<?php esc_attr_e( 'Expand sidebar', 'sphotography' ); ?>">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
     </button>
 
-    <!-- ============================================ -->
-    <!-- Article Panel (covers map)                   -->
-    <!-- ============================================ -->
+    <!-- 文章面板 -->
     <div id="article-panel" class="article-panel glass-panel" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Article content', 'sphotography' ); ?>">
         <button id="article-close" class="panel-close-btn" aria-label="<?php esc_attr_e( 'Close article', 'sphotography' ); ?>">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -193,27 +174,23 @@ if ( ! $sphotography_sidebar_default_open ) {
             <div id="article-meta" class="article-meta"></div>
         </div>
         <div id="article-summary" class="article-summary" hidden>
-            <!-- AI full-text summary (v1.3.6), typewritten on first open -->
+            <!-- AI 概述 -->
         </div>
         <div id="article-content" class="article-content">
-            <!-- WordPress formatted content loaded by JS -->
+            <!-- JS 加载内容 -->
         </div>
         <div id="article-share" class="article-share" hidden>
-            <!-- Social share bar built by JS (after content, before comments) -->
+            <!-- 分享栏 -->
         </div>
         <div id="article-comments" class="article-comments" aria-live="polite">
-            <!-- Comment list + form loaded by JS -->
+            <!-- 评论区 -->
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- Dynamic photo grid panels (click map markers) -->
-    <!-- ============================================ -->
+    <!-- 图片网格面板 -->
     <div id="photo-panels" class="photo-panels" aria-live="polite"></div>
 
-    <!-- ============================================ -->
-    <!-- Detail Sheet (existing, repurposed)           -->
-    <!-- ============================================ -->
+    <!-- 图片详情面板 -->
     <div id="detail-sheet" class="detail-sheet glass-panel" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Photo detail', 'sphotography' ); ?>">
         <button id="close-detail" class="panel-close-btn" aria-label="<?php esc_attr_e( 'Close detail panel', 'sphotography' ); ?>">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -234,9 +211,7 @@ if ( ! $sphotography_sidebar_default_open ) {
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- About Card — 常驻右下角个人信息卡片              -->
-    <!-- ============================================ -->
+    <!-- 右下角个人信息卡片 -->
     <?php if ( 'card' === sphotography_get_mod( 'profile_display' ) ) : ?>
     <?php
     $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
@@ -247,8 +222,7 @@ if ( ! $sphotography_sidebar_default_open ) {
     if ( empty( $author_name ) ) {
         $author_name = __( 'Shirazu Nagisa', 'sphotography' );
     }
-    // Bio is intentionally NOT given a fallback: leaving it empty in the
-    // backend hides the bio line so the card adapts to minimal setups.
+    // bio 留空时隐藏介绍行
     $about_stats = sphotography_profile_stats();
     $about_links = sphotography_parse_profile_links();
     ?>
@@ -265,7 +239,7 @@ if ( ! $sphotography_sidebar_default_open ) {
                 <span id="hitokoto-text">Loading...</span>
             </div>
         <?php endif; ?>
-        <!-- Expanded-only content: stats + custom links (v1.3.2). -->
+        <!-- 展开后的统计与链接 -->
         <div class="about-card-expand" aria-hidden="true">
             <div class="profile-expand-stats">
                 <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['posts']; ?></span><span class="profile-stat-label"><?php esc_html_e( '文章', 'sphotography' ); ?></span></div>
@@ -285,13 +259,11 @@ if ( ! $sphotography_sidebar_default_open ) {
     </div>
     <?php endif; ?>
 
-    <!-- ============================================ -->
-    <!-- Footer -->
-    <!-- ============================================ -->
+    <!-- 页脚 -->
     <?php $footer_content = get_theme_mod( 'sphotography_footer_content', '' ); ?>
     <?php if ( ! empty( $footer_content ) ) : ?>
     <div id="map-footer" class="map-footer glass-panel">
-        <?php // Intentionally raw: this value can only be saved by a trusted administrator. ?>
+        <?php // 由受信任管理员保存，不转义 ?>
         <div class="footer-content"><?php echo $footer_content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
     </div>
     <?php endif; ?>

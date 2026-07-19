@@ -1,27 +1,5 @@
 <?php
-/**
- * Sphotography - AI module (experimental)
- *
- * A reusable server-side interface for OpenAI-compatible chat-completions
- * endpoints (Base URL + API Key + Model). Every AI feature routes through it.
- *
- * Model modes (v1.3.0):
- *   - single : one model does everything. If it is multimodal and image
- *              analysis is enabled, images are sent to it directly.
- *   - dual   : a vision model describes the post's images, then a separate
- *              text model writes/polishes using that description.
- *
- * Security posture (all three layers):
- *   1. Server-side only — keys never reach the browser or any frontend/REST
- *      output. Requests are made from PHP via wp_remote_post().
- *   2. Keys live in dedicated, non-autoloaded options (not theme_mods, so they
- *      never appear in a theme-mod export) and are masked in the admin UI.
- *   3. Keys are encrypted at rest with AES-256-CBC using a key derived from
- *      WordPress's AUTH_KEY/AUTH_SALT salts.
- *
- * @package Sphotography
- * @version 1.3.0
- */
+// AI 模块（实验性，OpenAI 兼容接口封装）
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
@@ -44,9 +22,7 @@ if ( ! defined( 'SPHOTOGRAPHY_AI_IMAGE_MAX_EDGE' ) ) {
     define( 'SPHOTOGRAPHY_AI_IMAGE_MAX_EDGE', 1024 );
 }
 
-// ============================================
-// Encryption at rest (AES-256-CBC, keyed off WP salts)
-// ============================================
+// 静态加密（通过 WP salt 派生密钥）
 
 /**
  * Derive a stable 32-byte key from the site's auth salts. Different sites (and
@@ -117,9 +93,7 @@ function sphotography_ai_decrypt( $stored ) {
     return false === $plain ? '' : $plain;
 }
 
-// ============================================
-// API key storage helpers (primary + vision)
-// ============================================
+// API 密钥存储
 
 /** Persist a raw key (encrypted) into the given option. Empty clears it. */
 function sphotography_ai_store_key_option( $option, $raw_key ) {
@@ -154,9 +128,7 @@ function sphotography_ai_get_vision_key() {
     return sphotography_ai_decrypt( get_option( SPHOTOGRAPHY_AI_VISION_KEY_OPTION, '' ) );
 }
 
-// ============================================
-// Config accessors
-// ============================================
+// 配置访问器
 
 function sphotography_ai_is_enabled() {
     return (bool) sphotography_get_mod( 'ai_enabled' );
@@ -238,9 +210,7 @@ function sphotography_ai_chat_endpoint( $base ) {
     return $base . '/chat/completions';
 }
 
-// ============================================
-// Low-level request — the reserved interface
-// ============================================
+// 底层请求接口
 
 /**
  * Send a chat-completion request. Defaults to the primary/text model; pass
@@ -312,9 +282,7 @@ function sphotography_ai_chat( $messages, $args = array() ) {
     return (string) $data['choices'][0]['message']['content'];
 }
 
-// ============================================
-// Multimodal image handling
-// ============================================
+// 多模态图片处理
 
 /**
  * Turn one attachment ID into a base64 data URI, downscaled to a sane edge so
@@ -443,9 +411,7 @@ function sphotography_ai_vision_describe( $image_parts, $hint = '' ) {
     ) );
 }
 
-// ============================================
-// Prompt building — style / length
-// ============================================
+// 提示词构建
 
 function sphotography_ai_style_directive( $style ) {
     switch ( $style ) {
@@ -512,9 +478,7 @@ function sphotography_ai_clean_html( $text ) {
     return wp_kses_post( $text );
 }
 
-// ============================================
-// Orchestrator — features call this
-// ============================================
+// 编排器
 
 /**
  * High-level generation used by 文章补全 and 润色. Hides single-vs-dual mode
@@ -604,9 +568,7 @@ function sphotography_ai_generate( $opts ) {
     return sphotography_ai_chat( $messages, array( 'temperature' => ( 'polish' === $task ) ? 0.5 : 0.8, 'max_tokens' => $max_tokens ) );
 }
 
-// ============================================
-// Post-editor meta box (only when the module is enabled)
-// ============================================
+// 文章编辑 meta box
 
 function sphotography_ai_register_meta_box() {
     if ( ! sphotography_ai_is_enabled() ) {
@@ -702,9 +664,7 @@ function sphotography_ai_render_meta_box( $post ) {
     <?php
 }
 
-// ============================================
-// Enqueue meta-box script (post edit screen only, module ready)
-// ============================================
+// 加载 meta box JS
 function sphotography_ai_enqueue_editor( $hook ) {
     if ( 'post.php' !== $hook && 'post-new.php' !== $hook ) {
         return;
@@ -920,9 +880,7 @@ function sphotography_ai_metabox_css() {
     ';
 }
 
-// ============================================
-// AJAX: 文章补全 (complete)
-// ============================================
+// AJAX：文章补全
 function sphotography_ai_ajax_complete() {
     if ( ! check_ajax_referer( 'sphotography_ai_action', 'nonce', false ) ) {
         wp_send_json_error( __( '安全校验失败。', 'sphotography' ) );
@@ -957,9 +915,7 @@ function sphotography_ai_ajax_complete() {
 }
 add_action( 'wp_ajax_sphotography_ai_complete', 'sphotography_ai_ajax_complete' );
 
-// ============================================
-// AJAX: 润色 (polish)
-// ============================================
+// AJAX：润色
 function sphotography_ai_ajax_polish() {
     if ( ! check_ajax_referer( 'sphotography_ai_action', 'nonce', false ) ) {
         wp_send_json_error( __( '安全校验失败。', 'sphotography' ) );
@@ -1012,9 +968,7 @@ function sphotography_ai_sanitize_images( $raw ) {
     return $out;
 }
 
-// ============================================
-// AJAX: auto tag suggestions (native post_tag only, text model)
-// ============================================
+// AJAX：标签建议
 function sphotography_ai_ajax_tags() {
     if ( ! check_ajax_referer( 'sphotography_ai_action', 'nonce', false ) ) {
         wp_send_json_error( __( '安全校验失败。', 'sphotography' ) );
@@ -1059,9 +1013,7 @@ function sphotography_ai_ajax_tags() {
 }
 add_action( 'wp_ajax_sphotography_ai_tags', 'sphotography_ai_ajax_tags' );
 
-// ============================================
-// AJAX: test connection (settings page) — single tests one, dual tests both
-// ============================================
+// AJAX：连接测试
 function sphotography_ai_ajax_test() {
     if ( ! check_ajax_referer( 'sphotography_ai_test', 'nonce', false ) ) {
         wp_send_json_error( __( '安全校验失败。', 'sphotography' ) );
@@ -1129,18 +1081,7 @@ function sphotography_ai_parse_tag_list( $text ) {
     return array_slice( array_values( array_unique( $clean ) ), 0, 8 );
 }
 
-// ============================================
-// AI full-text summary (概述) — v1.3.6
-//
-// A short plain-text overview of the whole article, generated by the primary
-// (text) model from the body text only. Stored in post meta and shown on the
-// frontend article panel between the title/meta and the content, typewritten on
-// the reader's first open. Generation runs asynchronously (wp-cron single
-// event) so publishing/saving is never blocked by the model call; a stored
-// content hash lets us skip regeneration unless the body actually changed.
-// Gated by the `ai_summary` setting (default off) on top of the AI master
-// switch + a configured primary model.
-// ============================================
+// AI 全文概述（异步 wp-cron 生成，存储到 post-meta）
 
 if ( ! defined( 'SPHOTOGRAPHY_AI_SUMMARY_META' ) ) {
     define( 'SPHOTOGRAPHY_AI_SUMMARY_META', '_sp_ai_summary' );
@@ -1328,11 +1269,7 @@ function sphotography_ai_summary_on_save( $post_id, $post, $update ) {
 }
 add_action( 'save_post', 'sphotography_ai_summary_on_save', 20, 3 );
 
-// ============================================
-// Summary REST field (auto in wp/v2/posts + single fetch). Old published posts
-// with no summary get one lazily scheduled the next time they are fetched
-// singly (the article-panel open), independent of the view counter.
-// ============================================
+// 概述 REST 字段
 function sphotography_ai_register_summary_rest() {
     register_rest_field( 'post', 'sp_ai_summary', array(
         'get_callback' => 'sphotography_ai_rest_summary_field',
@@ -1356,10 +1293,7 @@ function sphotography_ai_rest_summary_field( $arr, $field_name, $request ) {
     return sphotography_ai_get_summary( $post_id );
 }
 
-// ============================================
-// AJAX: manual (re)generate from the editor's current content (synchronous so
-// the author sees the result immediately). Stores against the post.
-// ============================================
+// AJAX：手动生成概述
 function sphotography_ai_ajax_summary() {
     if ( ! check_ajax_referer( 'sphotography_ai_action', 'nonce', false ) ) {
         wp_send_json_error( __( '安全校验失败。', 'sphotography' ) );

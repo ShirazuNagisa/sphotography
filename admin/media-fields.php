@@ -1,17 +1,7 @@
 <?php
-/**
- * Sphotography - Media Library Fields
- *
- * Adds latitude/longitude/camera_info/taken_at fields
- * to the WordPress media attachment edit dialog.
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 媒体库附加字段（经纬度、相机信息、拍摄日期、照片墙置顶）
 
-// ============================================
-// Add fields to attachment edit form
-// ============================================
+// 添加字段到附件编辑表单
 function sphotography_attachment_fields( $form_fields, $post ) {
     $post_id = $post->ID;
 
@@ -55,9 +45,7 @@ function sphotography_attachment_fields( $form_fields, $post ) {
 }
 add_filter( 'attachment_fields_to_edit', 'sphotography_attachment_fields', 10, 2 );
 
-// ============================================
-// Save fields from attachment edit form
-// ============================================
+// 保存附件编辑表单的字段
 function sphotography_attachment_fields_save( $post, $attachment ) {
     $meta_map = array(
         'sphotography_latitude'   => 'latitude',

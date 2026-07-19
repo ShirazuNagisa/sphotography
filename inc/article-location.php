@@ -1,20 +1,5 @@
 <?php
-/**
- * Sphotography — Article writing location (v1.3.4)
- *
- * An opt-in, per-post "撰写地点" that records where a post was written. The post
- * editor shows a meta box with a toggle (off by default) and a "获取当前位置"
- * button that reads the browser's geolocation; the coordinates are reverse-
- * resolved to an administrative region name using the theme's own offline geo
- * engine (inc/region-index.php) — province/state worldwide, city inside China.
- *
- * The resolved region is stored in post meta and exposed to the frontend (both
- * as a REST field on posts and inline in the map data) so the article panel can
- * display it in the article meta line.
- *
- * @package Sphotography
- * @version 1.3.4
- */
+// 撰写地点 meta box（读取浏览器定位 → 离线地理引擎解析 → 存储行政区域名）
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -26,18 +11,8 @@ const SPHOTOGRAPHY_WLOC_LAT     = '_sp_wloc_lat';
 const SPHOTOGRAPHY_WLOC_LNG     = '_sp_wloc_lng';
 const SPHOTOGRAPHY_WLOC_REGION  = '_sp_wloc_region';
 
-// ============================================
-// Reverse-resolve coordinates → a display region label
-// ============================================
-/**
- * Turn a coordinate into a human label using the offline geo engine: China →
- * city (falling back to province); elsewhere → province/state. Returns '' when
- * unresolved or the boundary data is unavailable.
- *
- * @param float $lat
- * @param float $lng
- * @return string
- */
+// 坐标 → 区域名
+// 坐标 → 可读区域标签（国内到市、国外到省/州）
 function sphotography_wloc_resolve_label( $lat, $lng ) {
 	if ( ! function_exists( 'sphotography_geo_resolve' ) ) {
 		return '';
@@ -56,9 +31,7 @@ function sphotography_wloc_resolve_label( $lat, $lng ) {
 	return $prov;
 }
 
-// ============================================
-// Meta box
-// ============================================
+// 注册 meta box
 function sphotography_wloc_register_meta_box() {
 	add_meta_box(
 		'sphotography-write-location',
@@ -99,9 +72,7 @@ function sphotography_wloc_render_meta_box( $post ) {
 	<?php
 }
 
-// ============================================
-// Enqueue the meta-box script (post editor only)
-// ============================================
+// 加载 meta box JS
 function sphotography_wloc_enqueue( $hook ) {
 	if ( 'post.php' !== $hook && 'post-new.php' !== $hook ) {
 		return;
@@ -133,9 +104,7 @@ function sphotography_wloc_enqueue( $hook ) {
 }
 add_action( 'admin_enqueue_scripts', 'sphotography_wloc_enqueue' );
 
-// ============================================
-// AJAX: reverse-resolve coordinates for instant editor feedback
-// ============================================
+// AJAX：坐标反查
 function sphotography_wloc_ajax_resolve() {
 	check_ajax_referer( 'sphotography_wloc_resolve', 'nonce' );
 	if ( ! current_user_can( 'edit_posts' ) ) {
@@ -160,9 +129,7 @@ function sphotography_wloc_ajax_resolve() {
 }
 add_action( 'wp_ajax_sphotography_wloc_resolve', 'sphotography_wloc_ajax_resolve' );
 
-// ============================================
-// Save
-// ============================================
+// 保存
 function sphotography_wloc_save( $post_id ) {
 	if ( ! isset( $_POST['sphotography_wloc_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sphotography_wloc_nonce'] ) ), 'sphotography_wloc_save' ) ) {
 		return;

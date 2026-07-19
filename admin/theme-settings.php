@@ -1,19 +1,12 @@
 <?php
-/**
- * Sphotography Theme Settings Page
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 主题设置页面
 
 // Prevent direct access
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// ============================================
-// Default values for all theme mods
-// ============================================
+// 主题设置默认值
 function sphotography_get_default_settings() {
     return array(
         // ① Global Theme
@@ -83,8 +76,17 @@ function sphotography_get_default_settings() {
         'tag_legend'           => true,      // tag colour legend (tag mode only)
         'region_granularity'   => 'province', // province | city (region mode)
         'region_intensity'     => 35,        // region fill opacity %, 0–100 (region mode)
+        // ⑦c Reverse geocoding (v1.4.4 item 4). Endpoint empty → OSM Nominatim
+        // public endpoint; optional key for LocationIQ-style compatible services.
+        'reverse_geocode_endpoint' => '',
+        'reverse_geocode_key'      => '',
         // ⑧ Footer
         'footer_content'      => '',
+        // ⑧b Announcement (v1.4.4 item 6). Markdown notice shown in a top-right
+        // panel; auto-opens on load unless disabled or dismissed for this content.
+        'announcement_enabled'   => false,
+        'announcement_auto_open' => true,
+        'announcement_content'   => '',
         // ⑨ CDN
         'cdn_source'          => 'jsdelivr',
         // ⑩ Experimental features (v1.2.9 / v1.3.0). API keys are NOT stored here
@@ -94,6 +96,7 @@ function sphotography_get_default_settings() {
         'ai_model_mode'       => 'single',   // single | dual (vision + text)
         'ai_image_enabled'    => false,       // single-mode: model is multimodal
         'ai_summary'          => false,       // AI 全文概述（前台文章页，默认关）
+        'ai_translate'        => false,       // v1.4.4: 后台静默预生成 en/ja 文章译文（前台语言切换据此显示）
         'ai_base_url'         => '',          // primary / text / single model
         'ai_model'            => '',
         'ai_vision_base_url'  => '',          // vision model (dual mode)
@@ -120,13 +123,11 @@ function sphotography_get_default_settings() {
     );
 }
 
-// ============================================
-// Sanitize all settings before save
-// ============================================
+// 注册设置与字段
 function sphotography_sanitize_settings( $input ) {
     $defaults = sphotography_get_default_settings();
     $input = is_array( $input ) ? wp_unslash( $input ) : array();
-    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open_desktop', 'sidebar_default_open_mobile', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'ai_summary', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
+    foreach ( array( 'allow_custom_color', 'immersive_color', 'admin_global_style', 'sidebar_default_open_desktop', 'sidebar_default_open_mobile', 'enable_hitokoto', 'entry_animation', 'pjax_animation', 'reading_info', 'view_counter', 'motion_ignore_reduced', 'tag_legend', 'ai_enabled', 'ai_image_enabled', 'ai_summary', 'ai_translate', 'announcement_enabled', 'announcement_auto_open', 'comment_captcha', 'comment_allow_edit', 'comment_allow_private', 'comment_mail_notify', 'comment_markdown', 'comment_emoji_panel', 'comment_pin_enabled', 'comment_like_enabled', 'comment_text_avatar', 'comment_fold_long', 'comment_show_reply_to', 'comment_ip_location' ) as $checkbox ) {
         if ( ! array_key_exists( $checkbox, $input ) ) {
             $input[ $checkbox ] = 0;
         }
@@ -240,6 +241,17 @@ function sphotography_sanitize_settings( $input ) {
         ? $input['cdn_source']
         : $defaults['cdn_source'];
 
+    // ⑦c Reverse geocoding (v1.4.4 item 4). Endpoint must be https; key is a
+    // plain token appended as ?key= to compatible services.
+    $sanitized['reverse_geocode_endpoint'] = esc_url_raw( trim( (string) $input['reverse_geocode_endpoint'] ), array( 'https' ) );
+    $sanitized['reverse_geocode_key']      = sanitize_text_field( $input['reverse_geocode_key'] );
+
+    // ⑧b Announcement (v1.4.4 item 6). Markdown source is admin-authored and
+    // rendered later through the XSS-safe subset, so store it as given (trusted).
+    $sanitized['announcement_enabled']   = ! empty( $input['announcement_enabled'] ) ? 1 : 0;
+    $sanitized['announcement_auto_open'] = ! empty( $input['announcement_auto_open'] ) ? 1 : 0;
+    $sanitized['announcement_content']   = (string) $input['announcement_content'];
+
     // ⑩ Experimental (v1.2.9). Require https on the base URL to avoid leaking
     // the bearer token over plain http. The API key is handled separately in
     // the save handler (encrypted), never through this array.
@@ -248,6 +260,7 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['ai_model_mode']    = in_array( $input['ai_model_mode'], $allowed_ai_mode, true ) ? $input['ai_model_mode'] : $defaults['ai_model_mode'];
     $sanitized['ai_image_enabled'] = ! empty( $input['ai_image_enabled'] ) ? 1 : 0;
     $sanitized['ai_summary']       = ! empty( $input['ai_summary'] ) ? 1 : 0;
+    $sanitized['ai_translate']     = ! empty( $input['ai_translate'] ) ? 1 : 0; // v1.4.4
     $sanitized['ai_base_url']      = esc_url_raw( trim( (string) $input['ai_base_url'] ), array( 'https' ) );
     $sanitized['ai_model']         = sanitize_text_field( $input['ai_model'] );
     $sanitized['ai_vision_base_url'] = esc_url_raw( trim( (string) $input['ai_vision_base_url'] ), array( 'https' ) );
@@ -278,9 +291,7 @@ function sphotography_sanitize_settings( $input ) {
     return $sanitized;
 }
 
-// ============================================
-// Handle form submission: Save
-// ============================================
+// Customizer 传输方式
 function sphotography_handle_save_settings() {
     if ( ! isset( $_POST['sphotography_save_nonce'] ) ) {
         return;
@@ -361,9 +372,7 @@ function sphotography_migrate_profile_display() {
 }
 add_action( 'admin_init', 'sphotography_migrate_profile_display' );
 
-// ============================================
-// Handle form submission: Reset
-// ============================================
+// 加载设置页 CSS/JS
 function sphotography_handle_reset_settings() {
     if ( ! isset( $_POST['sphotography_reset_nonce'] ) ) {
         return;
@@ -385,9 +394,7 @@ function sphotography_handle_reset_settings() {
 }
 add_action( 'admin_post_sphotography_reset_settings', 'sphotography_handle_reset_settings' );
 
-// ============================================
-// Render the settings page
-// ============================================
+// 渲染主设置页面
 function sphotography_render_settings_page() {
     // Get current values from theme mod
     $defaults = sphotography_get_default_settings();
@@ -1341,7 +1348,37 @@ function sphotography_render_settings_page() {
                     </div>
                 </div>
                 </div>
-            
+
+                <!-- Sub-board 5: 图片位置弹窗 / 逆地理编码 (v1.4.4 item 4) -->
+                <div class="sphotography-module" id="sp-mod-geocode">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-location"></span>
+                    <h3><?php _e( '图片位置弹窗 / 逆地理编码', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-geocode-endpoint"><?php _e( '逆地理编码端点（可选）', 'sphotography' ); ?></label>
+                        <input type="url"
+                               id="sphotography-geocode-endpoint"
+                               class="sphotography-input"
+                               name="sphotography[reverse_geocode_endpoint]"
+                               value="<?php echo esc_attr( $values['reverse_geocode_endpoint'] ); ?>"
+                               placeholder="https://nominatim.openstreetmap.org/reverse">
+                        <p class="sphotography-desc"><?php _e( '点击图片让地图飞到拍摄地后，会在闪烁点下方弹出经纬度与详细地名。地名由服务端调用逆地理编码服务解析并缓存。留空则使用 OpenStreetMap Nominatim 公共端点（免费、无需 key，但有 1 次/秒的使用限制）；高频使用可填自建或兼容端点（如 LocationIQ 的 reverse 接口）。', 'sphotography' ); ?></p>
+                    </div>
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-geocode-key"><?php _e( 'API Key（可选）', 'sphotography' ); ?></label>
+                        <input type="text"
+                               id="sphotography-geocode-key"
+                               class="sphotography-input"
+                               name="sphotography[reverse_geocode_key]"
+                               value="<?php echo esc_attr( $values['reverse_geocode_key'] ); ?>"
+                               autocomplete="off">
+                        <p class="sphotography-desc"><?php _e( '如所用端点需要鉴权（如 LocationIQ），在此填写 key，将以 ?key= 附加到请求。Nominatim 公共端点留空即可。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+                </div>
+
 
             </section><!-- /.sp-cat-card 地图 -->
 
@@ -1367,6 +1404,39 @@ function sphotography_render_settings_page() {
                                   style="max-width:100%;font-family:monospace;"
                                   placeholder="<?php esc_attr_e( '例如：© 2026 Your Name. All rights reserved.', 'sphotography' ); ?>"><?php echo esc_textarea( $values['footer_content'] ); ?></textarea>
                         <p class="sphotography-desc"><?php _e( '留空则隐藏页脚。支持可信管理员输入的 HTML 与脚本标签，显示在地图底部中央位置。', 'sphotography' ); ?></p>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Sub-board 1b: 公告 (v1.4.4 item 6) -->
+                <div class="sphotography-module" id="sp-mod-announcement">
+                <div class="sphotography-module-header">
+                    <span class="sphotography-module-icon dashicons dashicons-megaphone"></span>
+                    <h3><?php _e( '公告', 'sphotography' ); ?></h3>
+                </div>
+                <div class="sphotography-module-body">
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[announcement_enabled]" value="1" <?php checked( $values['announcement_enabled'], 1 ); ?>>
+                            <?php _e( '启用公告页', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，前台右上角、页面链接栏下方会出现「公告」按钮与浮层面板；内容为空时不显示。', 'sphotography' ); ?></p>
+                    </div>
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox" name="sphotography[announcement_auto_open]" value="1" <?php checked( $values['announcement_auto_open'], 1 ); ?>>
+                            <?php _e( '每次打开网站默认展开公告', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启时，访客每次进入站点自动展开公告；访客手动关闭后本浏览器不再自动展开，直到公告内容变化再次展开。关闭此项则仅通过页面链接栏的「公告」按钮手动打开。', 'sphotography' ); ?></p>
+                    </div>
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-announcement-content"><?php _e( '公告内容（支持 Markdown）', 'sphotography' ); ?></label>
+                        <textarea id="sphotography-announcement-content"
+                                  name="sphotography[announcement_content]"
+                                  rows="6"
+                                  style="max-width:100%;font-family:monospace;"
+                                  placeholder="<?php esc_attr_e( "# 欢迎\n\n支持 **粗体**、*斜体*、[链接](https://example.com)、列表、引用、代码与标题。", 'sphotography' ); ?>"><?php echo esc_textarea( $values['announcement_content'] ); ?></textarea>
+                        <p class="sphotography-desc"><?php _e( '支持标题(#/##/###)、粗体、斜体、删除线、链接、有序/无序列表、引用、行内与围栏代码。开启「文章翻译」后，保存时会在后台预生成公告的英/日译文，读者切换语言即时显示。', 'sphotography' ); ?></p>
                     </div>
                 </div>
                 </div>
@@ -1458,6 +1528,18 @@ function sphotography_render_settings_page() {
                             <?php _e( '启用 AI 全文概述（前台文章页）', 'sphotography' ); ?>
                         </label>
                         <p class="sphotography-desc"><?php _e( '开启后，文章发布/更新时会用文案模型为全文生成一段简短概述，存入数据库，并显示在文章展开页的标题与正文之间（读者首次打开以打字机逐字显示）。仅调用文案模型、只分析正文文字。已发布的旧文章会在下次被打开或保存时自动补生，也可在文章编辑页的 AI 面板手动重新生成。默认关闭。', 'sphotography' ); ?></p>
+                    </div>
+
+                    <!-- 文章翻译（前台语言切换）(v1.4.4) -->
+                    <div class="sphotography-field sphotography-field-checkbox">
+                        <label class="sphotography-label">
+                            <input type="checkbox"
+                                   name="sphotography[ai_translate]"
+                                   value="1"
+                                   <?php checked( $values['ai_translate'], 1 ); ?>>
+                            <?php _e( '启用文章翻译（前台中/英/日语言切换）', 'sphotography' ); ?>
+                        </label>
+                        <p class="sphotography-desc"><?php _e( '开启后，文章发布/更新时会在后台静默用文案模型生成英文、日文译文（标题+正文+概述），存入数据库；读者点击右上角语言切换即直接显示译文，无需再次调用模型。旧文章在下次被打开时自动补生。界面文案用内置词典翻译；评论、留言等动态内容按需实时翻译。需先配置好文案模型。默认关闭。', 'sphotography' ); ?></p>
                     </div>
 
                     <!-- Primary / text / single model -->
@@ -1659,10 +1741,12 @@ function sphotography_render_settings_page() {
                             array( 'id' => 'sp-mod-mapstyle-marker',  'label' => __( '标记聚合', 'sphotography' ) ),
                             array( 'id' => 'sp-mod-mapstyle-region',  'label' => __( '区域着色', 'sphotography' ) ),
                             array( 'id' => 'sp-mod-exif-tools',       'label' => __( 'EXIF 工具', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-geocode',          'label' => __( '图片位置', 'sphotography' ) ),
                         ) ),
                         array( 'id' => 'sp-cat-other', 'label' => __( '其他', 'sphotography' ), 'children' => array(
-                            array( 'id' => 'sp-mod-footer', 'label' => __( '页脚', 'sphotography' ) ),
-                            array( 'id' => 'sp-mod-cdn',    'label' => __( 'CDN', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-footer',       'label' => __( '页脚', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-announcement', 'label' => __( '公告', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-cdn',          'label' => __( 'CDN', 'sphotography' ) ),
                         ) ),
                         array( 'id' => 'sp-cat-system', 'label' => __( '系统', 'sphotography' ), 'children' => array(
                             array( 'id' => 'sp-mod-experimental', 'label' => __( '实验性功能', 'sphotography' ) ),
@@ -1720,9 +1804,7 @@ function sphotography_render_settings_page() {
     <?php
 }
 
-// ============================================
-// Enqueue admin styles & scripts for settings page
-// ============================================
+// 安装后欢迎钩子
 function sphotography_admin_enqueue_settings( $hook ) {
     if ( $hook !== 'toplevel_page_sphotography-settings' ) {
         return;

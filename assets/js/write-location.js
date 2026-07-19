@@ -1,9 +1,7 @@
 /**
- * Sphotography — 撰写地点 meta box (v1.3.4)
+ * Sphotography — 撰写地点 meta box
  *
- * Reads the browser geolocation on demand, reverse-resolves it to an
- * administrative region via admin-ajax, and fills the hidden fields the meta
- * box submits with the post.
+ * 读取浏览器定位，反向解析为行政区域并填充表单隐藏字段
  */
 ( function ( $ ) {
 	'use strict';

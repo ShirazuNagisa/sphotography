@@ -1,31 +1,13 @@
 <?php
-/**
- * Sphotography — Guestbook (v1.3.7).
- *
- * A dedicated guestbook (留言板) backend that reuses the comment engine.
- * Messages are stored as comments on a hidden holder post. Exposes a
- * REST endpoint /sphotography/v1/guestbook for random or paginated display,
- * with pinned-float, sort, and pagination support. Write endpoints
- * (create/like/edit/pin) delegate to the existing comment endpoints via
- * the holder post ID.
- *
- * @package Sphotography
- */
+// 留言板（复用评论系统，支持随机/分页展示）
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// ============================================================================
-// Holder post management
-// ============================================================================
+// 占位文章管理
 
-/**
- * Get or create the guestbook holder post.
- * Returns the post ID. If the post no longer exists, recreates it.
- *
- * @return int
- */
+// 获取或创建留言板占位文章
 function sphotography_guestbook_post_id() {
 	$post_id = (int) get_option( 'sphotography_guestbook_post' );
 
@@ -56,11 +38,7 @@ function sphotography_guestbook_post_id() {
 	return (int) $new_post_id;
 }
 
-/**
- * Exclude the guestbook holder post from normal public queries (frontpage, etc).
- * Private posts are already hidden from anonymous users; this guards
- * against logged-in admins browsing the front end seeing it.
- */
+// 从公开查询中排除留言板占位文章
 function sphotography_exclude_guestbook_from_queries( $query ) {
 	if ( ! is_admin() && $query->is_main_query() ) {
 		$post_id = (int) get_option( 'sphotography_guestbook_post' );
@@ -74,9 +52,7 @@ function sphotography_exclude_guestbook_from_queries( $query ) {
 }
 add_action( 'pre_get_posts', 'sphotography_exclude_guestbook_from_queries' );
 
-// ============================================================================
-// Guestbook settings
-// ============================================================================
+// 留言板设置
 
 /**
  * Get the guestbook configuration: post ID and random display count.
@@ -181,13 +157,9 @@ function sphotography_handle_guestbook_save() {
 	exit;
 }
 
-// ============================================================================
-// REST endpoint
-// ============================================================================
+// REST 路由
 
-/**
- * Register the guestbook REST route.
- */
+// 注册 REST 路由
 function sphotography_register_guestbook_route() {
 	register_rest_route( 'sphotography/v1', '/guestbook', array(
 		'methods'             => WP_REST_Server::READABLE,
@@ -197,25 +169,7 @@ function sphotography_register_guestbook_route() {
 }
 add_action( 'rest_api_init', 'sphotography_register_guestbook_route' );
 
-/**
- * GET /sphotography/v1/guestbook
- *
- * Params:
- *   - mode: 'random' | 'all' (default: 'random')
- *   - page: int (default: 1)
- *   - sort: 'time' | 'likes' (default: 'time')
- *   - order: 'asc' | 'desc' (default: 'asc')
- *
- * Response:
- *   {
- *     "items": [ { comment nodes with children } ],
- *     "page": int,
- *     "per_page": int,
- *     "total": int (count of visible top-level comments),
- *     "has_more": bool,
- *     "mode": "random" | "all"
- *   }
- */
+// GET /sphotography/v1/guestbook
 function sphotography_rest_guestbook( WP_REST_Request $request ) {
 	$post_id = sphotography_guestbook_post_id();
 	if ( ! $post_id ) {

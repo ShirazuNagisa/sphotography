@@ -1,29 +1,14 @@
 <?php
-/**
- * Sphotography - Apply Theme Mods to Frontend
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 应用主题设置到前台
 
-// ============================================
-// 1. Get a single theme mod with default
-// ============================================
+// 1. 读取主题设置
 function sphotography_get_mod( $key ) {
     $defaults = sphotography_get_default_settings();
     $value    = get_theme_mod( 'sphotography_' . $key, $defaults[ $key ] );
     return sphotography_maybe_preview_override( $key, $value );
 }
 
-// ============================================
-// 1b. Live-preview overrides (settings page iframe)
-//
-// When an administrator loads the map template with ?sp_preview=1 and a valid
-// nonce, map-related settings can be overridden by query parameters so the
-// settings page can render an instant "what-if" preview of unsaved values
-// without touching the database. Gated to edit_theme_options + nonce so the
-// public can never inject settings via URL.
-// ============================================
+// 1b. 实时预览覆盖（设置页 iframe 中通过查询参数临时覆盖设置）
 function sphotography_is_map_preview() {
     static $is = null;
     if ( null !== $is ) {
@@ -36,9 +21,7 @@ function sphotography_is_map_preview() {
     return $is;
 }
 
-/**
- * Map of theme-mod key → [query param, type] exposed to the live preview.
- */
+// 主题设置 key → [查询参数, 类型] 映射
 function sphotography_preview_param_map() {
     return array(
         'primary_color'        => array( 'sp_primary', 'hex' ),
@@ -81,10 +64,7 @@ function sphotography_maybe_preview_override( $key, $value ) {
     return $value;
 }
 
-/**
- * URL of the map page in preview mode (nonce-signed), for the settings iframe.
- * Returns '' if no page uses the fullscreen-map template.
- */
+// 预览模式的地图页面 URL
 function sphotography_map_preview_url() {
     $pages = get_posts( array(
         'post_type'      => 'page',
@@ -113,9 +93,7 @@ function sphotography_map_preview_url() {
     );
 }
 
-// ============================================
-// 2. Output dynamic CSS variables in <head>
-// ============================================
+// 2. 输出动态 CSS 变量到 <head>
 function sphotography_output_head_links() {
     if ( ! is_page_template( 'template-map.php' ) ) {
         return;
@@ -175,9 +153,7 @@ function sphotography_output_dynamic_css() {
 }
 add_action( 'wp_head', 'sphotography_output_dynamic_css', 20 );
 
-// ============================================
-// 3. Add body classes
-// ============================================
+// 3. 添加 body 类名
 function sphotography_body_classes( $classes ) {
     if ( ! is_page_template( 'template-map.php' ) ) {
         return $classes;
@@ -221,9 +197,7 @@ function sphotography_body_classes( $classes ) {
 }
 add_filter( 'body_class', 'sphotography_body_classes' );
 
-// ============================================
-// 3b. Profile stats + custom links (v1.3.2)
-// ============================================
+// 3b. 个人信息统计与自定义链接
 /**
  * Counts shown in the expanded profile view: published posts, non-empty
  * categories, and lit administrative regions. Cached per request.
@@ -333,9 +307,7 @@ function sphotography_render_profile_expand( $args ) {
     <?php
 }
 
-// ============================================
-// 4. Pass settings to JS + embed photo/post data
-// ============================================
+// 4. 传递设置到 JS
 function sphotography_localize_data() {
     if ( ! is_page_template( 'template-map.php' ) ) {
         return;

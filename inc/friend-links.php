@@ -18,10 +18,7 @@ function sphotography_schedule_friend_meta($id) {
 	}
 }
 
-// REMOVED: Media library loaded globally on settings page now (see sphotography_admin_enqueue_settings)
-
-
-// Process a POST action on the friend-links page (all nonce-guarded).
+// 处理友链页面 POST 操作
 function sphotography_friend_links_handle_post() {
 	if (empty($_POST['sp_fl_action'])) return array('ok' => true);
 	if (!current_user_can('manage_options')) wp_die(esc_html__('权限不足。', 'sphotography'));
@@ -131,10 +128,7 @@ function sphotography_friend_links_handle_post() {
 	return array('ok' => true);
 }
 
-/**
- * Render the friend-links management board for the settings page.
- * Returns markup (called from sphotography_render_settings_page in admin/theme-settings.php).
- */
+// 渲染友链管理面板
 function sphotography_render_friend_links_board() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return '';
@@ -252,14 +246,7 @@ function sphotography_render_friend_links_board() {
 	return ob_get_clean();
 }
 
-/**
- * v1.4.2: 「添加友链」居中弹窗（modal）。
- *
- * 这段 HTML 必须渲染在主题设置大表单 <form id="sphotography-settings-form"> 之外
- * ——由 admin/theme-settings.php 在 </form> 之后调用——否则浏览器会把这里的输入框
- * 归属到外层设置表单，点「保存设置」时误触发 HTML5 校验（请填写此字段）。弹窗默认
- * position:fixed 覆盖视口，放在 DOM 何处均不影响显示，只需保证在设置表单之外。
- */
+// 添加友链弹窗
 function sphotography_render_friend_links_modal() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return '';
@@ -383,14 +370,7 @@ function sphotography_handle_friend_links_actions() {
 }
 add_action( 'admin_post_sphotography_friend_links_action', 'sphotography_handle_friend_links_actions' );
 
-/**
- * Admin notice + form pre-fill for friend-link add results.
- *
- * Hooked to admin_notices only on the Sphotography settings screen. Reads
- * the sp_fl_* query args + the per-user transient, prints a green/red notice
- * and (on error) a small "重试" hint. The transient + query args are consumed
- * so they don't show again on a refresh.
- */
+// 友链添加结果通知
 function sphotography_fl_add_result_notice() {
 	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 	if ( ! $screen || $screen->id !== 'toplevel_page_sphotography-settings' ) {
@@ -411,12 +391,7 @@ function sphotography_fl_add_result_notice() {
 }
 add_action( 'admin_notices', 'sphotography_fl_add_result_notice' );
 
-/**
- * Returns the stashed form values (URL/name/pinned/thumb_id) from the
- * per-user transient, or null if none. Consumed by the settings page when
- * rendering the friend-links add form so the user's last input is preserved
- * after a validation/connect-test failure.
- */
+// 获取暂存的表单值（URL/名称/置顶/缩略图）
 function sphotography_get_fl_form_state() {
 	$user_id = get_current_user_id();
 	if ( ! $user_id ) {
@@ -434,16 +409,11 @@ function sphotography_get_fl_form_state() {
 	);
 }
 
-/**
- * Old page function (no longer used, kept for reference)
- */
 function sphotography_friend_links_page() {
-	// Legacy function - settings now folded into main settings page
 	wp_safe_redirect( admin_url( 'admin.php?page=sphotography-settings#sp-cat-social' ) );
 	exit;
 }
 
-// REMOVED: admin_notices hook - now shown in main menu badge (see functions.php sphotography_register_admin_menu)
 function sphotography_register_friend_links_routes() {
 	$ns = 'sphotography/v1';
 	register_rest_route($ns, '/friend-links', array('methods' => WP_REST_Server::READABLE, 'callback' => 'sphotography_rest_list_friend_links', 'permission_callback' => '__return_true'));

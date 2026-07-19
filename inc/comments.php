@@ -1,21 +1,5 @@
 <?php
-/**
- * Sphotography — Comment system (v1.3.1).
- *
- * A self-contained REST namespace (sphotography/v1/comments) that powers the
- * theme's frontend comment experience: single-level threading, a numeric-sum
- * captcha, 悄悄话 (private) threads, reply e-mail notifications, a safe Markdown
- * subset, likes, pinning, commenter-editing with full edit history, UA display
- * and generated text avatars.
- *
- * Anonymous identity is a bearer-token model: each anonymous comment is issued
- * a random token stored in commentmeta and appended to an HttpOnly cookie on
- * the visitor's browser. The server reads the cookie to decide ownership
- * (edit / private visibility) and like de-duplication. Logged-in users are
- * identified by user ID. No IP addresses are stored anywhere.
- *
- * @package Sphotography
- */
+// 评论系统（RESTful，支持 Markdown、悄悄话、点赞、置顶、编辑历史、UA 显示）
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -31,9 +15,7 @@ if ( ! defined( 'SPHOTOGRAPHY_COMMENT_FOLD_PX' ) ) {
 	define( 'SPHOTOGRAPHY_COMMENT_FOLD_PX', 200 );
 }
 
-// ============================================================================
-// Settings helpers
-// ============================================================================
+// 设置辅助
 
 /**
  * Read a comment-related theme setting with its registered default.
@@ -88,9 +70,7 @@ function sphotography_comment_config() {
 	);
 }
 
-// ============================================================================
-// Anonymous identity (bearer-token cookie)
-// ============================================================================
+// 匿名身份（bearer-token cookie）
 
 /**
  * Read the visitor's identity cookie: { t: [tokens], l: [liked comment ids] }.
@@ -164,9 +144,7 @@ function sphotography_owns_comment( $comment ) {
 	return false;
 }
 
-// ============================================================================
-// Route registration
-// ============================================================================
+// 路由注册
 
 function sphotography_register_comment_routes() {
 	$ns = 'sphotography/v1';
@@ -210,9 +188,7 @@ function sphotography_register_comment_routes() {
 }
 add_action( 'rest_api_init', 'sphotography_register_comment_routes' );
 
-// ============================================================================
-// Captcha
-// ============================================================================
+// 验证码
 
 /**
  * Issue a numeric-sum captcha challenge. Answer is stored server-side in a
@@ -246,9 +222,7 @@ function sphotography_verify_captcha( $token, $answer ) {
 	return (int) $answer === (int) $expected;
 }
 
-// ============================================================================
-// Create comment
-// ============================================================================
+// 创建评论
 
 function sphotography_rest_create_comment( WP_REST_Request $request ) {
 	$post_id = (int) $request->get_param( 'post' );
@@ -369,9 +343,7 @@ function sphotography_rest_create_comment( WP_REST_Request $request ) {
 	), 201 );
 }
 
-// ============================================================================
-// List comments
-// ============================================================================
+// 列出评论
 
 /**
  * Whether a comment (top-level or child) is visible to the current viewer,
@@ -528,9 +500,7 @@ function sphotography_count_visible_comments( $post_id ) {
 	return $n;
 }
 
-// ============================================================================
-// Prepare a comment for JSON output
-// ============================================================================
+// 格式化评论为 JSON
 
 /**
  * Shape a WP_Comment into the frontend payload, applying rendering and
@@ -605,9 +575,7 @@ function sphotography_prepare_comment( $comment ) {
 	);
 }
 
-// ============================================================================
-// Edit comment
-// ============================================================================
+// 编辑评论
 
 function sphotography_rest_edit_comment( WP_REST_Request $request ) {
 	$id      = (int) $request['id'];
@@ -649,9 +617,7 @@ function sphotography_rest_edit_comment( WP_REST_Request $request ) {
 	return new WP_REST_Response( array( 'comment' => sphotography_prepare_comment( get_comment( $id ) ) ), 200 );
 }
 
-// ============================================================================
-// Like comment
-// ============================================================================
+// 点赞
 
 function sphotography_has_liked( $comment_id ) {
 	$comment_id = (int) $comment_id;
@@ -711,9 +677,7 @@ function sphotography_rest_like_comment( WP_REST_Request $request ) {
 	), 200 );
 }
 
-// ============================================================================
-// Pin comment (admin only, top-level only)
-// ============================================================================
+// 置顶评论（仅管理员，仅顶层）
 
 function sphotography_rest_pin_comment( WP_REST_Request $request ) {
 	if ( ! sphotography_is_blog_admin() ) {
@@ -743,9 +707,7 @@ function sphotography_rest_pin_comment( WP_REST_Request $request ) {
 	return new WP_REST_Response( array( 'pinned' => $now ), 200 );
 }
 
-// ============================================================================
-// Content rendering: safe Markdown subset + kses
-// ============================================================================
+// 内容渲染：安全 Markdown 子集 + kses
 
 /**
  * Render stored raw comment text to safe HTML. Applies a small Markdown subset
@@ -796,7 +758,11 @@ function sphotography_render_comment_content( $raw ) {
  * @param string $text
  * @return string
  */
-function sphotography_markdown_subset( $text ) {
+function sphotography_markdown_subset( $text, $opts = array() ) {
+	// v1.4.4: optional heading support (# → h3, ## → h4, ### → h5). Off by
+	// default so comments/guestbook stay heading-free; the announcement page
+	// (inc/announcement.php) opts in via array( 'headings' => true ).
+	$allow_headings = ! empty( $opts['headings'] );
 	$text = str_replace( array( "\r\n", "\r" ), "\n", (string) $text );
 
 	// Extract fenced code blocks first so their contents are not further parsed.
@@ -869,6 +835,15 @@ function sphotography_markdown_subset( $text ) {
 			continue;
 		}
 
+		// Heading (v1.4.4, opt-in): #/##/### → h3/h4/h5. Kept shallow so the
+		// announcement never emits an h1/h2 that clashes with page structure.
+		if ( $allow_headings && preg_match( '/^(#{1,3})\s+(.*)$/', $trimmed, $m ) ) {
+			$flush_para(); $close_lists(); $close_bq();
+			$level = strlen( $m[1] ) + 2; // # → h3, ## → h4, ### → h5
+			$out[] = '<h' . $level . '>' . $m[2] . '</h' . $level . '>';
+			continue;
+		}
+
 		// Unordered list item.
 		if ( preg_match( '/^[-*+]\s+(.*)$/', $trimmed, $m ) ) {
 			$flush_para(); $close_bq();
@@ -908,9 +883,7 @@ function sphotography_markdown_subset( $text ) {
 	return $html;
 }
 
-// ============================================================================
-// UA parsing / display
-// ============================================================================
+// UA 解析与显示
 
 /**
  * Format a comment's stored User-Agent string according to the display setting.

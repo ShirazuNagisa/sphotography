@@ -1,24 +1,5 @@
 <?php
-/**
- * Sphotography - Administrative-region index (v1.2.6)
- *
- * For every geolocated image we resolve which administrative region contains
- * it — province/state worldwide, plus city level inside China — by running a
- * point-in-polygon test against the bundled boundary data in assets/geo/. The
- * resolved region ids (adcodes) are cached in attachment meta so the frontend
- * "行政区上色" mode can colour whole regions and group each region's photos
- * without any per-request geometry work beyond the regions actually in use.
- *
- * Boundary data (assets/geo/boundaries-*.json) is normalized to:
- *   properties.id    string  region id (China: 6-digit adcode; world: NE adm1_code)
- *   properties.name  string  display name
- *   properties.level 'province' | 'city'
- *   properties.cc    string  ISO country code ('CN' for China)
- *   properties.pid   string  (cities only) parent province adcode
- *
- * @package Sphotography
- * @version 1.2.8
- */
+// 行政区域索引（离线 GIS 引擎，解析经纬度 → 省/市编码）
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
@@ -47,9 +28,7 @@ const SPHOTOGRAPHY_GEO_REMOTE_BASE  = 'https://cdn.jsdelivr.net/gh/ShirazuNagisa
 // the frontend renders it as a normal droplet instead.
 const SPHOTOGRAPHY_NEAREST_DEG = 0.2;
 
-// ============================================
-// Boundary data storage (downloaded to uploads on demand)
-// ============================================
+// 边界数据存储（按需下载到 uploads）
 /**
  * Directory the boundary files are cached in (created lazily).
  */
@@ -127,9 +106,7 @@ function sphotography_geo_ensure_files( $force = false ) {
     return true;
 }
 
-// ============================================
-// Boundary data loading (decoded once per request, bbox precomputed)
-// ============================================
+// 边界数据加载
 /**
  * Load and cache the decoded features for one boundary set, with a bounding
  * box precomputed on each feature under the '_bbox' key [minX,minY,maxX,maxY].
@@ -184,9 +161,7 @@ function sphotography_geo_bbox( $geom ) {
     return array( $minx, $miny, $maxx, $maxy );
 }
 
-// ============================================
-// Point-in-polygon + nearest-region resolution
-// ============================================
+// 点在多边形内 + 最近区域解析
 /**
  * Ray-casting test: is (x,y) inside a single linear ring?
  */
@@ -315,9 +290,7 @@ function sphotography_geo_resolve( $lat, $lng ) {
     return array( 'prov' => $prov, 'city' => $city );
 }
 
-// ============================================
-// Per-attachment indexing
-// ============================================
+// 单附件索引
 /**
  * Compute and cache the province/city adcode for one attachment from its
  * stored latitude/longitude. Clears the meta when coordinates are absent.
@@ -383,9 +356,7 @@ add_filter( 'attachment_fields_to_save', function ( $post, $attachment ) {
     return $post;
 }, 20, 2 );
 
-// ============================================
-// Frontend consumption helpers
-// ============================================
+// 前台数据辅助
 /**
  * Cached province/city adcode for an attachment (no recompute).
  *
@@ -447,9 +418,7 @@ function sphotography_lit_region_count() {
     return $cached;
 }
 
-// ============================================
-// Manual "rebuild index" — batched admin-ajax endpoint
-// ============================================
+// 批量重建索引（AJAX）
 /**
  * All attachment ids that carry a latitude value (candidates for indexing).
  *

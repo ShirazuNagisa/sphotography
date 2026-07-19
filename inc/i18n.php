@@ -1,16 +1,5 @@
 <?php
-/**
- * v1.4.3: 前台多语言（中/英/日）动态内容翻译。
- *
- * 设计要点（详见 grilling 决策）：
- *  - 中文为站点原生语言，不翻译；仅 en / ja 需要调用文本模型翻译「动态正文内容」
- *    （文章标题+正文、AI 概述、评论正文、留言、照片墙文案）。
- *  - UI 界面文案在前端用静态词典翻译，不经过本接口。
- *  - 服务端缓存：每段文本按 hash(text)+目标语言 缓存为 transient，
- *    每段内容每种语言仅调用一次模型，之后复用；正文被编辑后 hash 变化即自动失效。
- *  - 名字、签名、地名、EXIF 等由前端决定「不发送」，故本接口天然不会碰它们。
- *  - 仅在 AI 功能开启时可用（前端也会据此隐藏语言切换控件）。
- */
+// 前台多语言（中/英/日）动态内容翻译
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -180,6 +169,33 @@ function sphotography_i18n_translate_batch( $todo, $lang, $lang_name ) {
 	return sphotography_i18n_translate_each( $todo, $lang_name );
 }
 
+/**
+ * v1.4.4: 预热 /translate 的 transient 缓存 —— 把一段内容在所有目标语言下先翻译好
+ * 并按 /translate 使用的同一 key 缓存起来，使前端随后按需请求同一段文本时直接命中
+ * 缓存（零模型调用）。用于「公告后台保存时预生成译文」。可在 wp-cron 中调用。
+ */
+function sphotography_i18n_prewarm( $text, $format ) {
+	$text = (string) $text;
+	if ( '' === trim( $text ) || ! function_exists( 'sphotography_ai_is_enabled' ) || ! sphotography_ai_is_enabled() ) {
+		return;
+	}
+	$format = ( 'html' === $format ) ? 'html' : 'text';
+	if ( mb_strlen( $text ) > SPHOTOGRAPHY_I18N_MAX_CHARS ) {
+		$text = mb_substr( $text, 0, SPHOTOGRAPHY_I18N_MAX_CHARS );
+	}
+	$targets = sphotography_i18n_target_langs();
+	foreach ( $targets as $lang => $lang_name ) {
+		$key = sphotography_i18n_cache_key( $lang, $format, $text );
+		if ( false !== get_transient( $key ) ) {
+			continue; // 已缓存
+		}
+		$map = sphotography_i18n_translate_batch( array( 'a' => array( 'text' => $text, 'format' => $format ) ), $lang, $lang_name );
+		if ( isset( $map['a'] ) && '' !== trim( (string) $map['a'] ) ) {
+			set_transient( $key, (string) $map['a'], SPHOTOGRAPHY_I18N_CACHE_TTL );
+		}
+	}
+}
+
 /** 逐段翻译兜底（每段一次模型调用，纯文本进出）。 */
 function sphotography_i18n_translate_each( $todo, $lang_name ) {
 	$out = array();
@@ -237,3 +253,209 @@ function sphotography_i18n_parse_json_map( $raw ) {
 	}
 	return null;
 }
+
+// 后台文章翻译（发布时异步生成 en/ja 译文，缓存在 post-meta 中）
+
+if ( ! defined( 'SPHOTOGRAPHY_I18N_HASH_META' ) ) {
+	define( 'SPHOTOGRAPHY_I18N_HASH_META', '_sp_i18n_hash' );      // source hash the stored translations were made from
+}
+if ( ! defined( 'SPHOTOGRAPHY_I18N_HOOK' ) ) {
+	define( 'SPHOTOGRAPHY_I18N_HOOK', 'sphotography_i18n_generate_post_event' );
+}
+
+/** Per-language post-meta key holding {title, body, summary}. */
+function sphotography_i18n_lang_meta( $lang ) {
+	return '_sp_i18n_' . preg_replace( '/[^a-z]/', '', (string) $lang );
+}
+
+/** Feature on = AI master switch on AND the 翻译 sub-toggle (ai_translate) on. */
+function sphotography_i18n_translate_enabled() {
+	return function_exists( 'sphotography_ai_is_enabled' )
+		&& sphotography_ai_is_enabled()
+		&& (bool) sphotography_get_mod( 'ai_translate' );
+}
+
+/** Rendered (filtered) body HTML for a post — matches what the frontend shows. */
+function sphotography_i18n_post_body_html( $post ) {
+	$content = (string) $post->post_content;
+	// Render shortcodes/blocks like the frontend REST `content.rendered` does.
+	$content = apply_filters( 'the_content', $content );
+	return is_string( $content ) ? $content : '';
+}
+
+/** The three source strings for a post: title (text), body (html), summary (text). */
+function sphotography_i18n_post_sources( $post_id ) {
+	$post = get_post( (int) $post_id );
+	if ( ! $post ) {
+		return array();
+	}
+	$summary = function_exists( 'sphotography_ai_get_summary' ) ? sphotography_ai_get_summary( $post_id ) : '';
+	$sources = array(
+		'title' => array( 'text' => get_the_title( $post ), 'format' => 'text' ),
+		'body'  => array( 'text' => sphotography_i18n_post_body_html( $post ), 'format' => 'html' ),
+	);
+	if ( '' !== trim( (string) $summary ) ) {
+		$sources['summary'] = array( 'text' => (string) $summary, 'format' => 'text' );
+	}
+	return $sources;
+}
+
+/** md5 over the source strings — changes whenever title/body/summary changes. */
+function sphotography_i18n_post_source_hash( $post_id ) {
+	$sources = sphotography_i18n_post_sources( $post_id );
+	if ( empty( $sources ) ) {
+		return '';
+	}
+	$parts = array();
+	foreach ( $sources as $k => $info ) {
+		$parts[] = $k . ':' . $info['text'];
+	}
+	return md5( implode( "\x1f", $parts ) );
+}
+
+/** Stored translation array for a post+lang ({title,body,summary}), or []. */
+function sphotography_i18n_get_post_translation( $post_id, $lang ) {
+	$val = get_post_meta( (int) $post_id, sphotography_i18n_lang_meta( $lang ), true );
+	return is_array( $val ) ? $val : array();
+}
+
+/** True when there is no fresh translation set (missing or source changed). */
+function sphotography_i18n_post_is_stale( $post_id ) {
+	$stored_hash = (string) get_post_meta( (int) $post_id, SPHOTOGRAPHY_I18N_HASH_META, true );
+	if ( '' === $stored_hash || $stored_hash !== sphotography_i18n_post_source_hash( $post_id ) ) {
+		return true;
+	}
+	// Also stale if any supported language set is entirely missing.
+	foreach ( array_keys( sphotography_i18n_target_langs() ) as $lang ) {
+		$t = sphotography_i18n_get_post_translation( $post_id, $lang );
+		if ( empty( $t ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Translate all source strings into one language; returns id => translated. */
+function sphotography_i18n_translate_sources( $sources, $lang, $lang_name ) {
+	$todo = array();
+	foreach ( $sources as $id => $info ) {
+		$text = (string) $info['text'];
+		if ( mb_strlen( $text ) > SPHOTOGRAPHY_I18N_MAX_CHARS ) {
+			$text = mb_substr( $text, 0, SPHOTOGRAPHY_I18N_MAX_CHARS );
+		}
+		$todo[ $id ] = array( 'text' => $text, 'format' => $info['format'] );
+	}
+	return sphotography_i18n_translate_batch( $todo, $lang, $lang_name );
+}
+
+/** Generate + store en/ja translations for a post. Guarded; safe to re-run. */
+function sphotography_i18n_run_post_job( $post_id ) {
+	$post_id = (int) $post_id;
+	if ( ! sphotography_i18n_translate_enabled() || ! function_exists( 'sphotography_ai_primary_ready' ) || ! sphotography_ai_primary_ready() ) {
+		return;
+	}
+	$post = get_post( $post_id );
+	if ( ! $post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) {
+		return;
+	}
+	if ( ! sphotography_i18n_post_is_stale( $post_id ) ) {
+		return;
+	}
+	$sources = sphotography_i18n_post_sources( $post_id );
+	if ( empty( $sources ) ) {
+		return;
+	}
+	$targets = sphotography_i18n_target_langs();
+	$ok = true;
+	foreach ( $targets as $lang => $lang_name ) {
+		$map = sphotography_i18n_translate_sources( $sources, $lang, $lang_name );
+		$store = array();
+		foreach ( $sources as $id => $info ) {
+			if ( isset( $map[ $id ] ) && '' !== trim( (string) $map[ $id ] ) ) {
+				$store[ $id ] = (string) $map[ $id ];
+			}
+		}
+		// Require at least title+body to consider this language done.
+		if ( empty( $store['title'] ) || empty( $store['body'] ) ) {
+			$ok = false;
+			continue;
+		}
+		update_post_meta( $post_id, sphotography_i18n_lang_meta( $lang ), $store );
+	}
+	// Only stamp the hash when every language stored — otherwise stay stale so a
+	// later run (or lazy backfill) retries the missing ones.
+	if ( $ok ) {
+		update_post_meta( $post_id, SPHOTOGRAPHY_I18N_HASH_META, sphotography_i18n_post_source_hash( $post_id ) );
+	}
+}
+add_action( SPHOTOGRAPHY_I18N_HOOK, 'sphotography_i18n_run_post_job' );
+
+/** Schedule async generation for a post when enabled + ready + stale (deduped). */
+function sphotography_i18n_maybe_schedule( $post_id ) {
+	$post_id = (int) $post_id;
+	if ( ! sphotography_i18n_translate_enabled() || ! function_exists( 'sphotography_ai_primary_ready' ) || ! sphotography_ai_primary_ready() ) {
+		return;
+	}
+	$post = get_post( $post_id );
+	if ( ! $post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) {
+		return;
+	}
+	if ( ! sphotography_i18n_post_is_stale( $post_id ) ) {
+		return;
+	}
+	if ( wp_next_scheduled( SPHOTOGRAPHY_I18N_HOOK, array( $post_id ) ) ) {
+		return;
+	}
+	// A little after the AI-summary job (which may itself feed our source).
+	wp_schedule_single_event( time() + 12, SPHOTOGRAPHY_I18N_HOOK, array( $post_id ) );
+}
+
+/** On publish/update, (re)schedule translation if the source changed. */
+function sphotography_i18n_on_save( $post_id, $post, $update ) {
+	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+		return;
+	}
+	if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+		return;
+	}
+	if ( ! $post instanceof WP_Post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) {
+		return;
+	}
+	sphotography_i18n_maybe_schedule( $post_id );
+}
+add_action( 'save_post', 'sphotography_i18n_on_save', 25, 3 );
+
+/**
+ * REST field sp_i18n: fresh pre-generated translations for the article panel.
+ * Returns { en: {title,body,summary}|null, ja: {...}|null }. When a post's
+ * translations are stale/missing, lazily schedule generation (backfill) so old
+ * posts get translated the first time they are opened — the reader sees the
+ * on-demand /translate fallback in the meantime.
+ */
+function sphotography_i18n_register_rest_field() {
+	register_rest_field( 'post', 'sp_i18n', array(
+		'get_callback' => function ( $arr ) {
+			$post_id = (int) $arr['id'];
+			if ( ! sphotography_i18n_translate_enabled() ) {
+				return null;
+			}
+			$out = array();
+			$fresh = ! sphotography_i18n_post_is_stale( $post_id );
+			if ( $fresh ) {
+				foreach ( array_keys( sphotography_i18n_target_langs() ) as $lang ) {
+					$t = sphotography_i18n_get_post_translation( $post_id, $lang );
+					$out[ $lang ] = ! empty( $t ) ? $t : null;
+				}
+			} else {
+				// Backfill: schedule generation on first fetch of a stale post.
+				sphotography_i18n_maybe_schedule( $post_id );
+			}
+			return empty( $out ) ? null : $out;
+		},
+		'schema'       => array(
+			'description' => 'Sphotography pre-generated article translations (en/ja).',
+			'type'        => 'object',
+		),
+	) );
+}
+add_action( 'rest_api_init', 'sphotography_i18n_register_rest_field' );
