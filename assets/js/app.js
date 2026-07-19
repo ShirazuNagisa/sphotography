@@ -523,12 +523,19 @@
         if (!summary) { el.hidden = true; el.innerHTML = ''; return; }
 
         el.innerHTML =
-            '<div class="article-summary-label">' + SP_ICON_AI + '<span>AI 概述</span></div>' +
+            '<div class="article-summary-label">' + SP_ICON_AI + '<span>' + t('AI 概述') + '</span></div>' +
             '<div class="article-summary-text"></div>';
         el.hidden = false;
         var textEl = el.querySelector('.article-summary-text');
 
         var key = 'sp-summary-typed-' + (post.id || '');
+        // v1.4.3: 非中文语言下概述需翻译。为避免先打字机显示中文再替换成译文的突兀，
+        // 直接落原文后交给按需翻译（加载提示 → 淡入译文）。中文仍走打字机。
+        if (siteLang !== 'zh') {
+            textEl.textContent = summary;
+            i18nRegister(textEl, 'text');
+            return;
+        }
         // v1.4.0: typewriter runs on every open. The localStorage "already
         // typed" guard is gone — previously this hid the typewriter after the
         // first ever open per browser, which made repeat visits feel static.
@@ -769,6 +776,260 @@
     };
 
     // ---------------------------------------------------------------
+    // 6c. Site language (v1.4.3) — 中 / 英 / 日 three-segment switch.
+    //
+    // A second vertical control stacked directly below the night switch,
+    // same dimensions/style. Glyphs 中 / A / あ. Only added when AI is
+    // enabled (dynamic content translation needs the text model).
+    //
+    // Chinese is the native no-op language: no model calls, originals shown.
+    // English / Japanese translate DYNAMIC content (article title+body,
+    // AI summary, comment/guestbook bodies, photo captions) via the
+    // /translate REST endpoint (server-side, cached per language). UI chrome
+    // uses the static dictionary below — never the model. Names, signatures,
+    // place names and EXIF are never sent (we only pass body text).
+    // ---------------------------------------------------------------
+    var LANG_STORAGE_KEY = 'sp-site-lang';
+    var LANG_GLYPHS = { zh: '中', en: 'A', ja: 'あ' };
+    var LANG_LABELS = { zh: '中文', en: 'English', ja: '日本語' };
+
+    // Static UI dictionary. Keyed by the original Chinese string. zh returns
+    // the original. Any string not present falls back to the original (stays
+    // Chinese) — acceptable per the agreed design; extend as needed.
+    var I18N_DICT = {
+        en: {
+            '浅色': 'Light', '深色': 'Dark', '跟随系统': 'System', '明暗模式': 'Appearance',
+            '中文': 'Chinese', 'English': 'English', '日本语': 'Japanese', '站点语言': 'Language',
+            '翻译中…': 'Translating…',
+            'AI 概述': 'AI summary',
+            '匿名': 'Anonymous',
+            '暂无内容': 'No content',
+            '文章加载失败': 'Failed to load article',
+            '评论': 'Comments', '回复': 'Reply', '编辑': 'Edit', '置顶': 'Pin', '取消置顶': 'Unpin',
+            '已编辑': 'edited', '时间': 'Time', '点赞': 'Likes',
+            '加载中…': 'Loading…',
+            '还没有评论，来抢沙发吧。': 'No comments yet — be the first.',
+            '评论已关闭。': 'Comments are closed.',
+            '展开阅读全文': 'Read more',
+            '阅读量': 'Views', '撰写地点': 'Written at', 'IP 属地': 'IP location',
+            '回到顶部': 'Back to top', '到文章末尾': 'Jump to end', '阅读进度': 'Reading progress', '跳到评论': 'Jump to comments',
+            '昵称 *': 'Nickname *', '邮箱（不公开）*': 'Email (private) *',
+            '插入表情': 'Insert emoji', '粗体': 'Bold', '斜体': 'Italic', '删除线': 'Strikethrough', '行内代码': 'Inline code',
+            '日期时间': 'Date & time', '经纬度': 'Coordinates', '拍摄设备': 'Camera', '光圈快门ISO': 'Aperture / Shutter / ISO', '暂无参数': 'No metadata'
+        },
+        ja: {
+            '浅色': 'ライト', '深色': 'ダーク', '跟随系统': 'システム', '明暗模式': '外観',
+            '中文': '中国語', 'English': '英語', '日本语': '日本語', '站点语言': '言語',
+            '翻译中…': '翻訳中…',
+            'AI 概述': 'AI 概要',
+            '匿名': '匿名',
+            '暂无内容': 'コンテンツがありません',
+            '文章加载失败': '記事の読み込みに失敗しました',
+            '评论': 'コメント', '回复': '返信', '编辑': '編集', '置顶': '固定', '取消置顶': '固定解除',
+            '已编辑': '編集済み', '时间': '時間', '点赞': 'いいね',
+            '加载中…': '読み込み中…',
+            '还没有评论，来抢沙发吧。': 'まだコメントがありません。最初のコメントをどうぞ。',
+            '评论已关闭。': 'コメントは締め切られました。',
+            '展开阅读全文': '全文を読む',
+            '阅读量': '閲覧数', '撰写地点': '執筆地', 'IP 属地': 'IP 所在地',
+            '回到顶部': '先頭へ', '到文章末尾': '末尾へ', '阅读进度': '読書進捗', '跳到评论': 'コメントへ',
+            '昵称 *': 'ニックネーム *', '邮箱（不公开）*': 'メール（非公開）*',
+            '插入表情': '絵文字を挿入', '粗体': '太字', '斜体': '斜体', '删除线': '取り消し線', '行内代码': 'インラインコード',
+            '日期时间': '日時', '经纬度': '緯度経度', '拍摄设备': 'カメラ', '光圈快门ISO': '絞り / シャッター / ISO', '暂无参数': 'データなし'
+        }
+    };
+
+    function detectSiteLang() {
+        var n = (navigator.language || navigator.userLanguage || '').toLowerCase();
+        if (n.indexOf('zh') === 0) return 'zh';
+        if (n.indexOf('ja') === 0) return 'ja';
+        if (n.indexOf('en') === 0) return 'en';
+        return 'en'; // 非中英日 → 英语
+    }
+    function readStoredLang() {
+        try { var v = localStorage.getItem(LANG_STORAGE_KEY); if (v === 'zh' || v === 'en' || v === 'ja') return v; } catch (e) {}
+        return null;
+    }
+    // 优先级：已保存的手动选择 → 系统语言 → 英语。
+    var siteLang = readStoredLang() || detectSiteLang();
+
+    // t(): static UI-string lookup. Chinese passthrough; missing keys fall back
+    // to the original string.
+    function t(zh) {
+        if (siteLang === 'zh') return zh;
+        var d = I18N_DICT[siteLang];
+        return (d && Object.prototype.hasOwnProperty.call(d, zh)) ? d[zh] : zh;
+    }
+
+    // ---- Dynamic content translation engine ----------------------------
+    // Elements carrying [data-sp-tr] are translated in place. Their original
+    // (source-language) content is stashed on the element as _spOrig so that
+    // switching back to Chinese — or re-translating into another language —
+    // always works from the source, never from a prior translation.
+    var i18nPending = 0;
+    function i18nIndicator() {
+        var el = document.getElementById('sp-tr-indicator');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'sp-tr-indicator';
+            el.setAttribute('aria-live', 'polite');
+            document.body.appendChild(el);
+        }
+        el.textContent = t('翻译中…');
+        el.classList.toggle('is-active', i18nPending > 0);
+        return el;
+    }
+
+    function i18nSetContent(el, val, fade) {
+        if (el._spFmt === 'html') { el.innerHTML = val; } else { el.textContent = val; }
+        if (typeof el._spAfter === 'function') { try { el._spAfter(el); } catch (e) {} }
+        if (fade) {
+            el.classList.remove('sp-tr-fade');
+            // reflow to restart the transition
+            void el.offsetWidth;
+            el.classList.add('sp-tr-fade');
+        }
+    }
+
+    // Register an element as translatable. format: 'text' | 'html'. after: an
+    // optional callback re-run whenever the element's content is (re)written
+    // (used by the article body to re-wire images/links after a swap).
+    function i18nRegister(el, format, after) {
+        if (!el) return;
+        el._spFmt = (format === 'html') ? 'html' : 'text';
+        el._spOrig = (el._spFmt === 'html') ? el.innerHTML : el.textContent;
+        if (after) el._spAfter = after;
+        el.setAttribute('data-sp-tr', '1');
+        if (siteLang !== 'zh') i18nTranslateEls([el], siteLang);
+    }
+
+    // Scan a subtree for known translatable content nodes (comment/guestbook
+    // bodies) and register any not yet marked.
+    function i18nScan(root) {
+        if (!root || !root.querySelectorAll) return;
+        var nodes = root.querySelectorAll('.comment-text:not([data-sp-tr])');
+        Array.prototype.forEach.call(nodes, function (n) { i18nRegister(n, 'html'); });
+    }
+
+    function translateSegments(segments, lang) {
+        return fetch(CONFIG.restBase + '/sphotography/v1/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': APP.restNonce || '' },
+            body: JSON.stringify({ lang: lang, segments: segments })
+        }).then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { return (d && d.segments) ? d.segments : null; })
+          .catch(function () { return null; });
+    }
+
+    // Translate a specific list of registered elements into lang. Chinese
+    // restores originals with no network call. On failure each element silently
+    // falls back to its original.
+    function i18nTranslateEls(els, lang) {
+        if (lang === 'zh') {
+            els.forEach(function (el) { el.classList.remove('sp-tr-loading'); i18nSetContent(el, el._spOrig, true); });
+            return;
+        }
+        var segs = [], map = {};
+        els.forEach(function (el, i) {
+            var orig = el._spOrig;
+            if (orig == null || !String(orig).trim()) return;
+            var id = 's' + i + '_' + Math.random().toString(36).slice(2, 7);
+            map[id] = el;
+            el.classList.add('sp-tr-loading');
+            segs.push({ id: id, text: orig, format: el._spFmt });
+        });
+        if (!segs.length) return;
+        i18nPending += 1; i18nIndicator();
+        translateSegments(segs, lang).then(function (res) {
+            i18nPending -= 1; i18nIndicator();
+            // If the user switched language again mid-flight, drop stale results.
+            if (siteLang !== lang) return;
+            Object.keys(map).forEach(function (id) {
+                var el = map[id];
+                el.classList.remove('sp-tr-loading');
+                var tr = (res && res[id] && String(res[id]).trim()) ? res[id] : el._spOrig;
+                i18nSetContent(el, tr, true);
+            });
+        });
+    }
+
+    // Re-translate everything currently marked on the page (used on switch).
+    function i18nRetranslateAll() {
+        var els = Array.prototype.slice.call(document.querySelectorAll('[data-sp-tr]'));
+        if (els.length) i18nTranslateEls(els, siteLang);
+    }
+
+    // Update persistent UI chrome (controls that are NOT re-rendered) on switch.
+    function applyUiLang() {
+        document.documentElement.setAttribute('lang', siteLang);
+        // Night switch labels/titles.
+        Array.prototype.forEach.call(document.querySelectorAll('.sp-night-switch .sp-night-btn'), function (b) {
+            var m = b.getAttribute('data-mode');
+            if (NIGHT_LABELS[m]) { b.title = t(NIGHT_LABELS[m]); b.setAttribute('aria-label', t(NIGHT_LABELS[m])); }
+        });
+        i18nIndicator();
+    }
+
+    function applyLang(lang) {
+        if (lang !== 'zh' && lang !== 'en' && lang !== 'ja') lang = 'en';
+        if (lang === siteLang) return;
+        siteLang = lang;
+        try { localStorage.setItem(LANG_STORAGE_KEY, lang); } catch (e) {}
+        updateLangSwitchUI();
+        applyUiLang();
+        // Live-flip already-rendered dynamic content.
+        i18nRetranslateAll();
+        // Reload the open comments so their chrome labels flip too (bodies then
+        // re-register for translation via i18nScan on inject).
+        if (typeof cState !== 'undefined' && cState && cState.postId && dom.articleComments) {
+            var listEl = dom.articleComments.querySelector('#comment-list');
+            var countEl = dom.articleComments.querySelector('.comments-count');
+            if (listEl && countEl && typeof loadCommentPage === 'function') {
+                if (typeof updateCommentSortUI === 'function') updateCommentSortUI();
+                listEl.innerHTML = '<li class="comments-loading">' + t('加载中…') + '</li>';
+                loadCommentPage(cState.postId, 1, true, listEl, countEl);
+            }
+        }
+    }
+
+    function updateLangSwitchUI() {
+        Array.prototype.forEach.call(document.querySelectorAll('.sp-lang-switch .sp-lang-btn'), function (b) {
+            var on = b.getAttribute('data-lang') === siteLang;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+    }
+
+    function LangSwitchControl() {}
+    LangSwitchControl.prototype.onAdd = function (map) {
+        this._map = map;
+        var c = document.createElement('div');
+        c.className = 'maplibregl-ctrl maplibregl-ctrl-group sp-lang-switch';
+        c.setAttribute('role', 'group');
+        c.setAttribute('aria-label', t('站点语言'));
+        ['zh', 'en', 'ja'].forEach(function (m) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'sp-lang-btn';
+            btn.setAttribute('data-lang', m);
+            btn.title = LANG_LABELS[m];
+            btn.setAttribute('aria-label', LANG_LABELS[m]);
+            btn.textContent = LANG_GLYPHS[m];
+            btn.addEventListener('click', function () { applyLang(m); });
+            c.appendChild(btn);
+        });
+        this._container = c;
+        requestAnimationFrame(updateLangSwitchUI);
+        return c;
+    };
+    LangSwitchControl.prototype.onRemove = function () {
+        if (this._container && this._container.parentNode) {
+            this._container.parentNode.removeChild(this._container);
+        }
+        this._map = undefined;
+    };
+
+    // ---------------------------------------------------------------
     // 7. Map
     // ---------------------------------------------------------------
     function initMap() {
@@ -781,6 +1042,15 @@
         state.map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
         // Stacks in top-right immediately below the zoom/compass group.
         state.map.addControl(new NightSwitchControl(), 'top-right');
+        // v1.4.3: language switch stacks directly below the night switch. Only
+        // shown when AI is enabled (dynamic content translation needs the model).
+        if (APP.aiEnabled) {
+            state.map.addControl(new LangSwitchControl(), 'top-right');
+            // Reflect the resolved language on persistent chrome at first paint
+            // (night-switch titles, <html lang>). Content translates lazily as
+            // it is opened via i18nRegister.
+            applyUiLang();
+        }
         state.map.addControl(new maplibregl.ScaleControl({unit:'metric',maxWidth:120}),'bottom-left');
         state.map.on('load', function() {
             state.mapLoaded = true;
@@ -2045,7 +2315,7 @@
             var post = results[0];
             if (state.openedPostId !== requestPostId) return;
             if (!post) {
-                dom.articleTitle.textContent = '文章加载失败';
+                dom.articleTitle.textContent = t('文章加载失败');
                 dom.articleMeta.textContent = '';
                 dom.articleContent.innerHTML = '';
                 if (dom.articleSummary) { dom.articleSummary.hidden = true; dom.articleSummary.innerHTML = ''; }
@@ -2055,6 +2325,7 @@
             }
             var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
             dom.articleTitle.textContent = post.title.rendered || '';
+            i18nRegister(dom.articleTitle, 'text'); // v1.4.3: 标题按需翻译（en/ja）
             var metaHtml = '';
             if (dateStr) metaHtml += '<span>' + escapeHtml(dateStr) + '</span>';
             if (SETTINGS.viewCounter) {
@@ -2084,11 +2355,17 @@
             }
             dom.articleMeta.innerHTML = metaHtml;
             renderArticleSummary(post);
-            var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">暂无内容</p>';
+            var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">' + t('暂无内容') + '</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articlePanel.scrollTop = 0;
-            dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
-            wireArticleImages();
+            // v1.4.3: 正文按需翻译（en/ja）；每次内容被写入（含译文替换）后都需重新
+            // 处理外链新窗口与图片交互，故用 _spAfter 回调复跑这两步。
+            var wireArticleDom = function () {
+                dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
+                wireArticleImages();
+            };
+            wireArticleDom();
+            i18nRegister(dom.articleContent, 'html', wireArticleDom);
             renderShareBar(post);
             renderComments(requestPostId, post.comment_status);
             animateWindowsOpen(requestPostId);
@@ -2487,6 +2764,7 @@
             } else {
                 listEl.insertAdjacentHTML('beforeend', items.map(function (c) { return buildCommentNode(c, false); }).join(''));
                 applyFolding(listEl);
+                i18nScan(listEl); // v1.4.3: 留言正文按需翻译（en/ja）
             }
             renderGuestbookMore(scroll);
         });
@@ -2663,6 +2941,7 @@
             // Prepend the new message so it is immediately visible.
             listEl.insertAdjacentHTML('afterbegin', buildCommentNode(r.data.comment, false));
             applyFolding(listEl);
+            i18nScan(listEl); // v1.4.3: 新留言按当前语言翻译
             if (countEl) {
                 var cur = parseInt((countEl.textContent || '').replace(/\D/g, ''), 10) || 0;
                 countEl.hidden = false; countEl.textContent = '(' + (cur + 1) + ')';
@@ -3038,11 +3317,11 @@
         var hasGeo = it.lat !== '' && it.lat != null && it.lng !== '' && it.lng != null;
         var rows = [];
         var dt = it.date ? (formatDate(it.date) + (it.time ? ' ' + it.time : '')) : '';
-        if (dt) rows.push('<div class="pw-detail-row"><span>日期时间</span><b>' + escapeHtml(dt) + '</b></div>');
-        if (hasGeo) rows.push('<div class="pw-detail-row"><span>经纬度</span><b>' + escapeHtml(Number(it.lat).toFixed(5) + ', ' + Number(it.lng).toFixed(5)) + '</b></div>');
-        if (it.camera) rows.push('<div class="pw-detail-row"><span>拍摄设备</span><b>' + escapeHtml(it.camera) + '</b></div>');
+        if (dt) rows.push('<div class="pw-detail-row"><span>' + t('日期时间') + '</span><b>' + escapeHtml(dt) + '</b></div>');
+        if (hasGeo) rows.push('<div class="pw-detail-row"><span>' + t('经纬度') + '</span><b>' + escapeHtml(Number(it.lat).toFixed(5) + ', ' + Number(it.lng).toFixed(5)) + '</b></div>');
+        if (it.camera) rows.push('<div class="pw-detail-row"><span>' + t('拍摄设备') + '</span><b>' + escapeHtml(it.camera) + '</b></div>');
         var exposure = [it.aperture, it.shutter, (it.iso ? 'ISO ' + it.iso : '')].filter(Boolean).join('  ·  ');
-        if (exposure) rows.push('<div class="pw-detail-row"><span>光圈快门ISO</span><b>' + escapeHtml(exposure) + '</b></div>');
+        if (exposure) rows.push('<div class="pw-detail-row"><span>' + t('光圈快门ISO') + '</span><b>' + escapeHtml(exposure) + '</b></div>');
 
         var atStart = idx <= 0, atEnd = idx >= PW.items.length - 1;
         var arrow = function (dir, disabled, path) {
@@ -3057,7 +3336,7 @@
             +   arrow('next', atEnd, '9 18 15 12 9 6')
             + '</div>'
             + '<div class="pw-detail-info">'
-            +   '<div class="pw-detail-params">' + (rows.join('') || '<div class="pw-detail-row"><span>暂无参数</span></div>') + '</div>'
+            +   '<div class="pw-detail-params">' + (rows.join('') || '<div class="pw-detail-row"><span>' + t('暂无参数') + '</span></div>') + '</div>'
             +   '<div class="pw-detail-actions">'
             +     '<button type="button" class="pw-detail-round" data-pw-dact="article" title="查看对应文章"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></button>'
             +     locBtn
@@ -3739,7 +4018,7 @@
         var edited = c.edited ? '<button type="button" class="comment-edited" data-cc-history="' + c.id + '">已编辑</button>' : '';
         return ''
             + '<div class="comment-head">'
-            +   '<span class="comment-author">' + escapeHtml(c.author || '匿名') + '</span>'
+            +   '<span class="comment-author">' + escapeHtml(c.author || t('匿名')) + '</span>'
             +   bits.join('')
             +   reply
             + '</div>'
@@ -3754,9 +4033,9 @@
         if (CCFG.likeEnabled !== false) {
             acts.push('<button type="button" class="comment-act comment-like' + (c.liked ? ' is-liked' : '') + '" data-cc-like="' + c.id + '">♥ <span class="comment-like-count">' + (c.likes || 0) + '</span></button>');
         }
-        acts.push('<button type="button" class="comment-act" data-cc-reply="' + c.id + '" data-cc-name="' + escapeHtml(c.author || '') + '">回复</button>');
-        if (c.can_edit) acts.push('<button type="button" class="comment-act" data-cc-edit="' + c.id + '">编辑</button>');
-        if (c.can_pin) acts.push('<button type="button" class="comment-act" data-cc-pin="' + c.id + '">' + (c.pinned ? '取消置顶' : '置顶') + '</button>');
+        acts.push('<button type="button" class="comment-act" data-cc-reply="' + c.id + '" data-cc-name="' + escapeHtml(c.author || '') + '">' + t('回复') + '</button>');
+        if (c.can_edit) acts.push('<button type="button" class="comment-act" data-cc-edit="' + c.id + '">' + t('编辑') + '</button>');
+        if (c.can_pin) acts.push('<button type="button" class="comment-act" data-cc-pin="' + c.id + '">' + (c.pinned ? t('取消置顶') : t('置顶')) + '</button>');
         return '<div class="comment-actions">' + acts.join('') + '</div>';
     }
 
@@ -3787,7 +4066,7 @@
         return ''
             + '<div class="comment-sort" role="group" aria-label="评论排序">'
             +   '<button type="button" class="comment-sort-btn" data-cc-sort="time"></button>'
-            +   '<button type="button" class="comment-sort-btn" data-cc-sort="likes">点赞</button>'
+            +   '<button type="button" class="comment-sort-btn" data-cc-sort="likes">' + t('点赞') + '</button>'
             + '</div>';
     }
 
@@ -3798,7 +4077,7 @@
         var likeBtn = wrap.querySelector('.comment-sort-btn[data-cc-sort="likes"]');
         if (timeBtn) {
             var arrow = cState.order === 'desc' ? '↓' : '↑';
-            timeBtn.textContent = '时间 ' + arrow;
+            timeBtn.textContent = t('时间') + ' ' + arrow;
             timeBtn.classList.toggle('is-active', cState.sort === 'time');
         }
         if (likeBtn) likeBtn.classList.toggle('is-active', cState.sort === 'likes');
@@ -3812,7 +4091,7 @@
         wrap.innerHTML = ''
             + '<div class="comments-section" data-cc-align="' + escapeHtml(CCFG.avatarAlign || 'top') + '">'
             +   '<div class="comments-head">'
-            +     '<h4 class="comments-title"><span class="comments-count-label">评论</span> <span class="comments-count">…</span></h4>'
+            +     '<h4 class="comments-title"><span class="comments-count-label">' + t('评论') + '</span> <span class="comments-count">…</span></h4>'
             +     commentSortHtml()
             +   '</div>'
             +   '<ul class="comment-list" id="comment-list"></ul>'
@@ -3822,7 +4101,7 @@
 
         var listEl = wrap.querySelector('#comment-list');
         var countEl = wrap.querySelector('.comments-count');
-        listEl.innerHTML = '<li class="comments-loading">加载中…</li>';
+        listEl.innerHTML = '<li class="comments-loading">' + t('加载中…') + '</li>';
 
         updateCommentSortUI();
         wireCommentSort(postId, listEl, countEl);
@@ -3852,7 +4131,7 @@
                 cState.sort = 'likes';
             }
             updateCommentSortUI();
-            listEl.innerHTML = '<li class="comments-loading">加载中…</li>';
+            listEl.innerHTML = '<li class="comments-loading">' + t('加载中…') + '</li>';
             loadCommentPage(postId, 1, true, listEl, countEl);
         });
     }
@@ -3889,10 +4168,11 @@
             if (emptyEl) emptyEl.remove();
 
             if (replace && items.length === 0) {
-                listEl.innerHTML = '<li class="comments-empty">还没有评论，来抢沙发吧。</li>';
+                listEl.innerHTML = '<li class="comments-empty">' + t('还没有评论，来抢沙发吧。') + '</li>';
             } else {
                 listEl.insertAdjacentHTML('beforeend', items.map(function (c) { return buildCommentNode(c, false); }).join(''));
                 applyFolding(listEl);
+                i18nScan(listEl); // v1.4.3: 按需翻译评论正文（en/ja），名字/签名不发送
             }
             renderPager(postId, listEl, countEl);
         });
@@ -4316,12 +4596,14 @@
                     rootLi.appendChild(childUl);
                 }
                 childUl.insertAdjacentHTML('beforeend', buildCommentNode(c, true));
+                i18nScan(childUl); // v1.4.3: 新回复也按当前语言翻译
             }
             closeInlineForm(form);
         } else {
             listEl.insertAdjacentHTML('beforeend', buildCommentNode(c, false));
         }
         applyFolding(listEl);
+        i18nScan(listEl); // v1.4.3: 新评论也按当前语言翻译
         var current = parseInt((countEl.textContent || '').replace(/\D/g, ''), 10) || 0;
         countEl.textContent = '(' + (current + 1) + ')';
     }

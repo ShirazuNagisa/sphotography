@@ -411,7 +411,13 @@ function sphotography_render_settings_page() {
         <?php endif; ?>
 
         <div class="sphotography-settings-layout">
-        <form id="sphotography-settings-form" class="sphotography-settings-main" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <?php // v1.4.3: 左栏改为普通 <div> 容器，内含「仅设置项」的 <form> + 独立的社交管理卡片。
+        // 此前 <form> 直接作为栅格列并把友链/留言板（各含内联 <form>）包进来，嵌套表单被浏览器
+        // 在第一个内层 </form> 处提前闭合 → 保存按钮与其后字段脱离表单（保存失效、跳到友链），
+        // 且表单提前闭合后其后各卡片+索引 <aside> 都成了栅格直接子项 → 索引掉到页面下方。
+        // 现在栅格恒为「main 列 + aside」两个子项，社交卡片作为 form 的兄弟移到列末尾。 ?>
+        <div class="sphotography-settings-main">
+        <form id="sphotography-settings-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="sphotography_save_settings">
             <?php wp_nonce_field( 'sphotography_save_settings', 'sphotography_save_nonce' ); ?>
 
@@ -1339,24 +1345,10 @@ function sphotography_render_settings_page() {
 
             </section><!-- /.sp-cat-card 地图 -->
 
-            <!-- Category 7: 社交 (Social) (v1.4.2: 大板块卡片) -->
-            <section class="sp-cat-card" id="sp-cat-social">
-                <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-share"></span><?php _e( '社交', 'sphotography' ); ?></h2>
+            <?php // v1.4.3: 社交（友链/留言板）卡片已移出本表单、置于列末尾（见 </form> 之后），
+            // 因两块管理面板各含内联 <form>，留在设置表单内会造成嵌套表单提前闭合。 ?>
 
-                <!-- Sub-board 1: 友链管理 -->
-                <?php if ( function_exists( 'sphotography_render_friend_links_board' ) ) : ?>
-                    <?php echo sphotography_render_friend_links_board(); ?>
-                <?php endif; ?>
-
-                <!-- Sub-board 2: 留言板设置 -->
-                <?php if ( function_exists( 'sphotography_render_guestbook_board' ) ) : ?>
-                    <?php echo sphotography_render_guestbook_board(); ?>
-                <?php endif; ?>
-            
-
-            </section><!-- /.sp-cat-card 社交 -->
-
-            <!-- Category 8: 其他 (v1.4.2: 大板块卡片) -->
+            <!-- Category 7: 其他 (v1.4.2: 大板块卡片) -->
             <section class="sp-cat-card" id="sp-cat-other">
                 <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-admin-generic"></span><?php _e( '其他', 'sphotography' ); ?></h2>
 
@@ -1611,13 +1603,22 @@ function sphotography_render_settings_page() {
         </section><!-- /.sp-cat-card 系统（含底部 保存/重置 按钮对） -->
         </form>
 
-        <?php
-        // v1.4.2: 「添加友链」弹窗渲染在设置大表单之外（de-nest），彻底避免其输入框
-        // 被归属到外层表单而误触发保存时的 HTML5 校验。
-        if ( function_exists( 'sphotography_render_friend_links_modal' ) ) {
-            echo sphotography_render_friend_links_modal();
-        }
-        ?>
+        <?php // v1.4.3: 社交管理卡片——移出设置表单后作为左栏最后一张卡片。友链/留言板各含
+        // 内联 <form>，此处已在设置 </form> 之外，不再触发嵌套表单提前闭合。 ?>
+        <section class="sp-cat-card" id="sp-cat-social">
+            <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-share"></span><?php _e( '社交', 'sphotography' ); ?></h2>
+
+            <!-- Sub-board 1: 友链管理 -->
+            <?php if ( function_exists( 'sphotography_render_friend_links_board' ) ) : ?>
+                <?php echo sphotography_render_friend_links_board(); ?>
+            <?php endif; ?>
+
+            <!-- Sub-board 2: 留言板设置 -->
+            <?php if ( function_exists( 'sphotography_render_guestbook_board' ) ) : ?>
+                <?php echo sphotography_render_guestbook_board(); ?>
+            <?php endif; ?>
+        </section><!-- /.sp-cat-card 社交 -->
+        </div><!-- /.sphotography-settings-main -->
 
         <!-- ============================================ -->
         <!-- Right-side index (TOC) — quick jump + save -->
@@ -1659,9 +1660,6 @@ function sphotography_render_settings_page() {
                             array( 'id' => 'sp-mod-mapstyle-region',  'label' => __( '区域着色', 'sphotography' ) ),
                             array( 'id' => 'sp-mod-exif-tools',       'label' => __( 'EXIF 工具', 'sphotography' ) ),
                         ) ),
-                        array( 'id' => 'sp-cat-social', 'label' => __( '社交', 'sphotography' ), 'children' => array(
-                            array( 'id' => 'sp-mod-friend-links', 'label' => __( '友链管理', 'sphotography' ) ),
-                        ) ),
                         array( 'id' => 'sp-cat-other', 'label' => __( '其他', 'sphotography' ), 'children' => array(
                             array( 'id' => 'sp-mod-footer', 'label' => __( '页脚', 'sphotography' ) ),
                             array( 'id' => 'sp-mod-cdn',    'label' => __( 'CDN', 'sphotography' ) ),
@@ -1669,6 +1667,11 @@ function sphotography_render_settings_page() {
                         array( 'id' => 'sp-cat-system', 'label' => __( '系统', 'sphotography' ), 'children' => array(
                             array( 'id' => 'sp-mod-experimental', 'label' => __( '实验性功能', 'sphotography' ) ),
                             array( 'id' => 'sp-mod-version',      'label' => __( '版本与更新', 'sphotography' ) ),
+                        ) ),
+                        // v1.4.3: 社交（友链/留言板）移至列末尾，索引项同步排到最后。
+                        array( 'id' => 'sp-cat-social', 'label' => __( '社交', 'sphotography' ), 'children' => array(
+                            array( 'id' => 'sp-mod-friend-links', 'label' => __( '友链管理', 'sphotography' ) ),
+                            array( 'id' => 'sp-mod-guestbook',    'label' => __( '留言板', 'sphotography' ) ),
                         ) ),
                     );
                     foreach ( $toc_items as $item ) :
@@ -1700,6 +1703,13 @@ function sphotography_render_settings_page() {
             </div>
         </aside>
         </div><!-- /.sphotography-settings-layout -->
+
+        <?php // v1.4.3: 「添加友链」弹窗（position:fixed）渲染在栅格之外，避免其表单被算作栅格子项。 ?>
+        <?php
+        if ( function_exists( 'sphotography_render_friend_links_modal' ) ) {
+            echo sphotography_render_friend_links_modal();
+        }
+        ?>
 
         <!-- Reset form (submitted via JS) -->
         <form id="sphotography-reset-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:none;">
