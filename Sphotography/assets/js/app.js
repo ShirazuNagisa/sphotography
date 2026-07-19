@@ -808,7 +808,7 @@
             '评论已关闭。': 'Comments are closed.',
             '展开阅读全文': 'Read more',
             '阅读量': 'Views', '撰写地点': 'Written at', 'IP 属地': 'IP location',
-            '回到顶部': 'Back to top', '到文章末尾': 'Jump to end', '阅读进度': 'Reading progress', '跳到评论': 'Jump to comments',
+            '回到顶部': 'Back to top', '到正文末尾': 'Jump to end of text', '阅读进度': 'Reading progress', '跳到评论': 'Jump to comments',
             '昵称 *': 'Nickname *', '邮箱（不公开）*': 'Email (private) *',
             '插入表情': 'Insert emoji', '粗体': 'Bold', '斜体': 'Italic', '删除线': 'Strikethrough', '行内代码': 'Inline code',
             '日期时间': 'Date & time', '经纬度': 'Coordinates', '拍摄设备': 'Camera', '光圈快门ISO': 'Aperture / Shutter / ISO', '暂无参数': 'No metadata',
@@ -837,7 +837,7 @@
             '评论已关闭。': 'コメントは締め切られました。',
             '展开阅读全文': '全文を読む',
             '阅读量': '閲覧数', '撰写地点': '執筆地', 'IP 属地': 'IP 所在地',
-            '回到顶部': '先頭へ', '到文章末尾': '末尾へ', '阅读进度': '読書進捗', '跳到评论': 'コメントへ',
+            '回到顶部': '先頭へ', '到正文末尾': '本文末尾へ', '阅读进度': '読書進捗', '跳到评论': 'コメントへ',
             '昵称 *': 'ニックネーム *', '邮箱（不公开）*': 'メール（非公開）*',
             '插入表情': '絵文字を挿入', '粗体': '太字', '斜体': '斜体', '删除线': '取り消し線', '行内代码': 'インラインコード',
             '日期时间': '日時', '经纬度': '緯度経度', '拍摄设备': 'カメラ', '光圈快门ISO': '絞り / シャッター / ISO', '暂无参数': 'データなし',
@@ -2404,7 +2404,6 @@
             var articleHtml = post.content && post.content.rendered ? post.content.rendered : '<p style="color:var(--text-muted)">' + t('暂无内容') + '</p>';
             dom.articleContent.innerHTML = articleHtml;
             dom.articlePanel.scrollTop = 0;
-            if (dom.articlePanel._spRepinClose) dom.articlePanel._spRepinClose(); // v1.4.4 item 3: reset close-btn pin to top
             // v1.4.3: 正文按需翻译（en/ja）；每次内容被写入（含译文替换）后都需重新
             // 处理外链新窗口与图片交互，故用 _spAfter 回调复跑这两步。
             var wireArticleDom = function () {
@@ -2625,18 +2624,44 @@
         panel.style.top = (r.bottom + 8) + 'px';
     }
 
+    // v1.4.5 (item 1): while the panel is open, ANY interaction elsewhere —
+    // a pointerdown anywhere outside the panel, or Esc — collapses it. Two
+    // carve-outs: clicks inside the panel (e.g. an announcement link) stay open,
+    // and clicks on the 公告 toggle button are left to toggleAnnouncement (its
+    // own re-click logic closes+remembers, so we must not double-fire here).
+    // A casual outside dismiss does NOT remember (still auto-opens next visit);
+    // only the ✕ button (closeAnnouncement(true)) silences it.
+    function onAnnouncementOutside(e) {
+        if (!ANNOUNCE.open || !ANNOUNCE.panel) return;
+        if (ANNOUNCE.panel.contains(e.target)) return;              // inside the panel
+        if (e.target.closest && e.target.closest('[data-sp-panel="announcement"]')) return; // the toggle
+        closeAnnouncement(false);
+    }
+    function onAnnouncementKey(e) {
+        if (ANNOUNCE.open && (e.key === 'Escape' || e.key === 'Esc')) closeAnnouncement(false);
+    }
+
     function openAnnouncement() {
         buildAnnouncement();
         if (!ANNOUNCE.panel) return;
         syncAnnouncementGeom();
         ANNOUNCE.open = true;
         ANNOUNCE.panel.classList.add('active');
+        // Defer listener attach to the next frame so the very click that opened
+        // the panel (still bubbling) can't immediately close it.
+        requestAnimationFrame(function () {
+            if (!ANNOUNCE.open) return;
+            document.addEventListener('pointerdown', onAnnouncementOutside, true);
+            document.addEventListener('keydown', onAnnouncementKey);
+        });
     }
 
     function closeAnnouncement(remember) {
         if (!ANNOUNCE.panel) return;
         ANNOUNCE.open = false;
         ANNOUNCE.panel.classList.remove('active');
+        document.removeEventListener('pointerdown', onAnnouncementOutside, true);
+        document.removeEventListener('keydown', onAnnouncementKey);
         if (remember) {
             var cfg = announcementCfg();
             try { if (cfg) localStorage.setItem(ANNOUNCE_DISMISS_KEY, cfg.hash); } catch (e) {}
@@ -3974,12 +3999,14 @@
         var toBottom = document.createElement('button');
         toBottom.type = 'button';
         toBottom.className = 'article-nav-btn article-nav-to-bottom';
-        toBottom.setAttribute('aria-label', '到文章末尾');
-        toBottom.title = '到文章末尾';
+        toBottom.setAttribute('aria-label', '到正文末尾');
+        toBottom.title = '到正文末尾';
         toBottom.innerHTML = downIcon;
         toBottom.addEventListener('click', function (e) {
             e.stopPropagation();
-            animateScroll(panel, panel.scrollTop, articleTextEndScrollTop(), SP_NAV_SCROLL_MS);
+            // v1.4.5 (item 6): jump to the reading-100% position (last line at
+            // panel centre), not the true scroll bottom.
+            animateScroll(panel, panel.scrollTop, articleReading100ScrollTop(), SP_NAV_SCROLL_MS);
         });
 
         var progress = document.createElement('div');
@@ -4010,6 +4037,20 @@
 
         overlay.appendChild(top);
         overlay.appendChild(bottom);
+
+        // v1.4.5 (item 7): relocate the article close button OUT of the scrolling
+        // panel and INTO this fixed, panel-glued overlay. Two wins: it now lives
+        // in the same layer as the frost bands (z-index above them, so the top
+        // band no longer blurs over it), and it no longer rides the scroll layer,
+        // so it stays put with zero JS re-pinning (retires pinScrollingPanelClose
+        // for the article). The overlay's rect is kept glued to the panel every
+        // frame by syncArticleNavGeom, so top/right stays visually top-right.
+        if (dom.articleClose) {
+            dom.articleClose.classList.add('article-nav-close');
+            dom.articleClose.style.top = '';   // clear any prior inline pin
+            overlay.appendChild(dom.articleClose);
+        }
+
         document.body.appendChild(overlay);
 
         dom.articleNavOverlay = overlay;
@@ -4059,6 +4100,23 @@
         var panelRect = panel.getBoundingClientRect();
         var contentRect = content.getBoundingClientRect();
         var target = panel.scrollTop + (contentRect.bottom - panelRect.bottom);
+        var max = panel.scrollHeight - panel.clientHeight;
+        return Math.max(0, Math.min(target, max));
+    }
+
+    // v1.4.5 (item 6): scroll target for the down button — the reading-100%
+    // position, i.e. the article body's last line resting at the panel's
+    // vertical centre (the exact point where the progress readout hits 100%,
+    // matching v1.4.4 item 2). Lands one scroll short of the true bottom so the
+    // reader ends on "read complete" rather than on the comments/footer.
+    function articleReading100ScrollTop() {
+        var panel = dom.articlePanel;
+        var content = dom.articleContent;
+        if (!panel || !content) return 0;
+        var panelRect = panel.getBoundingClientRect();
+        var contentRect = content.getBoundingClientRect();
+        var panelCenterY = panelRect.top + panelRect.height / 2;
+        var target = panel.scrollTop + (contentRect.bottom - panelCenterY);
         var max = panel.scrollHeight - panel.clientHeight;
         return Math.max(0, Math.min(target, max));
     }
@@ -4116,27 +4174,6 @@
         var textCenterScroll = scrollTop + deltaToCenter;
         var pct = textCenterScroll > 4 ? Math.round(Math.max(0, Math.min(1, scrollTop / textCenterScroll)) * 100) : 100;
         if (dom.articleNavProgressNum) dom.articleNavProgressNum.textContent = pct + '%';
-    }
-
-    // v1.4.4 (item 3): keep a scrolling panel's absolute close button pinned to
-    // the panel's top-right while the panel scrolls. The button is positioned
-    // absolutely relative to the (self-scrolling) panel, so it drifts up with the
-    // content; feeding the live scrollTop back into its `top` re-pins it visually.
-    // We adjust `top` (not transform) so the hover rotate/scale animation on
-    // .panel-close-btn stays intact. Panels whose content lives in a separate
-    // non-scrolling inner region (side/photo/region panels) never call this.
-    function pinScrollingPanelClose(panel, closeBtn, baseTop) {
-        if (!panel || !closeBtn) return;
-        baseTop = baseTop || 12;
-        var scheduled = false;
-        function repin() { closeBtn.style.top = (baseTop + panel.scrollTop) + 'px'; }
-        panel._spRepinClose = repin;
-        repin();
-        panel.addEventListener('scroll', function () {
-            if (scheduled) return;
-            scheduled = true;
-            requestAnimationFrame(function () { scheduled = false; repin(); });
-        }, { passive: true });
     }
 
     // v1.4.4 (item 2): ensure there is always enough scroll room below the
@@ -5369,12 +5406,20 @@
         if (!state.map || !coords) return;
         var el = document.createElement('div');
         el.className = 'sp-loc-popup' + (prefersReducedMotion() ? ' sp-loc-popup--static' : '');
+        // v1.4.5 (item 5): the grow/shrink animation must run on an INNER wrapper,
+        // not on `el` — MapLibre positions the marker by writing `transform:
+        // translate()` onto the marker root element, so animating transform on
+        // `el` (with fill:both) clobbers that translate and the popup jumps to the
+        // map origin (why it never appeared in v1.4.4). Animate `.sp-loc-popup-inner`.
         el.innerHTML =
-            '<span class="sp-loc-popup-arrow" aria-hidden="true"></span>'
-          + '<div class="sp-loc-popup-body">'
-          +   '<div class="sp-loc-popup-coord">' + escapeHtml(locPopupCoordText(coords)) + '</div>'
-          +   '<div class="sp-loc-popup-name">' + escapeHtml(t('解析中…')) + '</div>'
+            '<div class="sp-loc-popup-inner">'
+          +   '<span class="sp-loc-popup-arrow" aria-hidden="true"></span>'
+          +   '<div class="sp-loc-popup-body">'
+          +     '<div class="sp-loc-popup-coord">' + escapeHtml(locPopupCoordText(coords)) + '</div>'
+          +     '<div class="sp-loc-popup-name">' + escapeHtml(t('解析中…')) + '</div>'
+          +   '</div>'
           + '</div>';
+        var inner = el.querySelector('.sp-loc-popup-inner');
         var token = (state.locPopupSeq = (state.locPopupSeq || 0) + 1);
         var marker;
         try {
@@ -5382,12 +5427,12 @@
                 .setLngLat(new maplibregl.LngLat(coords[0], coords[1]))
                 .addTo(state.map);
         } catch (e) { return; }
-        state.locPopup = { marker: marker, el: el, token: token, closing: false, anim: null };
+        state.locPopup = { marker: marker, el: el, inner: inner, token: token, closing: false, anim: null };
 
-        if (!prefersReducedMotion() && el.animate) {
+        if (!prefersReducedMotion() && inner && inner.animate) {
             var dur = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.openDuration) ? ARTICLE_MOTION.openDuration : 320;
             var ease = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.easing) ? ARTICLE_MOTION.easing : 'cubic-bezier(0.16,1,0.3,1)';
-            var anim = el.animate([
+            var anim = inner.animate([
                 { transform: 'scale(0.2)', opacity: 0 },
                 { opacity: 1, offset: 0.3 },
                 { transform: 'scale(1)', opacity: 1 }
@@ -5412,11 +5457,12 @@
         state.locPopup = null;   // detach now so a new popup can supersede cleanly
         p.closing = true;
         var done = function () { try { p.marker.remove(); } catch (e) {} };
-        if (instant || prefersReducedMotion() || !p.el.animate) { done(); return; }
+        var animEl = p.inner || p.el; // v1.4.5 (item 5): animate the inner wrapper, not the marker root
+        if (instant || prefersReducedMotion() || !animEl.animate) { done(); return; }
         if (p.anim) { try { p.anim.cancel(); } catch (e) {} }
         var dur = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.closeDuration) ? ARTICLE_MOTION.closeDuration : 280;
         var ease = (typeof ARTICLE_MOTION === 'object' && ARTICLE_MOTION.easing) ? ARTICLE_MOTION.easing : 'cubic-bezier(0.16,1,0.3,1)';
-        var anim = p.el.animate([
+        var anim = animEl.animate([
             { transform: 'scale(1)', opacity: 1 },
             { opacity: 1, offset: 0.18 },
             { transform: 'scale(0.2)', opacity: 0 }
@@ -5477,8 +5523,9 @@
             }
         }
 
-        dom.detailSheet.scrollTop = 0;
-        if (dom.detailSheet._spRepinClose) dom.detailSheet._spRepinClose(); // v1.4.4 item 3
+        // v1.4.5 (item 7): the scroller is now .detail-content, not the sheet.
+        var detailScroll = dom.detailSheet.querySelector('.detail-content');
+        if (detailScroll) detailScroll.scrollTop = 0;
         dom.detailSheet.classList.add('active');
         state.detailOpen = true;
     }
@@ -5799,6 +5846,10 @@
         loadingHidden = true;
         clearLoadWatchdogs();
         stopLoadingTips();
+        // v1.4.5 (item 3): bring the rounded/magnetic cursor alive once the intro
+        // is done, so it never fights the open-screen animation. Runs in every
+        // path, including 'off' (no overlay) which returns just below.
+        try { initRoundedCursor(); } catch (e) {}
         if (!dom.loadingOverlay) return; // 'off' or overlay missing
         // Enforce a minimum on-screen time only for the flythrough so its
         // entrance + 流光 + reveal always reads; aperture keeps its instant exit.
@@ -6023,14 +6074,257 @@
     }
 
     // ---------------------------------------------------------------
+    // 20b. Rounded / magnetic cursor (v1.4.5 items 3 & 4)
+    //
+    // A JS-driven follower that replaces the OS pointer when cursor_style =
+    // 'rounded'. Two visuals share the layer:
+    //   • idle: a smooth rounded V-arrow (grey blurred-translucent fill + theme
+    //     -colour ring) that trails the pointer with a slight easing lag.
+    //   • adsorbed: when the pointer enters a magnet target, the arrow fades and a
+    //     rounded-rect RING grows to hug the target's exact border (theme-colour
+    //     stroke, faint theme fill). While inside, both ring and — for small
+    //     targets only — the element drift toward the pointer (parallax); on exit
+    //     the ring releases back to the arrow with a short lag (the "stickiness").
+    // Gated: only runs on hover+fine-pointer devices, and activates after the
+    // loading intro. prefers-reduced-motion keeps the shape/adsorb but drops the
+    // lag/parallax. The MapLibre canvas is intentionally NOT a magnet target.
+    // ---------------------------------------------------------------
+    var CURSOR_MAGNET_SEL = [
+        '.panel-close-btn', '.announcement-close', '.side-panel-close', '.pw-detail-exit',
+        '#sidebar-toggle', '#sidebar-expand',
+        '.post-card',
+        '#sidebar-search-input', '#sidebar-filter-btn', '.filter-chip', '.filter-clear',
+        '.comment-input', '.comment-author', '.comment-email', '.comment-textarea',
+        '.comment-captcha-input',
+        '.friend-apply-email', '.friend-apply-url', '.friend-apply-name', '.friend-apply-msg',
+        '.gb-email', '.gb-nick', '.gb-msg',
+        '.profile-expand-link',
+        '.comment-submit', '.friend-apply-submit', '.gb-send', '.comment-page-btn', '.gb-loadmore', '.gb-showall',
+        '.sp-night-btn', '.sp-lang-btn',
+        '.friend-card',
+        '.page-link-btn',
+        '#sidebar-github',
+        '.article-nav-btn',
+        '.share-btn',
+        '.comment-md-btn', '.comment-md-preview-toggle', '.comment-sort-btn',
+        '.pw-cell',
+        '.pw-detail-round', '.pw-side-btn'
+    ].join(',');
+
+    var CURSOR = {
+        active: false, started: false, reduced: false,
+        arrow: null, ring: null,
+        px: 0, py: 0,          // real pointer
+        ax: 0, ay: 0,          // eased arrow position
+        target: null, rect: null, radius: '0px', drift: false,
+        raf: null, visible: false, overFocusedInput: false
+    };
+    var CURSOR_DRIFT_MAX = 6;      // px the ring/element leans toward the pointer
+    var CURSOR_BIG = 180;          // targets larger than this (either dim) don't drift
+    var CURSOR_LAG = 0.28;         // idle follow easing (1 = no lag)
+
+    function roundedCursorEnabled() {
+        if (!document.body.classList.contains('sphotography-cursor-rounded')) return false;
+        return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+    }
+
+    function cursorMagnetFor(node) {
+        if (!node || node.nodeType !== 1) return null;
+        if (!node.closest) return null;
+        // Never adsorb over the map or its controls.
+        if (node.closest('#map, .maplibregl-map, .maplibregl-control-container')) return null;
+        var el = node.closest(CURSOR_MAGNET_SEL);
+        return el || null;
+    }
+
+    // A focused text field yields to the native I-beam (spec: adsorb on hover,
+    // release to the caret while typing, re-adsorb on blur).
+    function cursorIsYieldingField(el) {
+        if (!el) return false;
+        if (el !== document.activeElement) return false;
+        var tag = el.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA';
+    }
+
+    function initRoundedCursor() {
+        if (CURSOR.started || !roundedCursorEnabled()) return;
+        CURSOR.started = CURSOR.active = true;
+        CURSOR.reduced = prefersReducedMotion();
+
+        var arrow = document.createElement('div');
+        arrow.className = 'sp-cursor-arrow';
+        arrow.setAttribute('aria-hidden', 'true');
+        // Rounded V-arrow: filled path (grey translucent) with a theme-colour
+        // rounded stroke. Hotspot ≈ the tip at (4,3).
+        arrow.innerHTML = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none">'
+            + '<path d="M5 4 L5 19 L9.4 15 L12.4 21 L15.3 19.6 L12.3 13.9 L18.3 13.9 Z" '
+            + 'fill="rgba(140,140,145,0.42)" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+
+        var ring = document.createElement('div');
+        ring.className = 'sp-cursor-ring';
+        ring.setAttribute('aria-hidden', 'true');
+
+        document.body.appendChild(ring);
+        document.body.appendChild(arrow);
+        document.body.classList.add('sp-rounded-cursor-on'); // hides the OS cursor
+        CURSOR.arrow = arrow;
+        CURSOR.ring = ring;
+
+        document.addEventListener('pointermove', onCursorMove, { passive: true });
+        document.addEventListener('pointerover', onCursorOver, { passive: true });
+        document.addEventListener('pointerout', onCursorOut, { passive: true });
+        document.addEventListener('focusin', onCursorFocus);
+        document.addEventListener('focusout', onCursorFocus);
+        window.addEventListener('blur', function () { setCursorVisible(false); });
+        // Re-measure the adsorbed target if the layout shifts under it.
+        window.addEventListener('scroll', function () { if (CURSOR.target) measureCursorTarget(); }, true);
+        window.addEventListener('resize', function () { if (CURSOR.target) measureCursorTarget(); });
+
+        CURSOR.raf = requestAnimationFrame(cursorLoop);
+    }
+
+    function setCursorVisible(v) {
+        if (CURSOR.visible === v) return;
+        CURSOR.visible = v;
+        if (CURSOR.arrow) CURSOR.arrow.classList.toggle('is-on', v);
+        if (!v) releaseCursorTarget();
+    }
+
+    function onCursorMove(e) {
+        CURSOR.px = e.clientX;
+        CURSOR.py = e.clientY;
+        if (!CURSOR.visible) {
+            // First real move: drop the follower straight onto the pointer.
+            CURSOR.ax = e.clientX; CURSOR.ay = e.clientY;
+            setCursorVisible(true);
+        }
+    }
+
+    function onCursorOver(e) {
+        var el = cursorMagnetFor(e.target);
+        if (!el) return;
+        if (cursorIsYieldingField(el)) { setCursorFieldYield(true); return; }
+        adsorbCursorTarget(el);
+    }
+
+    function onCursorOut(e) {
+        // Leaving the whole window.
+        if (!e.relatedTarget && !e.toElement) { releaseCursorTarget(); setCursorFieldYield(false); return; }
+        var from = cursorMagnetFor(e.target);
+        var to = cursorMagnetFor(e.relatedTarget);
+        if (from && from !== to) {
+            if (CURSOR.target === from) releaseCursorTarget();
+            if (cursorIsYieldingField(from)) setCursorFieldYield(false);
+        }
+    }
+
+    function onCursorFocus() {
+        // A field gaining focus under the pointer should yield; losing it should
+        // re-adsorb if the pointer is still over a target.
+        var el = document.elementFromPoint(CURSOR.px, CURSOR.py);
+        var magnet = cursorMagnetFor(el);
+        if (magnet && cursorIsYieldingField(magnet)) { setCursorFieldYield(true); releaseCursorTarget(); }
+        else { setCursorFieldYield(false); if (magnet) adsorbCursorTarget(magnet); }
+    }
+
+    function setCursorFieldYield(on) {
+        if (CURSOR.overFocusedInput === on) return;
+        CURSOR.overFocusedInput = on;
+        // While yielding, hide the follower entirely so the CSS caret shows.
+        if (CURSOR.arrow) CURSOR.arrow.classList.toggle('is-hidden', on);
+        if (CURSOR.ring) CURSOR.ring.classList.toggle('is-hidden', on);
+    }
+
+    // Briefly transition the ring so it eases (grows from the cursor / releases
+    // back to it) — then drop the transition so per-frame tracking stays instant.
+    // Skipped under reduced-motion (instant snap, no lag/stretch).
+    function pulseCursorMorph() {
+        var ring = CURSOR.ring;
+        if (!ring || CURSOR.reduced) return;
+        ring.classList.add('is-morphing');
+        clearTimeout(CURSOR._morphT);
+        CURSOR._morphT = setTimeout(function () { ring.classList.remove('is-morphing'); }, 340);
+    }
+
+    function adsorbCursorTarget(el) {
+        if (CURSOR.target === el) return;
+        releaseCursorTarget();
+        CURSOR.target = el;
+        measureCursorTarget();
+        var r = CURSOR.rect;
+        CURSOR.drift = !!r && Math.max(r.width, r.height) <= CURSOR_BIG && !CURSOR.reduced;
+        pulseCursorMorph();
+        CURSOR.ring.classList.add('is-adsorbed');
+        if (CURSOR.arrow) CURSOR.arrow.classList.add('is-faded');
+        el.classList.add('sp-magnet-active');
+    }
+
+    function measureCursorTarget() {
+        var el = CURSOR.target;
+        if (!el) return;
+        CURSOR.rect = el.getBoundingClientRect();
+        var cs = window.getComputedStyle(el);
+        CURSOR.radius = cs.borderRadius && cs.borderRadius !== '0px' ? cs.borderRadius : '10px';
+    }
+
+    function releaseCursorTarget() {
+        var el = CURSOR.target;
+        if (!el) return;
+        el.classList.remove('sp-magnet-active');
+        el.style.transform = '';   // clear any parallax drift we applied
+        CURSOR.target = null;
+        CURSOR.rect = null;
+        CURSOR.drift = false;
+        pulseCursorMorph();        // ease the ring back to the cursor (release lag)
+        if (CURSOR.ring) CURSOR.ring.classList.remove('is-adsorbed');
+        if (CURSOR.arrow) CURSOR.arrow.classList.remove('is-faded');
+    }
+
+    function cursorLoop() {
+        CURSOR.raf = requestAnimationFrame(cursorLoop);
+        var arrow = CURSOR.arrow, ring = CURSOR.ring;
+        if (!arrow || !ring) return;
+
+        // Arrow follows the pointer (with lag unless reduced-motion).
+        if (CURSOR.reduced) { CURSOR.ax = CURSOR.px; CURSOR.ay = CURSOR.py; }
+        else {
+            CURSOR.ax += (CURSOR.px - CURSOR.ax) * CURSOR_LAG;
+            CURSOR.ay += (CURSOR.py - CURSOR.ay) * CURSOR_LAG;
+        }
+        arrow.style.transform = 'translate(' + CURSOR.ax + 'px,' + CURSOR.ay + 'px)';
+
+        if (CURSOR.target && CURSOR.rect) {
+            var r = CURSOR.rect;
+            var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            var dx = 0, dy = 0;
+            if (CURSOR.drift) {
+                // Lean toward the pointer within a small cap → the sticky feel.
+                dx = Math.max(-CURSOR_DRIFT_MAX, Math.min(CURSOR_DRIFT_MAX, (CURSOR.px - cx) * 0.18));
+                dy = Math.max(-CURSOR_DRIFT_MAX, Math.min(CURSOR_DRIFT_MAX, (CURSOR.py - cy) * 0.18));
+                CURSOR.target.style.transform = 'translate(' + (dx * 0.5) + 'px,' + (dy * 0.5) + 'px)';
+            }
+            ring.style.width = r.width + 'px';
+            ring.style.height = r.height + 'px';
+            ring.style.borderRadius = CURSOR.radius;
+            ring.style.transform = 'translate(' + (r.left + dx) + 'px,' + (r.top + dy) + 'px)';
+        } else {
+            // Idle: a tiny dot parked at the arrow tip (hidden), ready to grow.
+            ring.style.width = '10px';
+            ring.style.height = '10px';
+            ring.style.transform = 'translate(' + (CURSOR.ax - 5) + 'px,' + (CURSOR.ay - 5) + 'px)';
+        }
+    }
+
+    // ---------------------------------------------------------------
     // 21. Main Init
     // ---------------------------------------------------------------
     async function init() {
         cacheDom();
-        // v1.4.4 (item 3): pin the close button of the two self-scrolling panels
-        // (article panel + photo detail sheet) so it stays top-right on scroll.
-        pinScrollingPanelClose(dom.articlePanel, dom.articleClose);
-        pinScrollingPanelClose(dom.detailSheet, dom.closeDetail);
+        // v1.4.5 (item 7): both self-scrolling panels' close buttons are now pinned
+        // structurally (article close relocated into the fixed nav overlay; detail
+        // sheet made non-scrolling with .detail-content as the scroller), so the
+        // v1.4.4 JS re-pin (pinScrollingPanelClose) is retired — no more scroll
+        // jitter, and the article close is no longer blurred by the top frost band.
         startPreloader();
 
         var hasInlineData = useInlineData();

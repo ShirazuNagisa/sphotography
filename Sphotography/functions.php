@@ -1067,6 +1067,15 @@ function sphotography_ajax_do_update() {
     }
     $src_dir = $extracted[0];
 
+    // v1.4.5: theme source now lives in a nested `Sphotography/` folder inside the
+    // repo (dev files kept at repo root so they aren't shipped). The GitHub archive
+    // therefore contains sphotography-<branch>/Sphotography/style.css — copy from
+    // that subfolder so only the theme files land in the theme dir. Fall back to the
+    // archive root for older branches that pre-date the reorg.
+    if ( is_dir( $src_dir . '/Sphotography' ) && file_exists( $src_dir . '/Sphotography/style.css' ) ) {
+        $src_dir = $src_dir . '/Sphotography';
+    }
+
     // Copy all files from src to theme directory, overwriting
     $copied = copy_dir( $src_dir, $theme_dir );
 

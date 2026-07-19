@@ -184,9 +184,15 @@ function sphotography_body_classes( $classes ) {
         $classes[] = 'sphotography-font-wordpress';
     }
 
-    // Cursor style (v1.2.8): 'dot' swaps the OS arrow for a dot+ring pointer.
-    if ( sphotography_get_mod( 'cursor_style' ) === 'dot' ) {
+    // Cursor style: 'dot' swaps the OS arrow for a dot+ring pointer (v1.2.8);
+    // 'rounded' (v1.4.5, default) enables the JS-driven rounded/magnetic cursor
+    // (idle rounded V-arrow that adsorbs onto interactive elements). The rounded
+    // engine (app.js) further gates itself on hover/fine-pointer + intro-complete.
+    $cursor_style = sphotography_get_mod( 'cursor_style' );
+    if ( 'dot' === $cursor_style ) {
         $classes[] = 'sphotography-cursor-dot';
+    } elseif ( 'rounded' === $cursor_style ) {
+        $classes[] = 'sphotography-cursor-rounded';
     }
 
     // Marker mode drives the frontend map rendering; expose it as a body class

@@ -16,7 +16,7 @@ function sphotography_get_default_settings() {
         'night_mode'          => 'system',
         'dark_scheme'         => 'default',
         'frontend_font'       => 'serif',
-        'cursor_style'        => 'dot',
+        'cursor_style'        => 'rounded',
         'admin_global_style'  => true,
         // ② Card Style
         'card_radius'         => 16,
@@ -146,7 +146,7 @@ function sphotography_sanitize_settings( $input ) {
     $allowed_font = array( 'serif', 'wordpress' );
     $sanitized['frontend_font'] = in_array( $input['frontend_font'], $allowed_font, true ) ? $input['frontend_font'] : $defaults['frontend_font'];
     $sanitized['admin_global_style'] = ! empty( $input['admin_global_style'] ) ? 1 : 0;
-    $allowed_cursor = array( 'dot', 'normal' );
+    $allowed_cursor = array( 'rounded', 'dot', 'normal' );
     $sanitized['cursor_style'] = in_array( $input['cursor_style'], $allowed_cursor, true ) ? $input['cursor_style'] : $defaults['cursor_style'];
 
     // ② Card Style
@@ -581,10 +581,11 @@ function sphotography_render_settings_page() {
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-cursor-style"><?php _e( '鼠标光标样式', 'sphotography' ); ?></label>
                         <select id="sphotography-cursor-style" name="sphotography[cursor_style]">
-                            <option value="dot" <?php selected( $values['cursor_style'], 'dot' ); ?>><?php _e( '点+圆环（默认）', 'sphotography' ); ?></option>
+                            <option value="rounded" <?php selected( $values['cursor_style'], 'rounded' ); ?>><?php _e( '圆角光标（默认）', 'sphotography' ); ?></option>
+                            <option value="dot" <?php selected( $values['cursor_style'], 'dot' ); ?>><?php _e( '点+圆环', 'sphotography' ); ?></option>
                             <option value="normal" <?php selected( $values['cursor_style'], 'normal' ); ?>><?php _e( '普通样式（系统默认）', 'sphotography' ); ?></option>
                         </select>
-                        <p class="sphotography-desc"><?php _e( '选择前端地图页面的鼠标光标样式。「点+圆环」将光标替换为中心圆点外加一小圈圆环的精致指针；「普通样式」使用操作系统默认光标。默认为「点+圆环」。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '选择前端地图页面的鼠标光标样式。「圆角光标」为圆润的 V 形指针（灰色磨砂半透明底、主题色描边环），悬停到可点击的按键上时会吸附变形、包裹按键边框并带轻微粘滞感（触摸设备自动禁用，尊重系统「减弱动态效果」）；「点+圆环」将光标替换为中心圆点外加一小圈圆环的精致指针；「普通样式」使用操作系统默认光标。默认为「圆角光标」。', 'sphotography' ); ?></p>
                     </div>
 
                     <!-- Global admin style toggle -->
