@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.5
+Version: 1.4.6
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -515,6 +515,42 @@ body.sidebar-collapsed .sidebar {
     transform: translateX(3px);
 }
 
+/* v1.4.6 (item 9): article cover — a strongly-blurred image bled behind the
+   whole module, with a dark readability scrim. Text is forced light so it
+   stays legible over an arbitrary photo in BOTH light and dark themes. */
+.post-card-cover {
+    position: absolute;
+    inset: -24px; /* bleed past the edges so the blur never reveals the card bg */
+    z-index: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(18px) saturate(1.15) brightness(0.92);
+    transform: scale(1.12);
+    pointer-events: none;
+    transition: transform var(--duration-normal) var(--ease-out-expo);
+}
+.post-card-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    /* Heavier on the left where the text sits. */
+    background: linear-gradient(to right, rgba(8,8,10,0.74), rgba(8,8,10,0.5));
+}
+.post-card.has-cover { background: #15151a; }
+.post-card.has-cover .post-card-body { position: relative; z-index: 1; }
+.post-card.has-cover:hover .post-card-cover { transform: scale(1.18); }
+.post-card.has-cover .post-card-title { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+.post-card.has-cover:hover .post-card-title { color: #fff; }
+.post-card.has-cover .post-card-excerpt,
+.post-card.has-cover .post-card-date,
+.post-card.has-cover .post-card-date-item,
+.post-card.has-cover .post-card-words,
+.post-card.has-cover .post-card-views {
+    color: rgba(255,255,255,0.88);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
 .post-card-thumb {
     width: 56px;
     height: 56px;
@@ -891,7 +927,7 @@ body.sidebar-collapsed .sidebar {
     width: var(--btn-m);
     height: var(--btn-m);
     color: var(--text-secondary);
-    border-radius: calc(var(--panel-radius) * 0.65);
+    border-radius: 50%; /* v1.4.6 (item 4): 永久圆形，与展开按钮一致 */
     border: 1px solid transparent;
     transition:
         color var(--duration-fast) ease,
@@ -951,6 +987,28 @@ body.sidebar-collapsed .sidebar-expand-btn {
     0% { transform: scale(0.5); opacity: 0; }
     60% { transform: scale(1.1); }
     100% { transform: scale(1); opacity: 1; }
+}
+
+/* v1.4.6 (item 8): 折叠边栏时，展开按钮正上方的博主头像。圆形，尺寸与展开按钮一致，
+   非交互（暂不可点击，预留未来点击功能）。仅在 body.sidebar-collapsed 时出现。 */
+.sidebar-expand-avatar {
+    position: fixed;
+    left: 16px;
+    bottom: 78px; /* 展开按钮 bottom:24 + 高44 + 间隙10 */
+    z-index: 95;
+    width: var(--btn-m);
+    height: var(--btn-m);
+    border-radius: 50%;
+    object-fit: cover;
+    display: none;
+    border: var(--panel-border);
+    box-shadow: var(--shadow-floating);
+    pointer-events: none; /* 暂不可点击 */
+    background: var(--glass-floating-bg);
+}
+body.sidebar-collapsed .sidebar-expand-avatar {
+    display: block;
+    animation: expandBtnPop var(--duration-normal) var(--ease-spring);
 }
 
 /* 5. 文章面板 */
@@ -1053,6 +1111,160 @@ body.sidebar-collapsed .sidebar-expand-btn {
 /* v1.4.2: 滚动到最底部时淡出底部毛玻璃带——下方已无内容需要虚化，避免最后一行被糊住。
    与 .is-visible 同特异度，靠后声明取胜；沿用上方 260ms opacity 过渡平滑淡出。 */
 .sp-frost-band--bottom.is-at-bottom { opacity: 0; }
+
+/* ============================================
+   v1.4.6 (item 10): In-article TOC bar + index region
+   ============================================ */
+/* Thin rounded vertical bar hugging the article panel's right edge. left/top/
+   height are set by JS (syncArticleNavGeom) to the live panel rect. Glass +
+   theme match the article panel. */
+.article-toc-bar {
+    position: fixed;
+    z-index: 205; /* above map controls; below the region */
+    width: 14px;
+    padding: 0;
+    border: var(--panel-border);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border-radius: 999px;
+    box-shadow: var(--shadow-floating);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(6px);
+    transition:
+        opacity 220ms var(--ease-out-expo),
+        transform 220ms var(--ease-out-expo),
+        width 200ms var(--ease-out-expo),
+        background 160ms ease;
+}
+.article-toc-bar.is-active:not(.is-hidden) { opacity: 1; pointer-events: auto; transform: translateX(0); }
+.article-toc-bar.is-hidden { display: none; }
+.article-toc-bar:hover,
+.article-toc-bar.is-active.is-open { background: var(--color-surface-hover); width: 16px; }
+.article-toc-bar-grip {
+    display: block;
+    width: 3px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--primary);
+    opacity: 0.72;
+}
+
+/* The expanded index region sits on the top layer above every page. Desktop
+   geometry (top/left/height/width) is set by JS beside the bar; mobile is a
+   side sheet handled by the media query below. */
+.article-toc-region {
+    position: fixed;
+    z-index: 9998;
+    box-sizing: border-box;
+    border: var(--panel-border);
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--shadow-elevated);
+    overflow: hidden;
+    opacity: 0;
+    transform: translateX(-8px) scale(0.98);
+    transform-origin: left center;
+    pointer-events: none;
+    transition:
+        opacity 240ms var(--ease-out-expo),
+        transform 240ms var(--ease-out-expo);
+}
+.article-toc-region.is-open { opacity: 1; transform: translateX(0) scale(1); pointer-events: auto; }
+.article-toc-region-inner { display: flex; flex-direction: column; height: 100%; padding: 14px 8px 10px 12px; }
+.article-toc-title {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0 8px 8px;
+}
+.article-toc-list { flex: 1 1 auto; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+.article-toc-list::-webkit-scrollbar { width: 6px; }
+.article-toc-list::-webkit-scrollbar-thumb { background: var(--color-border-hover); border-radius: 3px; }
+.article-toc-row { display: flex; align-items: flex-start; gap: 2px; }
+.article-toc-item {
+    flex: 1 1 auto;
+    display: block;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-left: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.45;
+    padding: 6px 8px 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: normal;        /* long titles wrap instead of truncating */
+    overflow-wrap: anywhere;
+    transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.article-toc-item--top { font-weight: 600; color: var(--text-primary); }
+.article-toc-item:hover { background: var(--color-surface-hover); color: var(--text-primary); }
+.article-toc-item.is-current {
+    color: var(--primary);
+    border-left-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.article-toc-chevron {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: transform 200ms var(--ease-out-expo), color 140ms ease;
+}
+.article-toc-chevron:hover { color: var(--text-primary); }
+.article-toc-group.is-collapsed > .article-toc-row .article-toc-chevron { transform: rotate(-90deg); }
+.article-toc-children {
+    overflow: hidden;
+    max-height: 3000px;
+    opacity: 1;
+    transition: max-height 280ms var(--ease-out-expo), opacity 200ms ease;
+}
+.article-toc-group.is-collapsed > .article-toc-children { max-height: 0; opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+    .article-toc-bar, .article-toc-region, .article-toc-children, .article-toc-chevron { transition: none; }
+}
+/* Mobile: the full-height side bar becomes a compact floating toggle and the
+   region becomes a right-side sheet. JS skips inline geometry when isMobile. */
+@media (max-width: 767px) {
+    .article-toc-bar {
+        left: auto !important;
+        right: 12px;
+        top: 50% !important;
+        height: 46px !important;
+        width: 40px;
+        border-radius: 14px;
+        transform: translate(6px, -50%);
+    }
+    .article-toc-bar.is-active:not(.is-hidden) { transform: translate(0, -50%); }
+    .article-toc-bar:hover, .article-toc-bar.is-active.is-open { width: 40px; }
+    .article-toc-bar-grip { width: 16px; height: 3px; }
+    .article-toc-region {
+        left: auto !important;
+        right: 12px !important;
+        top: 64px !important;
+        height: auto !important;
+        max-height: calc(100vh - 128px) !important;
+        width: min(320px, 84vw) !important;
+    }
+}
 
 .article-nav-btn {
     position: absolute;
@@ -1443,6 +1655,16 @@ button.article-nav-btn:active { transform: scale(0.94); }
 }
 /* Geolocated photos are clickable — they fly the map to their location. */
 .article-content img.article-geo-img { cursor: pointer; }
+/* v1.4.6 (item 5): theme-colored hint under each clickable (geo) photo. */
+.article-content .article-geo-hint {
+    margin: 6px 0 2px;
+    text-align: center;
+    font-size: var(--text-sm, 0.82rem);
+    line-height: 1.4;
+    color: var(--primary);
+    letter-spacing: 0.02em;
+    opacity: 0.9;
+}
 .article-content p > img,
 .article-content figure { margin: 1.5em 0; }
 .article-content figure { max-width: 100%; }
@@ -3215,7 +3437,7 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     display: flex;
     flex-direction: column;
     max-height: min(60vh, calc(100vh - 120px));
-    padding: 14px 16px 14px; /* v1.4.5 (item 2): 底部由 8px→14px，避免末行贴边被下边框遮蔽 */
+    padding: 18px 22px 18px; /* v1.4.6 (item 2): 加大内边距，四周留白更通透，避免文字贴边被圆角/边框裁切 */
     border-radius: var(--panel-radius);
     background: var(--glass-elevated-bg);
     backdrop-filter: var(--glass-elevated-blur);
@@ -3235,11 +3457,13 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     opacity: 1;
     pointer-events: auto;
 }
-.announcement-header { margin: 0 0 8px; padding-right: 28px; }
+/* v1.4.6 (item 2): 标题右侧留足关闭按钮空间(36px)，标题与正文间距放宽，防止关闭键压住标题文字 */
+.announcement-header { margin: 0 0 12px; padding-right: 48px; }
 .announcement-header h3 {
     margin: 0;
     font-family: var(--font-display);
     font-size: 1rem;
+    line-height: 1.4;
     color: var(--text-primary);
 }
 .announcement-content {
@@ -3248,19 +3472,22 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     -ms-overflow-style: none;
     color: var(--text-secondary);
     font-size: 0.9rem;
-    line-height: 1.7;
-    padding-bottom: 6px;
+    line-height: 1.8; /* v1.4.6: 行距由 1.7→1.8，阅读更舒展 */
+    padding-bottom: 2px;
 }
 .announcement-content::-webkit-scrollbar { width: 0; height: 0; }
+.announcement-content > :first-child { margin-top: 0; }
+.announcement-content > :last-child { margin-bottom: 0; }
 .announcement-content h3, .announcement-content h4, .announcement-content h5 {
     color: var(--text-primary);
-    margin: 0.6em 0 0.3em;
+    margin: 0.9em 0 0.4em;
 }
-.announcement-content p { margin: 0.4em 0; }
+.announcement-content p { margin: 0.6em 0; }
 .announcement-content a { color: var(--primary); }
-.announcement-content ul, .announcement-content ol { margin: 0.4em 0; padding-left: 1.4em; }
+.announcement-content ul, .announcement-content ol { margin: 0.6em 0; padding-left: 1.4em; }
+.announcement-content li { margin: 0.2em 0; }
 .announcement-content img { max-width: 100%; border-radius: 8px; }
-.announcement-panel .announcement-close { top: 10px; right: 10px; }
+.announcement-panel .announcement-close { top: 12px; right: 12px; }
 @media (prefers-reduced-motion: reduce) {
     .announcement-panel { transition: opacity 140ms ease; transform: none; }
     .announcement-panel.active { transform: none; }

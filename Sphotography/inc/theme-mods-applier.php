@@ -411,6 +411,7 @@ function sphotography_localize_data() {
             'date'    => $p->post_date,
             'excerpt' => strip_tags( $p->post_excerpt ?: wp_trim_words( $p->post_content, 30 ) ),
             'thumb'   => $thumb_p,
+            'cover'   => function_exists( 'sphotography_cover_url' ) ? sphotography_cover_url( $p->ID, 'large' ) : '', // v1.4.6 (item 9)
             'terms'   => $terms_data,
             'link'    => get_permalink( $p->ID ),
             'writeLocation' => function_exists( 'sphotography_wloc_get' ) ? sphotography_wloc_get( $p->ID ) : '',

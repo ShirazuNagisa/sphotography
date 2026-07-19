@@ -23,6 +23,7 @@ require_once get_template_directory() . '/inc/photo-wall.php';
 require_once get_template_directory() . '/inc/i18n.php';
 require_once get_template_directory() . '/inc/geocode.php';       // v1.4.4: 逆地理编码代理（图片位置弹窗）
 require_once get_template_directory() . '/inc/announcement.php';  // v1.4.4: 公告页
+require_once get_template_directory() . '/inc/article-cover.php'; // v1.4.6: 文章头图（边栏模块模糊背景）
 
 // 1.（已移除）自定义文章类型
 // Sphotography now uses native WordPress posts exclusively. Articles are

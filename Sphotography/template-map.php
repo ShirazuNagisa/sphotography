@@ -158,6 +158,16 @@ if ( ! $sphotography_sidebar_default_open ) {
     </aside>
 
     <!-- 侧边栏展开按钮（折叠时可见） -->
+    <?php
+    // v1.4.6 (item 8): 边栏折叠时，在展开按钮上方显示博主头像（圆形、尺寸同展开按钮、
+    // 暂不可点击）。仅当使用「边栏一行」个人信息模式且已设置头像时显示。
+    if ( 'sidebar' === sphotography_get_mod( 'profile_display' ) ) :
+        $sp_collapsed_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
+        if ( $sp_collapsed_avatar ) : ?>
+        <img src="<?php echo esc_url( $sp_collapsed_avatar ); ?>" alt="" class="sidebar-expand-avatar" aria-hidden="true">
+        <?php endif;
+    endif;
+    ?>
     <button id="sidebar-expand" class="sidebar-expand-btn glass-panel" aria-label="<?php esc_attr_e( 'Expand sidebar', 'sphotography' ); ?>">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"></polyline>
