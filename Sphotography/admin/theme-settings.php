@@ -1377,6 +1377,13 @@ function sphotography_render_settings_page() {
                                autocomplete="off">
                         <p class="sphotography-desc"><?php _e( '如所用端点需要鉴权（如 LocationIQ），在此填写 key，将以 ?key= 附加到请求。Nominatim 公共端点留空即可。', 'sphotography' ); ?></p>
                     </div>
+                    <!-- v1.4.6 (item 1): 一键预生成全站照片地址 -->
+                    <div class="sphotography-field">
+                        <label class="sphotography-label"><?php _e( '预生成全站照片地址', 'sphotography' ); ?></label>
+                        <p class="sphotography-desc"><?php _e( '文章保存时会自动为其中带定位的照片预解析并持久缓存地址（覆盖所有启用语言），前台展示时不再实时调用服务。对早于本功能的旧文章，可点此为全站已发布文章排入后台预生成任务。任务在后台错峰执行、遵守服务限速，无需保持本页打开。', 'sphotography' ); ?></p>
+                        <button type="button" class="button button-secondary" id="sphotography-geo-backfill"><?php _e( '为全站照片预生成地址', 'sphotography' ); ?></button>
+                        <span class="sphotography-geo-backfill-status" style="margin-left:10px;"></span>
+                    </div>
                 </div>
                 </div>
 
@@ -1708,6 +1715,11 @@ function sphotography_render_settings_page() {
         <!-- ============================================ -->
         <aside class="sphotography-toc" aria-label="<?php esc_attr_e( '配置索引', 'sphotography' ); ?>">
             <div class="sphotography-toc-inner">
+                <?php // v1.4.6 (item 7): 设置搜索框。置于索引栏上方，其顶部与左侧内容顶部平齐（栅格 align-items:start），索引随之下移。 ?>
+                <div class="sphotography-toc-search">
+                    <span class="dashicons dashicons-search sphotography-toc-search-ico" aria-hidden="true"></span>
+                    <input type="search" id="sphotography-settings-search" class="sphotography-toc-search-input" placeholder="<?php esc_attr_e( '搜索设置选项…', 'sphotography' ); ?>" autocomplete="off" aria-label="<?php esc_attr_e( '搜索设置选项', 'sphotography' ); ?>">
+                </div>
                 <p class="sphotography-toc-heading"><?php _e( '配置索引', 'sphotography' ); ?></p>
                 <nav class="sphotography-toc-nav">
                     <?php
@@ -1966,6 +1978,39 @@ function sphotography_admin_enqueue_settings( $hook ) {
             border-radius: 14px;
             box-shadow: var(--sp-shadow);
             padding: 16px 14px;
+        }
+        /* v1.4.6 (item 7): 设置搜索框，位于索引上方。 */
+        .sphotography-toc-search {
+            position: relative;
+            margin: 0 0 12px 0;
+        }
+        .sphotography-toc-search-ico {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--sp-text-muted);
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+            pointer-events: none;
+        }
+        .sphotography-toc-search-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 7px 10px 7px 30px;
+            border: 1px solid var(--sp-border);
+            border-radius: 8px;
+            background: var(--sp-surface-2);
+            color: var(--sp-text);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            transition: border-color 140ms ease, box-shadow 140ms ease;
+        }
+        .sphotography-toc-search-input:focus {
+            outline: none;
+            border-color: var(--sp-accent);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--sp-accent) 25%, transparent);
         }
         .sphotography-toc-heading {
             margin: 0 0 10px 0;
@@ -2618,6 +2663,13 @@ function sphotography_admin_enqueue_settings( $hook ) {
         'exifBackfillRunning' => __( '处理中…', 'sphotography' ),
         'exifBackfillDone'    => __( '✓ 完成，已处理 %1$d 张照片，新提取了 %2$d 个 EXIF 字段。', 'sphotography' ),
         'exifBackfillFail'    => __( '回填失败：', 'sphotography' ),
+        // v1.4.6 (item 1): 一键预生成全站照片地址（逆地理编码）。走 REST，用 wp_rest nonce。
+        'restNonce'          => wp_create_nonce( 'wp_rest' ),
+        'geoBackfillUrl'     => esc_url_raw( rest_url( 'sphotography/v1/geocode-backfill' ) ),
+        'geoBackfillRunning' => __( '正在排入后台任务…', 'sphotography' ),
+        'geoBackfillDone'    => __( '✓ 已为 %d 篇文章排入后台预生成任务，将在后台按语言逐个解析并持久缓存地址。', 'sphotography' ),
+        'geoBackfillNone'    => __( '✓ 没有需要新排期的文章（可能任务已在队列中）。', 'sphotography' ),
+        'geoBackfillFail'    => __( '预生成失败：', 'sphotography' ),
         'aiTestNonce'    => wp_create_nonce( 'sphotography_ai_test' ),
         'aiTesting'      => __( '测试中…', 'sphotography' ),
         'aiTestOk'       => __( '连接成功', 'sphotography' ),

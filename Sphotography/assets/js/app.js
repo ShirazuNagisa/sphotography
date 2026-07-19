@@ -819,7 +819,9 @@
             '留言（可选）': 'Message (optional)', '提交申请': 'Submit', '请填写邮箱和链接。': 'Please fill in email and URL.', '提交中…': 'Submitting…',
             '还没有照片。': 'No photos yet.', '写下留言…支持 Markdown': 'Write a message… Markdown supported',
             '申请已提交，等待站长审核。': 'Submitted — awaiting the admin’s review.',
-            '查看照片位置': 'View photo location', '查看对应文章': 'View the article', '查看照片详情': 'Photo details', '上一张': 'Previous', '下一张': 'Next', '退出': 'Close'
+            '查看照片位置': 'View photo location', '查看对应文章': 'View the article', '查看照片详情': 'Photo details', '上一张': 'Previous', '下一张': 'Next', '退出': 'Close',
+            '点击照片即可查看其位置': 'Tap the photo to see where it was taken',
+            '文章目录': 'Contents', '本文暂无目录': 'No headings in this article'
         },
         ja: {
             '浅色': 'ライト', '深色': 'ダーク', '跟随系统': 'システム', '明暗模式': '外観',
@@ -848,7 +850,9 @@
             '留言（可选）': 'メッセージ（任意）', '提交申请': '申請する', '请填写邮箱和链接。': 'メールと URL を入力してください。', '提交中…': '送信中…',
             '还没有照片。': 'まだ写真がありません。', '写下留言…支持 Markdown': 'メッセージを書く… Markdown 対応',
             '申请已提交，等待站长审核。': '申請を送信しました。管理者の承認をお待ちください。',
-            '查看照片位置': '写真の位置を表示', '查看对应文章': '記事を表示', '查看照片详情': '写真の詳細', '上一张': '前へ', '下一张': '次へ', '退出': '閉じる'
+            '查看照片位置': '写真の位置を表示', '查看对应文章': '記事を表示', '查看照片详情': '写真の詳細', '上一张': '前へ', '下一张': '次へ', '退出': '閉じる',
+            '点击照片即可查看其位置': 'タップして撮影場所を表示',
+            '文章目录': '目次', '本文暂无目录': 'この記事に見出しはありません'
         }
     };
 
@@ -1771,11 +1775,11 @@
             card.className = isLarge ? 'post-card post-card--large' : 'post-card';
             card.dataset.postId = post.id;
 
-            var thumbUrl = '';
-            if (post._embedded && post._embedded['wp:featuredmedia']) {
-                var m = post._embedded['wp:featuredmedia'][0];
-                if (m) thumbUrl = (m.media_details && m.media_details.sizes && m.media_details.sizes.thumbnail && m.media_details.sizes.thumbnail.source_url) || m.source_url || '';
-            }
+            // v1.4.6 (item 9): article cover = chosen cover, else first content
+            // image (resolved server-side into sp_cover). Rendered as a strongly
+            // blurred module background with a readability scrim; the old left
+            // thumbnail is gone.
+            var coverUrl = post.sp_cover || '';
 
             var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
 
@@ -1801,12 +1805,19 @@
             }
 
             card.innerHTML = ''
-                + '<img class="post-card-thumb" src="' + (thumbUrl || '') + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+                + (coverUrl ? '<div class="post-card-cover"></div><div class="post-card-scrim"></div>' : '')
                 + '<div class="post-card-body">'
                 + '<div class="post-card-title">' + escapeHtml(post.title.rendered || '') + '</div>'
                 + excerptHtml
                 + '<div class="post-card-date"><span class="post-card-date-item"><svg width=12 height=12 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + escapeHtml(dateStr) + '</span>' + metaExtra + '</div>'
                 + '</div>';
+
+            if (coverUrl) {
+                card.classList.add('has-cover');
+                var coverEl = card.querySelector('.post-card-cover');
+                // Set via style (not innerHTML) so the URL can't break out of the attribute.
+                if (coverEl) coverEl.style.backgroundImage = 'url("' + String(coverUrl).replace(/"/g, '%22') + '")';
+            }
 
             card.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -2076,6 +2087,37 @@
         dom.tagLegend = panel;
     }
 
+    // v1.4.6 (item 3): FLIP the post list so it glides with the filter panel
+    // instead of snapping when the panel claims/releases its in-flow space.
+    // `firstTop` is the list's top BEFORE the layout change; we translate the
+    // list back to there and animate to 0 over the panel's own duration.
+    function flipSidebarPosts(firstTop, duration) {
+        var posts = dom.sidebarPosts;
+        if (!posts || prefersReducedMotion()) return;
+        var delta = firstTop - posts.getBoundingClientRect().top;
+        if (!delta) return;
+        if (state.filterPostsFlip) { try { state.filterPostsFlip.cancel(); } catch (e) {} state.filterPostsFlip = null; }
+        var a = posts.animate([
+            { transform: 'translateY(' + delta + 'px)' },
+            { transform: 'translateY(0)' }
+        ], { duration: duration, easing: ARTICLE_MOTION.easing, fill: 'both' });
+        state.filterPostsFlip = a;
+        a.onfinish = function () { if (state.filterPostsFlip === a) { try { a.cancel(); } catch (e) {} state.filterPostsFlip = null; } };
+    }
+
+    // Clear any leftover overlay pinning from an interrupted close so the panel
+    // sits back in normal flow.
+    function unpinFilterPanel() {
+        var fp = dom.filterPanel;
+        if (!fp) return;
+        fp.style.position = '';
+        fp.style.left = '';
+        fp.style.top = '';
+        fp.style.width = '';
+        fp.style.margin = '';
+        fp.style.zIndex = '';
+    }
+
     // Uses the article panel's window-scale motion: the panel grows out of the
     // filter button and collapses back into it, recomputed live each time.
     function openFilterPanel() {
@@ -2083,12 +2125,16 @@
         state.filterOpen = true;
         dom.filterBtn.setAttribute('aria-expanded', 'true');
         if (state.filterMotion) { state.filterMotion.cancel(); state.filterMotion = null; }
+        unpinFilterPanel(); // recover if a prior close was interrupted mid-pin
 
+        // Capture the list position BEFORE the panel claims its flow space.
+        var postsFirstTop = dom.sidebarPosts ? dom.sidebarPosts.getBoundingClientRect().top : 0;
         dom.filterPanel.hidden = false;
         // Measure resting geometry, then animate from the button rect.
         var panelRect = dom.filterPanel.getBoundingClientRect();
         var btnRect = dom.filterBtn.getBoundingClientRect();
         if (prefersReducedMotion()) return;
+        flipSidebarPosts(postsFirstTop, ARTICLE_MOTION.openDuration);
         var from = collapseTransform(btnRect, panelRect);
         var anim = dom.filterPanel.animate([
             { transform: from, opacity: 0 },
@@ -2106,10 +2152,26 @@
         if (state.filterMotion) { state.filterMotion.cancel(); state.filterMotion = null; }
 
         if (prefersReducedMotion()) { dom.filterPanel.hidden = true; return; }
-        var panelRect = dom.filterPanel.getBoundingClientRect();
+        var fp = dom.filterPanel;
         var btnRect = dom.filterBtn.getBoundingClientRect();
+        var panelRect = fp.getBoundingClientRect();
+        var postsFirstTop = dom.sidebarPosts ? dom.sidebarPosts.getBoundingClientRect().top : 0;
+        // Pin the panel out of flow at its current spot so it stops holding layout
+        // space; the list then reclaims the space and we FLIP it up over the same
+        // duration as the panel's shrink (no end-of-anim snap). Use ABSOLUTE (not
+        // fixed): .sidebar has transform+backdrop-filter, so it's the containing
+        // block for fixed — absolute resolves against .sidebar-search (its
+        // position:relative offsetParent) using the panel's own offset box.
+        var ot = fp.offsetTop, ol = fp.offsetLeft, ow = fp.offsetWidth; // capture in-flow box first
+        fp.style.position = 'absolute';
+        fp.style.top = ot + 'px';
+        fp.style.left = ol + 'px';
+        fp.style.width = ow + 'px';
+        fp.style.margin = '0';
+        fp.style.zIndex = '5';
+        flipSidebarPosts(postsFirstTop, ARTICLE_MOTION.closeDuration);
         var to = collapseTransform(btnRect, panelRect);
-        var anim = dom.filterPanel.animate([
+        var anim = fp.animate([
             { transform: 'translate(0,0) scale(1,1)', opacity: 1 },
             { opacity: 1, offset: 0.82 },
             { transform: to, opacity: 0 }
@@ -2119,7 +2181,8 @@
             if (state.filterMotion !== anim) return;
             anim.cancel();
             state.filterMotion = null;
-            dom.filterPanel.hidden = true;
+            fp.hidden = true;
+            unpinFilterPanel();
         };
     }
 
@@ -2409,6 +2472,10 @@
             var wireArticleDom = function () {
                 dom.articleContent.querySelectorAll('a').forEach(function(a) { if(!a.href.startsWith(window.location.origin)) a.target='_blank'; });
                 wireArticleImages();
+                // v1.4.6 (item 10): rebuild the TOC when content is (re)written —
+                // covers on-demand translation swaps. Guarded until the bar exists
+                // (first open builds it in setupArticleNav, refreshed just below).
+                if (dom.articleTocBar) refreshArticleToc();
             };
             wireArticleDom();
             i18nRegisterPregen(dom.articleContent, 'html', pregenFor('body'), wireArticleDom); // v1.4.4: 正文优先用预生成译文
@@ -2416,6 +2483,7 @@
             renderComments(requestPostId, post.comment_status);
             animateWindowsOpen(requestPostId);
             setupArticleNav();
+            refreshArticleToc(); // v1.4.6 (item 10): build TOC now the bar exists
             // Count the view (de-duplicated client-side) and reflect the fresh
             // number in the meta line once the server confirms.
             recordArticleView(requestPostId, function (n) {
@@ -3329,19 +3397,37 @@
         }
         PW_POPUP.closing = true;
 
-        // Cancel any open animations still in flight.
+        var buttons = Array.prototype.slice.call(p.querySelectorAll('.pw-side-btn'));
+
+        // v1.4.6 (item 6): bake each button's CURRENT visual state into inline
+        // styles BEFORE cancelling the open animation. cancel() drops the open
+        // animation's forwards-fill, which would otherwise snap the button back
+        // to its CSS base (opacity:0, translateX(8px)) — making the whole popup
+        // blink out, then the close stagger re-shows & fades it (the flicker).
+        // commitStyles() persists the visible state so the close simply fades
+        // from where the button actually is.
         if (PW_POPUP.openAnim) {
-            PW_POPUP.openAnim.forEach(function (a) { try { a.cancel(); } catch (e) {} });
+            PW_POPUP.openAnim.forEach(function (a) {
+                try { a.commitStyles(); } catch (e) {}
+                try { a.cancel(); } catch (e) {}
+            });
             PW_POPUP.openAnim = null;
         }
+        // Defensive: a button whose open animation was missing is treated as
+        // fully open, so the close fades from visible rather than the base.
+        buttons.forEach(function (btn) {
+            if (!btn.style.opacity) { btn.style.opacity = '1'; btn.style.transform = 'translateX(0)'; }
+        });
 
-        var buttons = Array.prototype.slice.call(p.querySelectorAll('.pw-side-btn'));
         var closeDelays = [80, 40, 0];
         var promises = buttons.map(function (btn, i) {
-            return animatePwBtn(btn, [
-                { opacity: 1, transform: 'translateX(0)' },
-                { opacity: 0, transform: 'translateX(8px)' }
-            ], closeDelays[i] || 0).finished;
+            // Single-keyframe target → animates FROM the committed inline state
+            // (no jump). During the stagger delay the button holds its committed
+            // visible state, then fades out cleanly.
+            return btn.animate(
+                [{ opacity: 0, transform: 'translateX(8px)' }],
+                { duration: 180, delay: closeDelays[i] || 0, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' }
+            ).finished;
         });
 
         Promise.all(promises).then(function () {
@@ -3808,6 +3894,19 @@
                     closeAllSidePanels(); // don't let 友链/留言 obscure the fly-to
                     flyMapToPhoto(geo.coords);
                 });
+                // v1.4.6 (item 5): theme-colored hint under each clickable photo.
+                // Anchor after the image's link wrapper (if any) so the hint isn't
+                // itself a link, and guard against double-insertion on re-wire.
+                var host = (img.parentNode && img.parentNode.tagName === 'A') ? img.parentNode : img;
+                if (host.parentNode) {
+                    var nx = host.nextSibling;
+                    if (!(nx && nx.nodeType === 1 && nx.classList && nx.classList.contains('article-geo-hint'))) {
+                        var hint = document.createElement('div');
+                        hint.className = 'article-geo-hint';
+                        hint.textContent = t('点击照片即可查看其位置');
+                        host.parentNode.insertBefore(hint, host.nextSibling);
+                    }
+                }
             })(imgs[i]);
         }
     }
@@ -4053,6 +4152,22 @@
 
         document.body.appendChild(overlay);
 
+        // v1.4.6 (item 10): the in-article TOC bar. Mounted on <body> (NOT the
+        // overlay, which has overflow:hidden and would clip a bar sitting outside
+        // the panel's right edge). Its geometry is synced to the panel rect in
+        // syncArticleNavGeom; visibility is driven by .is-active (article open) +
+        // .is-hidden (article has no headings). The expanded index region is a
+        // separate top-layer element built lazily.
+        var tocBar = document.createElement('button');
+        tocBar.type = 'button';
+        tocBar.className = 'article-toc-bar is-hidden';
+        tocBar.setAttribute('aria-label', t('文章目录'));
+        tocBar.title = t('文章目录');
+        tocBar.innerHTML = '<span class="article-toc-bar-grip" aria-hidden="true"></span>';
+        tocBar.addEventListener('click', function (e) { e.stopPropagation(); toggleTocRegion(); });
+        document.body.appendChild(tocBar);
+        dom.articleTocBar = tocBar;
+
         dom.articleNavOverlay = overlay;
         dom.articleNavTop = top;
         dom.articleNavBottom = bottom;
@@ -4062,7 +4177,14 @@
         panel.addEventListener('scroll', function () {
             if (scheduled) return;
             scheduled = true;
-            requestAnimationFrame(function () { scheduled = false; updateArticleNav(); });
+            requestAnimationFrame(function () {
+                scheduled = false;
+                updateArticleNav();
+                // v1.4.6 (item 10): scrolling collapses the TOC region and keeps
+                // the current-section highlight fresh.
+                if (state.tocOpen) closeTocRegion();
+                updateTocActive();
+            });
         });
         window.addEventListener('resize', function () {
             if (state.articleOpen) { syncArticleNavGeom(); ensureReadingTailSpace(); updateArticleNav(); }
@@ -4082,12 +4204,22 @@
         overlay.style.top = r.top + 'px';
         overlay.style.width = r.width + 'px';
         overlay.style.height = r.height + 'px';
+        // v1.4.6 (item 10): glue the TOC bar just outside the panel's right edge,
+        // full panel height (desktop). Mobile placement is handled purely in CSS.
+        var bar = dom.articleTocBar;
+        if (bar && !state.isMobile) {
+            bar.style.left = (r.right + 6) + 'px';
+            bar.style.top = r.top + 'px';
+            bar.style.height = r.height + 'px';
+        }
     }
 
     function hideArticleNav() {
         if (dom.articleNavOverlay) dom.articleNavOverlay.classList.remove('is-active');
         if (dom.articleNavTop) dom.articleNavTop.classList.remove('is-visible');
         if (dom.articleNavBottom) dom.articleNavBottom.classList.remove('is-visible');
+        if (dom.articleTocBar) dom.articleTocBar.classList.remove('is-active'); // v1.4.6 (item 10)
+        closeTocRegion(true); // v1.4.6 (item 10): TOC folds away with the article
     }
 
     // Absolute scrollTop that brings the bottom of #article-content level with
@@ -4212,6 +4344,7 @@
     function setupArticleNav() {
         buildArticleNav();
         if (dom.articleNavOverlay) dom.articleNavOverlay.classList.add('is-active');
+        if (dom.articleTocBar) dom.articleTocBar.classList.add('is-active'); // v1.4.6 (item 10)
         syncArticleNavGeom();
         ensureReadingTailSpace();
         // v1.4.4 (item 2): content height changes over time — comments load
@@ -4228,6 +4361,209 @@
             if (t - t0 < until) requestAnimationFrame(loop);
             else { ensureReadingTailSpace(); updateArticleNav(); }
         });
+    }
+
+    // ===============================================================
+    // 10a3. In-article TOC (v1.4.6 item 10)
+    //
+    // A rounded vertical bar hugging the article panel's right edge (built into
+    // the panel-glued nav overlay). Clicking it expands a top-layer index region
+    // whose entries come strictly from the article's H1–H6. Top-level headings
+    // are accordion groups; deeper levels are shown with multi-level indent.
+    // Clicking any entry scrolls the panel to that heading and collapses the
+    // region; clicking anywhere else, pressing Esc, or scrolling also collapses
+    // it. The bar + region match the panel's frosted glass, track the current
+    // section, and are cursor-magnet targets. On mobile the bar is a floating
+    // toggle and the region a side sheet (positioned via CSS).
+    // ===============================================================
+    function ensureTocRegion() {
+        if (dom.articleTocRegion) return dom.articleTocRegion;
+        var region = document.createElement('div');
+        region.className = 'article-toc-region';
+        region.setAttribute('role', 'navigation');
+        region.setAttribute('aria-label', t('文章目录'));
+        region.innerHTML = '<div class="article-toc-region-inner"><div class="article-toc-title"></div><div class="article-toc-list"></div></div>';
+        // Clicks inside the region must not bubble to the outside-close handler.
+        region.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        document.body.appendChild(region);
+        dom.articleTocRegion = region;
+        dom.articleTocList = region.querySelector('.article-toc-list');
+        region.querySelector('.article-toc-title').textContent = t('文章目录');
+        return region;
+    }
+
+    // Parse headings out of the freshly-written article body, (re)build the index
+    // region, and show/hide the bar (hidden when the article has no headings).
+    function refreshArticleToc() {
+        closeTocRegion(true);
+        var bar = dom.articleTocBar;
+        if (!bar) return;
+        var content = dom.articleContent;
+        var hs = content ? content.querySelectorAll('h1,h2,h3,h4,h5,h6') : [];
+        var headings = [];
+        for (var i = 0; i < hs.length; i++) {
+            var el = hs[i];
+            var text = (el.textContent || '').trim();
+            if (!text) continue;
+            if (!el.id) el.id = 'sp-toc-h-' + i;
+            headings.push({ el: el, level: parseInt(el.tagName.charAt(1), 10), text: text, itemEl: null });
+        }
+        state.tocHeadings = headings;
+        if (headings.length === 0) { bar.classList.add('is-hidden'); return; }
+        bar.classList.remove('is-hidden');
+        renderTocRegion(headings);
+    }
+
+    function renderTocRegion(headings) {
+        ensureTocRegion();
+        var list = dom.articleTocList;
+        list.innerHTML = '';
+
+        // Build a nested tree honouring heading levels.
+        var roots = [];
+        var stack = [{ level: 0, children: roots }];
+        headings.forEach(function (h) {
+            var node = { h: h, children: [] };
+            while (stack.length > 1 && stack[stack.length - 1].level >= h.level) stack.pop();
+            stack[stack.length - 1].children.push(node);
+            stack.push({ level: h.level, children: node.children });
+        });
+
+        var minLevel = headings.reduce(function (m, h) { return Math.min(m, h.level); }, 6);
+        roots.forEach(function (node) { list.appendChild(renderTocTopGroup(node, minLevel)); });
+    }
+
+    function makeTocItem(h, minLevel, isTop) {
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'article-toc-item' + (isTop ? ' article-toc-item--top' : ' article-toc-item--child');
+        item.style.paddingLeft = (14 + (h.level - minLevel) * 14) + 'px';
+        item.textContent = h.text;
+        item.addEventListener('click', function (e) { e.stopPropagation(); gotoTocHeading(h); });
+        h.itemEl = item;
+        return item;
+    }
+
+    function renderTocTopGroup(node, minLevel) {
+        var group = document.createElement('div');
+        group.className = 'article-toc-group';
+        var hasKids = node.children.length > 0;
+
+        var row = document.createElement('div');
+        row.className = 'article-toc-row';
+        row.appendChild(makeTocItem(node.h, minLevel, true));
+
+        if (hasKids) {
+            var chev = document.createElement('button');
+            chev.type = 'button';
+            chev.className = 'article-toc-chevron';
+            chev.setAttribute('aria-expanded', 'true');
+            chev.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+            chev.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var collapsed = group.classList.toggle('is-collapsed');
+                chev.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            });
+            row.appendChild(chev);
+        }
+        group.appendChild(row);
+
+        if (hasKids) {
+            var kids = document.createElement('div');
+            kids.className = 'article-toc-children';
+            (function walk(nodes) {
+                nodes.forEach(function (n) {
+                    kids.appendChild(makeTocItem(n.h, minLevel, false));
+                    if (n.children.length) walk(n.children);
+                });
+            })(node.children);
+            group.appendChild(kids);
+        }
+        return group;
+    }
+
+    function gotoTocHeading(h) {
+        var panel = dom.articlePanel;
+        if (!panel || !h || !h.el) return;
+        var panelRect = panel.getBoundingClientRect();
+        var rect = h.el.getBoundingClientRect();
+        var target = panel.scrollTop + (rect.top - panelRect.top) - 16;
+        var max = panel.scrollHeight - panel.clientHeight;
+        target = Math.max(0, Math.min(target, max));
+        closeTocRegion();
+        animateScroll(panel, panel.scrollTop, target, SP_NAV_SCROLL_MS);
+        setTocActive(h);
+    }
+
+    function toggleTocRegion() { if (state.tocOpen) closeTocRegion(); else openTocRegion(); }
+
+    function openTocRegion() {
+        if (!state.tocHeadings || !state.tocHeadings.length) return;
+        ensureTocRegion();
+        positionTocRegion();
+        state.tocOpen = true;
+        dom.articleTocRegion.classList.add('is-open');
+        if (dom.articleTocBar) dom.articleTocBar.classList.add('is-active');
+        updateTocActive();
+        // Defer binding so the opening click itself doesn't immediately close it.
+        setTimeout(function () {
+            document.addEventListener('pointerdown', tocOutsideHandler, true);
+            document.addEventListener('keydown', tocEscHandler);
+        }, 0);
+    }
+
+    function closeTocRegion(immediate) {
+        state.tocOpen = false;
+        document.removeEventListener('pointerdown', tocOutsideHandler, true);
+        document.removeEventListener('keydown', tocEscHandler);
+        if (!dom.articleTocRegion) return;
+        dom.articleTocRegion.classList.remove('is-open');
+        if (dom.articleTocBar) dom.articleTocBar.classList.remove('is-active');
+    }
+
+    function tocOutsideHandler(e) {
+        if (dom.articleTocRegion && dom.articleTocRegion.contains(e.target)) return;
+        if (dom.articleTocBar && dom.articleTocBar.contains(e.target)) return;
+        closeTocRegion();
+    }
+    function tocEscHandler(e) { if (e.key === 'Escape') closeTocRegion(); }
+
+    // Anchor the region beside the bar (desktop). On mobile CSS pins it as a side
+    // sheet, so we only clear inline geometry there.
+    function positionTocRegion() {
+        var region = dom.articleTocRegion, bar = dom.articleTocBar;
+        if (!region || !bar) return;
+        if (state.isMobile) {
+            region.style.top = ''; region.style.left = ''; region.style.height = '';
+            region.style.maxHeight = ''; region.style.width = '';
+            return;
+        }
+        var br = bar.getBoundingClientRect();
+        region.style.top = br.top + 'px';
+        region.style.height = br.height + 'px';
+        region.style.maxHeight = br.height + 'px';
+        var leftBase = br.right + 8;
+        region.style.left = leftBase + 'px';
+        var avail = window.innerWidth - leftBase - 12;
+        region.style.width = Math.max(180, Math.min(280, avail)) + 'px';
+    }
+
+    function setTocActive(h) {
+        var hs = state.tocHeadings;
+        if (!hs) return;
+        hs.forEach(function (x) { if (x.itemEl) x.itemEl.classList.toggle('is-current', x === h); });
+    }
+
+    function updateTocActive() {
+        var panel = dom.articlePanel, hs = state.tocHeadings;
+        if (!panel || !hs || !hs.length) return;
+        var panelTop = panel.getBoundingClientRect().top;
+        var current = hs[0];
+        for (var i = 0; i < hs.length; i++) {
+            if (hs[i].el.getBoundingClientRect().top - panelTop <= 80) current = hs[i];
+            else break;
+        }
+        setTocActive(current);
     }
 
     // Observe the article body + comments for height changes and re-fit the tail
@@ -5997,6 +6333,7 @@
                     excerpt: { rendered: p.excerpt },
                     sp_word_count: p.wordCount,
                     sp_views: p.views,
+                    sp_cover: p.cover || '', // v1.4.6 (item 9): article cover URL
                     _embedded: {
                         'wp:featuredmedia': p.thumb ? [{ source_url: p.thumb, media_details: { sizes: { thumbnail: { source_url: p.thumb } } } }] : [],
                         'wp:term': [p.terms || []],
@@ -6108,7 +6445,8 @@
         '.share-btn',
         '.comment-md-btn', '.comment-md-preview-toggle', '.comment-sort-btn',
         '.pw-cell',
-        '.pw-detail-round', '.pw-side-btn'
+        '.pw-detail-round', '.pw-side-btn',
+        '.article-toc-bar', '.article-toc-item', '.article-toc-chevron'
     ].join(',');
 
     var CURSOR = {

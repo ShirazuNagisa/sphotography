@@ -236,6 +236,72 @@
             runBatch(0);
         });
 
+        // v1.4.6 (item 1): 一键预生成全站照片地址。走 REST，服务端只是「排入后台
+        // cron 任务」（错峰 + 遵守服务限速），因此这里是一次性请求、无需分批轮询。
+        $('#sphotography-geo-backfill').on('click', function () {
+            var btn = $(this);
+            var status = $('.sphotography-geo-backfill-status');
+            if (!config.geoBackfillUrl || !config.restNonce) { return; }
+            btn.prop('disabled', true);
+            status.text(config.geoBackfillRunning || '正在排入后台任务…').css('color', '');
+            $.ajax({
+                url: config.geoBackfillUrl,
+                method: 'POST',
+                beforeSend: function (xhr) { xhr.setRequestHeader('X-WP-Nonce', config.restNonce); }
+            }).done(function (res) {
+                var n = (res && typeof res.scheduled === 'number') ? res.scheduled : 0;
+                if (n > 0) {
+                    status.text((config.geoBackfillDone || '✓ 已为 %d 篇文章排入后台预生成任务。').replace('%d', n)).css('color', '#2ecc71');
+                } else {
+                    status.text(config.geoBackfillNone || '✓ 没有需要新排期的文章。').css('color', '#2ecc71');
+                }
+                btn.prop('disabled', false);
+            }).fail(function (xhr) {
+                var msg = (xhr && xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : '';
+                status.text((config.geoBackfillFail || '预生成失败：') + msg).css('color', '#e74c3c');
+                btn.prop('disabled', false);
+            });
+        });
+
+        // v1.4.6 (item 7): 设置项实时搜索。匹配范围 = 大板块标题 + 模块标题 +
+        // 字段（标签 + 描述 + 选项文字，即 .sphotography-field 的全文）。不匹配的
+        // 字段/模块/板块直接隐藏；清空则全部恢复。
+        (function () {
+            var input = document.getElementById('sphotography-settings-search');
+            if (!input) { return; }
+            function applyFilter() {
+                var q = (input.value || '').trim().toLowerCase();
+                var cats = document.querySelectorAll('.sphotography-settings-main .sp-cat-card');
+                for (var i = 0; i < cats.length; i++) {
+                    var cat = cats[i];
+                    var titleEl = cat.querySelector('.sp-cat-card-title');
+                    var catMatch = !!q && titleEl && titleEl.textContent.toLowerCase().indexOf(q) !== -1;
+                    var mods = cat.querySelectorAll('.sphotography-module');
+                    var anyModVisible = false;
+                    for (var j = 0; j < mods.length; j++) {
+                        var mod = mods[j];
+                        var headEl = mod.querySelector('.sphotography-module-header');
+                        var modMatch = !!q && headEl && headEl.textContent.toLowerCase().indexOf(q) !== -1;
+                        var fields = mod.querySelectorAll('.sphotography-field');
+                        var anyFieldVisible = false;
+                        for (var k = 0; k < fields.length; k++) {
+                            var f = fields[k];
+                            var show = !q || catMatch || modMatch || f.textContent.toLowerCase().indexOf(q) !== -1;
+                            f.style.display = show ? '' : 'none';
+                            if (show) { anyFieldVisible = true; }
+                        }
+                        // A module with no .sphotography-field children still shows
+                        // when the query is empty or its header/category matches.
+                        var showMod = !q || catMatch || modMatch || anyFieldVisible || fields.length === 0;
+                        mod.style.display = showMod ? '' : 'none';
+                        if (showMod && (fields.length === 0 ? (catMatch || modMatch) : true)) { anyModVisible = true; }
+                    }
+                    cat.style.display = (!q || catMatch || anyModVisible) ? '' : 'none';
+                }
+            }
+            input.addEventListener('input', applyFilter);
+        })();
+
         // Generic slider readouts (v1.2.5): each .sphotography-slider-row pairs
         // a range input with a .sphotography-slider-val; an optional
         // data-suffix on the value element is appended to the number.
