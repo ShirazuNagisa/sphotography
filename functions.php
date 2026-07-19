@@ -27,6 +27,7 @@ require_once get_template_directory() . '/inc/comments.php';
 require_once get_template_directory() . '/inc/friend-links.php';
 require_once get_template_directory() . '/inc/guestbook.php';
 require_once get_template_directory() . '/inc/photo-wall.php';
+require_once get_template_directory() . '/inc/i18n.php';
 
 // ============================================
 // 1. (removed) Custom Post Type "photograph"
@@ -911,6 +912,8 @@ function sphotography_enqueue_scripts() {
             'restUrl'         => esc_url_raw( rest_url() ),
             'siteName'        => get_bloginfo( 'name' ),
             'restNonce'       => wp_create_nonce( 'wp_rest' ),
+            // v1.4.3: 语言切换控件仅在 AI 开启时显示（动态正文翻译依赖文本模型）。
+            'aiEnabled'       => ( function_exists( 'sphotography_ai_is_enabled' ) && sphotography_ai_is_enabled() ),
             'loggedIn'        => is_user_logged_in(),
             'currentUserName' => is_user_logged_in() ? $sp_current_user->display_name : '',
             'currentUserEmail' => is_user_logged_in() ? $sp_current_user->user_email : '',

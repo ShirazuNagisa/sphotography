@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.2
+Version: 1.4.3
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -3723,6 +3723,63 @@ body.sphotography-cursor-dot textarea {
     background: rgba(255,255,255,0.10) !important;
 }
 .sp-night-switch .sp-night-btn svg { display: block; }
+
+/* Language three-segment switch (v1.4.3) — 中 / A / あ text glyphs, stacked
+   directly below the night switch. Mirrors .sp-night-switch sizing/behaviour. */
+.sp-lang-switch .sp-lang-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 29px;
+    height: 29px;
+    padding: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans", "Microsoft YaHei", sans-serif;
+    color: rgba(255,255,255,0.68);
+    cursor: pointer;
+    transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+.sp-lang-switch .sp-lang-btn + .sp-lang-btn {
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+}
+.sp-lang-switch .sp-lang-btn:hover { color: #fff; }
+.sp-lang-switch .sp-lang-btn.is-active {
+    color: var(--primary);
+    background: rgba(255,255,255,0.10) !important;
+}
+
+/* Dynamic-content translation states (v1.4.3): dimmed while a block awaits its
+   translation, fade-in when the result arrives, and a floating "翻译中…" badge
+   shown while any request is in flight. */
+[data-sp-tr].sp-tr-loading { opacity: 0.5; transition: opacity var(--duration-fast) ease; }
+.sp-tr-fade { animation: sp-tr-fade-in 0.28s ease; }
+@keyframes sp-tr-fade-in { from { opacity: 0; } to { opacity: 1; } }
+#sp-tr-indicator {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 9999;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(20,20,22,0.82);
+    color: #fff;
+    font-size: 0.8125rem;
+    letter-spacing: 0.02em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+#sp-tr-indicator.is-active { opacity: 1; transform: translateY(0) scale(1); }
+@media (prefers-reduced-motion: reduce) {
+    .sp-tr-fade { animation: none; }
+    #sp-tr-indicator { transition: opacity 0.25s ease; transform: none; }
+}
 
 /* Marker hover enhancement — 地图标记交互增强 */
 .maplibregl-marker {
