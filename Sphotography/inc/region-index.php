@@ -47,20 +47,43 @@ function sphotography_geo_file_path( $which ) {
 }
 
 /**
- * Are both boundary files present on disk at the current data version?
+ * Are both boundary files present and usable on disk?
+ *
+ * v1.4.7 (item 5): tolerate files a user placed manually via the terminal. Such
+ * files won't carry a matching version.txt, so instead of failing (and forcing a
+ * re-download an offline server can't do), we validate that both files parse as
+ * GeoJSON FeatureCollections and, if so, treat them as ready — stamping
+ * version.txt ourselves (best-effort) so later checks take the fast path.
  */
 function sphotography_geo_files_ready() {
-    $ver_file = sphotography_geo_dir() . '/version.txt';
-    $have_ver = is_readable( $ver_file ) ? trim( (string) file_get_contents( $ver_file ) ) : '';
-    if ( $have_ver !== SPHOTOGRAPHY_GEO_DATA_VERSION ) {
-        return false;
-    }
+    // Both files must physically exist and be non-trivial in size.
     foreach ( array( 'provinces', 'cities' ) as $which ) {
         $p = sphotography_geo_file_path( $which );
         if ( ! is_readable( $p ) || filesize( $p ) < 1000 ) {
             return false;
         }
     }
+
+    // Fast path: version.txt already matches the current data version.
+    $ver_file = sphotography_geo_dir() . '/version.txt';
+    $have_ver = is_readable( $ver_file ) ? trim( (string) file_get_contents( $ver_file ) ) : '';
+    if ( $have_ver === SPHOTOGRAPHY_GEO_DATA_VERSION ) {
+        return true;
+    }
+
+    // No / stale version.txt: accept the files anyway if they are valid
+    // FeatureCollections (covers manual placement), then stamp version.txt.
+    foreach ( array( 'provinces', 'cities' ) as $which ) {
+        $body = (string) file_get_contents( sphotography_geo_file_path( $which ) );
+        if ( false === strpos( $body, 'FeatureCollection' ) ) {
+            return false;
+        }
+        $decoded = json_decode( $body, true );
+        if ( ! isset( $decoded['features'] ) || ! is_array( $decoded['features'] ) || empty( $decoded['features'] ) ) {
+            return false;
+        }
+    }
+    @file_put_contents( $ver_file, SPHOTOGRAPHY_GEO_DATA_VERSION );
     return true;
 }
 
@@ -78,8 +101,22 @@ function sphotography_geo_ensure_files( $force = false ) {
         return true;
     }
     $dir = sphotography_geo_dir();
-    if ( ! wp_mkdir_p( $dir ) ) {
-        return new WP_Error( 'sphotography_geo_mkdir', sprintf( __( '无法创建目录：%s', 'sphotography' ), $dir ) );
+    // v1.4.7 (item 5): tolerate a pre-existing directory (e.g. created manually
+    // via the terminal). Only attempt mkdir when it is genuinely missing, and
+    // re-check is_dir afterwards to shrug off benign stat/permission quirks.
+    if ( ! is_dir( $dir ) ) {
+        if ( ! wp_mkdir_p( $dir ) && ! is_dir( $dir ) ) {
+            return new WP_Error( 'sphotography_geo_mkdir', sprintf( __( '无法创建目录：%s', 'sphotography' ), $dir ) );
+        }
+    }
+    // The directory exists but PHP may not be able to write into it (e.g. it was
+    // created by a different OS user). Surface an actionable message instead of a
+    // misleading "无法创建目录" or a later opaque write failure.
+    if ( ! wp_is_writable( $dir ) ) {
+        return new WP_Error(
+            'sphotography_geo_unwritable',
+            sprintf( __( '目录已存在但不可写：%s。请调整其权限（例如 chmod 775，或将属主 chown 为 Web 服务器运行用户），然后重试。', 'sphotography' ), $dir )
+        );
     }
     foreach ( array( 'provinces', 'cities' ) as $which ) {
         $url  = SPHOTOGRAPHY_GEO_REMOTE_BASE . 'boundaries-' . $which . '.json';
@@ -105,6 +142,43 @@ function sphotography_geo_ensure_files( $force = false ) {
     @file_put_contents( $dir . '/version.txt', SPHOTOGRAPHY_GEO_DATA_VERSION );
     return true;
 }
+
+// 后台预下载（v1.4.7 item 3）
+/**
+ * Schedule a one-off background download of the boundary data so region-coloring
+ * (now the default marker mode) can light up without a manual "重建行政区索引"
+ * click — without ever blocking theme activation on a ~3.7 MB fetch. Safe to call
+ * repeatedly: it no-ops when the files are already present or a job is queued.
+ */
+function sphotography_geo_schedule_bg_download() {
+    if ( sphotography_geo_files_ready() ) {
+        return;
+    }
+    if ( ! wp_next_scheduled( 'sphotography_geo_bg_download' ) ) {
+        // Small delay so it runs on a later request, off the activation path.
+        wp_schedule_single_event( time() + 30, 'sphotography_geo_bg_download' );
+    }
+}
+
+/**
+ * Cron callback: fetch the boundary files in the background. Per-photo indexing
+ * then happens incrementally (existing save_post / attachment hooks) once the
+ * data is on disk. Failures are swallowed here — the admin "重建行政区索引"
+ * button remains the explicit, error-reporting path.
+ */
+function sphotography_geo_bg_download_cb() {
+    if ( sphotography_geo_files_ready() ) {
+        return;
+    }
+    $r = sphotography_geo_ensure_files();
+    if ( is_wp_error( $r ) ) {
+        // Retry once, later, in case of a transient network/permission issue.
+        if ( ! wp_next_scheduled( 'sphotography_geo_bg_download' ) ) {
+            wp_schedule_single_event( time() + HOUR_IN_SECONDS, 'sphotography_geo_bg_download' );
+        }
+    }
+}
+add_action( 'sphotography_geo_bg_download', 'sphotography_geo_bg_download_cb' );
 
 // 边界数据加载
 /**

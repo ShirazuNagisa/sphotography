@@ -95,7 +95,7 @@ function sphotography_map_preview_url() {
 
 // 2. 输出动态 CSS 变量到 <head>
 function sphotography_output_head_links() {
-    if ( ! is_page_template( 'template-map.php' ) ) {
+    if ( ! sphotography_is_map_view() ) {
         return;
     }
     // DNS preconnect for CDN resources to reduce latency
@@ -112,7 +112,7 @@ function sphotography_output_head_links() {
 add_action( 'wp_head', 'sphotography_output_head_links', 1 );
 
 function sphotography_output_dynamic_css() {
-    if ( ! is_page_template( 'template-map.php' ) ) {
+    if ( ! sphotography_is_map_view() ) {
         return;
     }
 
@@ -155,7 +155,7 @@ add_action( 'wp_head', 'sphotography_output_dynamic_css', 20 );
 
 // 3. 添加 body 类名
 function sphotography_body_classes( $classes ) {
-    if ( ! is_page_template( 'template-map.php' ) ) {
+    if ( ! sphotography_is_map_view() ) {
         return $classes;
     }
 
@@ -179,9 +179,17 @@ function sphotography_body_classes( $classes ) {
     }
 
     // Frontend font: serif (default) keeps the theme's Noto Serif SC stack;
-    // 'wordpress' switches to the system sans-serif stack globally.
-    if ( sphotography_get_mod( 'frontend_font' ) === 'wordpress' ) {
+    // 'wordpress' switches to the system sans-serif stack; v1.4.7 (item 6) adds
+    // 'pingfang' (苹方, Apple-native / graceful fallback) and 'songti' (宋体,
+    // cross-platform system serif + Noto Serif SC fallback). All are system-font
+    // stacks — no bundled webfonts (PingFang is proprietary).
+    $frontend_font = sphotography_get_mod( 'frontend_font' );
+    if ( 'wordpress' === $frontend_font ) {
         $classes[] = 'sphotography-font-wordpress';
+    } elseif ( 'pingfang' === $frontend_font ) {
+        $classes[] = 'sphotography-font-pingfang';
+    } elseif ( 'songti' === $frontend_font ) {
+        $classes[] = 'sphotography-font-songti';
     }
 
     // Cursor style: 'dot' swaps the OS arrow for a dot+ring pointer (v1.2.8);
@@ -315,7 +323,7 @@ function sphotography_render_profile_expand( $args ) {
 
 // 4. 传递设置到 JS
 function sphotography_localize_data() {
-    if ( ! is_page_template( 'template-map.php' ) ) {
+    if ( ! sphotography_is_map_view() ) {
         return;
     }
 
@@ -371,6 +379,17 @@ function sphotography_localize_data() {
     // sphotography/v1/photos REST route exactly.
     // ============================================
     $photo_data_arr = sphotography_collect_all_markers();
+
+    // v1.4.7 (item 8): slim the inline payload. The full-resolution image URL is
+    // only ever needed when a photo's detail view is opened (a deliberate click),
+    // so we drop it from the inline blob — the map + popups render from the
+    // thumbnail — and the frontend fetches the full URL on demand by attachment id
+    // (sphotography/v1/photo-full/<id>). This trims the inlined HTML on
+    // photo-heavy sites. The REST /photos route still returns full_image intact.
+    foreach ( $photo_data_arr as &$sp_marker ) {
+        unset( $sp_marker['full_image'] );
+    }
+    unset( $sp_marker );
 
     // Embed recent posts
     $recent_posts = get_posts( array(

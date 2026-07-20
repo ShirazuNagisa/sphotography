@@ -70,7 +70,7 @@ function sphotography_get_default_settings() {
         //   droplet — plain theme-colour water droplets (default)
         //   tag     — droplets coloured by region_tag
         //   region  — no droplets; fill administrative regions that hold photos
-        'marker_mode'          => 'droplet',
+        'marker_mode'          => 'region',     // v1.4.7 (item 3): 默认行政区上色（新站/未设置）
         'cluster_radius'       => 18,        // 10–60 px (droplet/tag modes)
         'droplet_goo_strength' => 7,         // SVG feGaussianBlur stdDeviation, 3–12
         'tag_legend'           => true,      // tag colour legend (tag mode only)
@@ -143,7 +143,7 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['night_mode'] = in_array( $input['night_mode'], $allowed_night, true ) ? $input['night_mode'] : $defaults['night_mode'];
     $allowed_dark = array( 'default', 'blue', 'purple' );
     $sanitized['dark_scheme'] = in_array( $input['dark_scheme'], $allowed_dark, true ) ? $input['dark_scheme'] : $defaults['dark_scheme'];
-    $allowed_font = array( 'serif', 'wordpress' );
+    $allowed_font = array( 'serif', 'wordpress', 'pingfang', 'songti' ); // v1.4.7 (item 6): +苹方/宋体
     $sanitized['frontend_font'] = in_array( $input['frontend_font'], $allowed_font, true ) ? $input['frontend_font'] : $defaults['frontend_font'];
     $sanitized['admin_global_style'] = ! empty( $input['admin_global_style'] ) ? 1 : 0;
     $allowed_cursor = array( 'rounded', 'dot', 'normal' );
@@ -573,8 +573,10 @@ function sphotography_render_settings_page() {
                         <select id="sphotography-frontend-font" name="sphotography[frontend_font]">
                             <option value="serif" <?php selected( $values['frontend_font'], 'serif' ); ?>><?php _e( '衬线字体（Noto Serif SC，默认）', 'sphotography' ); ?></option>
                             <option value="wordpress" <?php selected( $values['frontend_font'], 'wordpress' ); ?>><?php _e( 'WordPress 默认字体（系统无衬线）', 'sphotography' ); ?></option>
+                            <option value="pingfang" <?php selected( $values['frontend_font'], 'pingfang' ); ?>><?php _e( '苹方 PingFang（苹果系统原生无衬线）', 'sphotography' ); ?></option>
+                            <option value="songti" <?php selected( $values['frontend_font'], 'songti' ); ?>><?php _e( '宋体 Songti（跨平台衬线）', 'sphotography' ); ?></option>
                         </select>
-                        <p class="sphotography-desc"><?php _e( '选择前端全局字体。衬线字体呈现更优雅的排版；WordPress 默认字体使用系统无衬线字体栈，观感更现代。全局生效，默认衬线字体。', 'sphotography' ); ?></p>
+                        <p class="sphotography-desc"><?php _e( '选择前端全局字体。衬线字体呈现更优雅的排版；WordPress 默认字体使用系统无衬线字体栈，观感更现代；苹方为苹果系统内置字体，仅在 macOS/iOS/iPadOS 上原生显示，Windows/安卓等设备会自动回退到微软雅黑等系统无衬线字体（苹方受版权保护，无法内嵌为网页字体）；宋体使用系统宋体（Windows 的 SimSun、Mac 的 Songti SC），并以 Noto Serif SC 作为通用回退，跨平台可用。全局生效，默认衬线字体。', 'sphotography' ); ?></p>
                     </div>
 
                     <!-- Cursor style (v1.2.8) -->
@@ -1251,9 +1253,9 @@ function sphotography_render_settings_page() {
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-marker-mode"><?php _e( '地图标记模式', 'sphotography' ); ?></label>
                         <select id="sphotography-marker-mode" name="sphotography[marker_mode]" data-sp-map-preview="markerMode">
-                            <option value="droplet" <?php selected( $values['marker_mode'], 'droplet' ); ?>><?php _e( '水滴标记（默认，主题色）', 'sphotography' ); ?></option>
+                            <option value="region" <?php selected( $values['marker_mode'], 'region' ); ?>><?php _e( '行政区上色（默认，去除钉子，点击色块看照片）', 'sphotography' ); ?></option>
+                            <option value="droplet" <?php selected( $values['marker_mode'], 'droplet' ); ?>><?php _e( '水滴标记（主题色）', 'sphotography' ); ?></option>
                             <option value="tag" <?php selected( $values['marker_mode'], 'tag' ); ?>><?php _e( '按地区标签分色（水滴按 region_tag 着色）', 'sphotography' ); ?></option>
-                            <option value="region" <?php selected( $values['marker_mode'], 'region' ); ?>><?php _e( '行政区上色（去除钉子，点击色块看照片）', 'sphotography' ); ?></option>
                         </select>
                         <p class="sphotography-desc"><?php _e( '三选一，互斥。「水滴标记」为经典水滴；「按地区标签分色」让水滴按其地区标签着色；「行政区上色」移除所有钉子/水滴，改为把含照片的市/省行政区划用主题色填充，点击色块即可查看该区全部照片。', 'sphotography' ); ?></p>
                     </div>
@@ -1986,19 +1988,22 @@ function sphotography_admin_enqueue_settings( $hook ) {
         }
         .sphotography-toc-search-ico {
             position: absolute;
-            left: 8px;
+            left: 9px;
             top: 50%;
             transform: translateY(-50%);
             color: var(--sp-text-muted);
             font-size: 16px;
             width: 16px;
             height: 16px;
+            line-height: 16px;
+            text-align: center;
             pointer-events: none;
         }
+        /* v1.4.7 (item 9): 左内边距加大，让占位/输入文字避开放大镜图标，不再重叠 */
         .sphotography-toc-search-input {
             width: 100%;
             box-sizing: border-box;
-            padding: 7px 10px 7px 30px;
+            padding: 7px 10px 7px 34px;
             border: 1px solid var(--sp-border);
             border-radius: 8px;
             background: var(--sp-surface-2);
