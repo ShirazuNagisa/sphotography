@@ -430,6 +430,9 @@ function sphotography_localize_data() {
             'title'   => get_the_title( $p->ID ),
             'date'    => $p->post_date,
             'excerpt' => strip_tags( $p->post_excerpt ?: wp_trim_words( $p->post_content, 30 ) ),
+            // v1.4.9: card excerpt with precedence (manual > AI 概述 > auto), matching the
+            // sp_card_excerpt REST field so the preload and REST paths agree.
+            'cardExcerpt' => function_exists( 'sphotography_card_excerpt' ) ? sphotography_card_excerpt( $p->ID ) : '',
             'thumb'   => $thumb_p,
             'cover'   => function_exists( 'sphotography_cover_url' ) ? sphotography_cover_url( $p->ID, 'large' ) : '', // v1.4.6 (item 9)
             'terms'   => $terms_data,

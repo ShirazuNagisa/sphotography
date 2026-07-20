@@ -45,8 +45,50 @@ function sphotography_post_word_count( $post_id ) {
 	return $cjk + $latin;
 }
 
+/**
+ * Plain-text card excerpt with the v1.4.9 precedence, shared by the REST field
+ * and the inline preload so both data paths agree:
+ *   1) a manually-entered excerpt (has_excerpt) — used verbatim;
+ *   2) else the AI 概述 (when the AI + summary toggles are on and one exists);
+ *   3) else the current WP behaviour (auto-generated excerpt).
+ * The AI summary is already a clean single paragraph (≤200 chars); the WP/manual
+ * excerpt is tag-stripped to plain text. Search matching does NOT use this — it
+ * keeps matching the fuller WP excerpt for findability.
+ */
+function sphotography_card_excerpt( $post_id ) {
+	$post_id = (int) $post_id;
+	$post    = get_post( $post_id );
+	if ( ! $post ) {
+		return '';
+	}
+	// 1. Manual excerpt wins.
+	if ( has_excerpt( $post ) ) {
+		return trim( wp_strip_all_tags( get_the_excerpt( $post ) ) );
+	}
+	// 2. AI 概述, when enabled and present for this post.
+	if ( function_exists( 'sphotography_ai_summary_enabled' ) && sphotography_ai_summary_enabled()
+		&& function_exists( 'sphotography_ai_get_summary' ) ) {
+		$summary = trim( (string) sphotography_ai_get_summary( $post_id ) );
+		if ( '' !== $summary ) {
+			return $summary;
+		}
+	}
+	// 3. Current logic: WP auto-generated excerpt.
+	return trim( wp_strip_all_tags( get_the_excerpt( $post ) ) );
+}
+
 // REST 字段注册
 function sphotography_metrics_register_rest_fields() {
+	register_rest_field( 'post', 'sp_card_excerpt', array(
+		'get_callback' => function ( $arr ) {
+			return sphotography_card_excerpt( (int) $arr['id'] );
+		},
+		'schema'       => array(
+			'description' => 'Sphotography card excerpt (manual > AI summary > auto).',
+			'type'        => 'string',
+		),
+	) );
+
 	register_rest_field( 'post', 'sp_views', array(
 		'get_callback' => function ( $arr ) {
 			return sphotography_get_views( (int) $arr['id'] );

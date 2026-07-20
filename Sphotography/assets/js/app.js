@@ -1778,6 +1778,15 @@
         else openSidebar();
     }
 
+    // v1.4.9: the excerpt shown on cards follows the server-computed precedence
+    // (manual excerpt > AI 概述 > auto-excerpt), exposed as sp_card_excerpt. Falls
+    // back to the plain WP excerpt if the field is ever missing.
+    function cardExcerptText(post) {
+        var c = (post && typeof post.sp_card_excerpt === 'string') ? post.sp_card_excerpt.trim() : '';
+        if (c) return c;
+        return stripHtml((post && post.excerpt && post.excerpt.rendered) || '').trim();
+    }
+
     function renderSidebarPosts(posts) {
         dom.sidebarPosts.innerHTML = '';
         if (!posts || posts.length === 0) {
@@ -1810,10 +1819,11 @@
                 metaExtra += '<span class="post-card-views" title="阅读量">' + SP_ICON_EYE + '<span class="post-card-views-num">' + (pv != null ? formatCount(pv) : '0') + '</span></span>';
             }
 
-            // Large cards add the article excerpt beneath the title.
+            // Large cards add the article excerpt beneath the title. v1.4.9: excerpt
+            // text follows the card precedence (manual > AI 概述 > auto) via sp_card_excerpt.
             var excerptHtml = '';
             if (isLarge) {
-                var excerptText = stripHtml((post.excerpt && post.excerpt.rendered) || '').trim();
+                var excerptText = cardExcerptText(post);
                 if (excerptText) {
                     excerptHtml = '<div class="post-card-excerpt">' + escapeHtml(excerptText) + '</div>';
                 }
@@ -6514,6 +6524,7 @@
                     title: { rendered: p.title },
                     date: p.date,
                     excerpt: { rendered: p.excerpt },
+                    sp_card_excerpt: p.cardExcerpt || '',
                     sp_word_count: p.wordCount,
                     sp_views: p.views,
                     sp_cover: p.cover || '', // v1.4.6 (item 9): article cover URL
@@ -7006,21 +7017,15 @@
         var wc = getPostWordCount(post);
         var metaExtra = (wc != null) ? '<span>' + formatCount(wc) + ' 字</span>' : '';
         var titleText = stripHtml((post.title && post.title.rendered) || '').trim();
-        var excerptText = stripHtml((post.excerpt && post.excerpt.rendered) || '').trim();
+        var excerptText = cardExcerptText(post);
 
-        // v1.4.9 (item 3): 卡片大小不对等——由（摘要+标题文本长度）+ 有无封面连续线性决定
-        // 卡片高度，使瀑布流错落有致。CSS 列布局本身已错开左右列，高度变化放大这种错落。
-        var textLen = titleText.length + excerptText.length;
-        var f = Math.max(0, Math.min(1, textLen / 520)); // 0..1 连续
-        var minH = hasCover ? Math.round(168 + f * 188)   // 有封面：168..356
-                            : Math.round(104 + f * 168);  // 无封面（无色模块）：104..272
-        // 摘要行数也随尺寸线性增长，长文展示更多。
-        var lines = hasCover ? (2 + Math.round(f * 3)) : (3 + Math.round(f * 4));
+        // v1.4.9: card height follows the excerpt exactly — no min-height heuristic and
+        // no line-clamp. The full excerpt is shown; the card is as tall as its content
+        // (title + excerpt + meta), and the blurred cover backdrop fills that height.
         var excerptHtml = excerptText
-            ? '<div class="expand-card-excerpt" style="-webkit-line-clamp:' + lines + '">' + escapeHtml(excerptText) + '</div>'
+            ? '<div class="expand-card-excerpt">' + escapeHtml(excerptText) + '</div>'
             : '';
 
-        card.style.minHeight = minH + 'px';
         card.innerHTML = ''
             + (hasCover ? '<div class="expand-card-cover"></div><div class="expand-card-scrim"></div>' : '')
             + '<div class="expand-card-body">'
