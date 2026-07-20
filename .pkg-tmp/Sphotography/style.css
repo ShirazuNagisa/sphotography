@@ -1143,47 +1143,20 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     opacity: 0;
     pointer-events: none;
 }
-/* v1.4.9: full-height flex column — JS sets its height inline to fill the sidebar
-   area above the profile bar. A top-anchored scrolling region holds the stats; a
-   sticky links footer is pinned to the bottom. NO overflow here (the region scrolls). */
 .stats-panel-inner {
     display: flex;
     flex-direction: column;
-    box-sizing: border-box;
-    overflow: hidden;
-}
-/* Top region: current stats, unchanged proportions, anchored to the top; scrolls if
-   it outgrows the space. flex:1 makes it claim all room above the footer, so the
-   footer sits at the very bottom and any spare space is an empty gap in between. */
-.stats-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
     gap: 10px;
-    /* Top padding clears the panel's 22px mask fade so the avatar isn't dimmed. */
-    padding: 26px 16px 12px;
+    padding: 16px 16px 12px;
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    /* v1.4.9 (item 4): NO max-height here. When the panel is collapsed (max-height:0),
+       a max-height:100% inner clamped to 0, so panel.scrollHeight read ~0 and the panel
+       never expanded. JS now sets the inner's max-height inline to the capped height. */
+    box-sizing: border-box;
 }
-.stats-scroll::-webkit-scrollbar { width: 0; height: 0; }
-.stats-bio {
-    text-align: center;
-    margin-top: -2px;
-}
-/* Sticky links footer: non-scrolling flex sibling, always visible at the panel
-   bottom. Panel-matched background + top separator keep scrolling stats from
-   showing through. Buttons reuse the .profile-expand-link pill stack. */
-.stats-links-footer {
-    flex: 0 0 auto;
-    padding: 12px 16px 14px;
-    border-top: 1px solid var(--color-border);
-    background: var(--glass-sidebar-bg);
-    backdrop-filter: var(--glass-sidebar-blur);
-    -webkit-backdrop-filter: var(--glass-sidebar-blur);
-}
-.stats-links-footer .profile-expand-links { margin-top: 0; }
+.stats-panel-inner::-webkit-scrollbar { width: 0; height: 0; }
 .stats-avatar {
     width: 56px; height: 56px; border-radius: 50%;
     object-fit: cover; align-self: center; background: var(--color-surface);
@@ -1282,10 +1255,8 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     color: var(--text-primary);
 }
 .expand-page-search-field {
-    /* v1.4.9：搜索栏跟随标题左侧排布，但设上限不再填满整行——右端与关闭按钮之间
-       留出干净的间距（关闭按钮由 margin-left:auto 钉在右上角）。 */
-    flex: 0 1 360px;
-    max-width: 360px;
+    /* v1.4.9 (item 8)：搜索栏加长，填满标题与关闭按钮之间的空间，两侧留均衡间距。 */
+    flex: 1 1 auto;
     position: relative;
     min-width: 0;
     margin: 0 14px;
@@ -1306,7 +1277,7 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
     color: var(--text-muted); pointer-events: none;
 }
-.expand-page-close { position: static; flex: 0 0 auto; margin-left: auto; }
+.expand-page-close { position: static; flex: 0 0 auto; }
 .expand-page-grid {
     flex: 1 1 auto;
     overflow-y: auto;
@@ -1410,8 +1381,7 @@ body.expand-article-open .article-nav-overlay { z-index: 216; }
     }
     .expand-page-grid, .expand-page-grid.cols-3 { column-count: 1; }
     .expand-page-header { flex-wrap: wrap; }
-    .expand-page-search-field { order: 3; flex: 1 1 100%; max-width: none; width: 100%; margin: 8px 0 0; }
-    .expand-page-close { margin-left: auto; }
+    .expand-page-search-field { order: 3; max-width: none; width: 100%; margin: 8px 0 0; }
 }
 
 /* ============================================
@@ -3052,21 +3022,6 @@ button.article-nav-btn:active { transform: scale(0.94); }
     width: calc(var(--btn-s) - 10px);
     height: calc(var(--btn-s) - 10px);
 }
-
-/* v1.4.9: back-arrow variant of the article close button. Applied (via .is-back) only
-   when the article was opened INSIDE the sidebar expand-page, where the button returns
-   to the list instead of closing the view. Swap the ✕ for a chevron and drop the
-   destructive red/90°-rotate hover in favour of a neutral "go back" affordance. */
-.panel-close-icon-back { display: none; }
-.panel-close-btn.is-back .panel-close-icon-x { display: none; }
-.panel-close-btn.is-back .panel-close-icon-back { display: block; }
-.panel-close-btn.is-back:hover {
-    background: var(--color-surface-hover);
-    color: var(--text-primary);
-    border-color: var(--color-border-hover);
-    transform: translateX(-2px);
-}
-.panel-close-btn.is-back:active { transform: translateX(-2px) scale(0.95); }
 
 /* 8. 右下角个人信息卡片 */
 .detail-sheet {

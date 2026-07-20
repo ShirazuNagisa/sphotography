@@ -6925,20 +6925,8 @@
     function expandOutsideHandler(e) {
         if (dom.expandPage && dom.expandPage.contains(e.target)) return;
         if (dom.sidebarExpandPageBtn && dom.sidebarExpandPageBtn.contains(e.target)) return;
-        // When an in-expand article is open, its chrome is reparented/mounted on <body>
-        // OUTSIDE #expand-page — the reparented article panel plus the body-mounted nav
-        // overlay (close/back button, scroll buttons), TOC bar and expanded TOC region.
-        // A click on any of these is part of the article view, NOT an outside click, so
-        // it must not close the whole expand-page. (This handler runs on pointerdown in
-        // the CAPTURE phase, so the elements' own bubble-phase stopPropagation can't stop
-        // it — we have to whitelist them here.) The close/back button then falls through
-        // to its own handler, which pops back to the list instead of closing the page.
-        if (state.expandArticleMode) {
-            if (dom.articlePanel && dom.articlePanel.contains(e.target)) return;
-            if (dom.articleNavOverlay && dom.articleNavOverlay.contains(e.target)) return;
-            if (dom.articleTocBar && dom.articleTocBar.contains(e.target)) return;
-            if (dom.articleTocRegion && dom.articleTocRegion.contains(e.target)) return;
-        }
+        // Ignore clicks inside an in-expand article (it lives on top of the page).
+        if (state.expandArticleMode && dom.articlePanel && dom.articlePanel.contains(e.target)) return;
         closeExpandPage();
     }
     // Capture-phase + stopPropagation so the global Esc handler doesn't ALSO fire
@@ -7044,12 +7032,6 @@
         if (!slot) return;
         state.expandArticleMode = true;
         dom.articlePanel.classList.add('article-panel--in-screen');
-        // v1.4.9: the close button becomes a "back to list" affordance in this mode.
-        if (dom.articleClose) {
-            dom.articleClose.classList.add('is-back');
-            dom.articleClose.setAttribute('aria-label', t('返回列表'));
-            dom.articleClose.title = t('返回列表');
-        }
         slot.appendChild(dom.articlePanel);              // reparent into screen B
         document.body.classList.add('expand-article-open'); // lift nav overlay above the page
         dom.expandPage.classList.add('showing-article');  // list slides left / article slides in
@@ -7065,12 +7047,6 @@
     function popExpandArticle() {
         var page = dom.expandPage, panel = dom.articlePanel;
         page.classList.remove('showing-article');
-        // Restore the close button to its normal ✕ (destructive-close) form.
-        if (dom.articleClose) {
-            dom.articleClose.classList.remove('is-back');
-            dom.articleClose.setAttribute('aria-label', t('关闭文章'));
-            dom.articleClose.title = '';
-        }
         setTimeout(function () {
             panel.classList.remove('article-panel--in-screen', 'active');
             document.body.appendChild(panel);            // move #article-panel back to body
@@ -7086,19 +7062,21 @@
         renderStatsPanel();
         wrap.classList.add('stats-open');
         panel.setAttribute('aria-hidden', 'false');
-        // v1.4.9: the panel ALWAYS fills the whole sidebar area above the profile bar
-        // (from ~12px below the sidebar's inner top down to the bar), regardless of how
-        // much content there is — the inner is a full-height flex column whose top region
-        // scrolls and whose links footer stays pinned to the bottom. No content-height cap.
+        // v1.4.9 (item 4): measure the inner's NATURAL height (it no longer carries a
+        // max-height:100% that used to clamp to the collapsed panel and read ~0). Fill
+        // the sidebar above the profile row, capped to the space between the profile bar
+        // and the sidebar's inner top; the inner scrolls if taller than the cap.
         var inner = panel.querySelector('.stats-panel-inner');
+        var contentH = inner ? inner.scrollHeight : panel.scrollHeight;
         var sidebar = document.getElementById('sidebar');
         var bar = wrap.querySelector('.sidebar-profile-bar');
-        var target = 320;
+        var avail = contentH;
         if (sidebar && bar) {
-            target = Math.max(160, bar.getBoundingClientRect().bottom - (sidebar.getBoundingClientRect().top + 12));
+            avail = Math.max(160, bar.getBoundingClientRect().bottom - (sidebar.getBoundingClientRect().top + 12));
         }
+        var target = Math.min(contentH, avail);
         panel.style.maxHeight = target + 'px';
-        if (inner) inner.style.height = target + 'px';
+        if (inner) inner.style.maxHeight = target + 'px';
     }
     function closeStatsPanel() {
         var wrap = dom.sidebarProfile, panel = dom.sidebarStatsPanel;
@@ -7107,7 +7085,7 @@
         panel.setAttribute('aria-hidden', 'true');
         panel.style.maxHeight = '';
         var inner = panel.querySelector('.stats-panel-inner');
-        if (inner) { inner.style.maxHeight = ''; inner.style.height = ''; }
+        if (inner) inner.style.maxHeight = '';
         if (EXPAND.uptimeTimer) { clearInterval(EXPAND.uptimeTimer); EXPAND.uptimeTimer = null; }
     }
 
@@ -7127,38 +7105,22 @@
             ? '<img class="stats-avatar" src="' + escapeHtml(avatarSrc) + '" alt="">'
             : '<span class="stats-avatar stats-avatar--placeholder">' + escapeHtml(initial || (name.charAt(0) || '?')) + '</span>';
 
-        // Bio + external links are cloned from the server-rendered simple profile
-        // panel (already escaped / URL-validated in PHP). Each is omitted if absent.
-        var srcPanel = dom.sidebarProfilePanel;
-        var bioEl = srcPanel ? srcPanel.querySelector('.profile-expand-bio') : null;
-        var bioText = bioEl ? (bioEl.textContent || '').trim() : '';
-        var linksEl = srcPanel ? srcPanel.querySelector('.profile-expand-links') : null;
-        var linksHtml = (linksEl && linksEl.children.length) ? linksEl.innerHTML : '';
-
-        // Layout: a top-anchored scrolling region (current stats, unchanged
-        // proportions, with bio inserted under the name) + a sticky links footer
-        // pinned to the panel bottom. The footer is a non-scrolling flex sibling,
-        // so it stays visible even when the region above overflows.
         var html = ''
-            + '<div class="stats-panel-inner">'
-            +   '<div class="stats-scroll">'
-            +     avatarHtml
-            +     '<div class="stats-name">' + escapeHtml(name) + '</div>'
-            +     (bioText ? '<div class="profile-expand-bio stats-bio">' + escapeHtml(bioText) + '</div>' : '')
-            +     '<div class="stats-counts">'
-            +       '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.posts || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('文章')) + '</span></div>'
-            +       '<span class="stats-count-sep"></span>'
-            +       '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.tags || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('标签')) + '</span></div>'
-            +       '<span class="stats-count-sep"></span>'
-            +       '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.regions || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('地块')) + '</span></div>'
-            +     '</div>'
-            +     '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('图片张数')) + '</span><span class="stats-row-value">' + formatCount(s.photos || 0) + '</span></div>'
-            +     '<div class="stats-pie-wrap" id="stats-pie-wrap"></div>'
-            +     '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('本日访问')) + '</span><span class="stats-row-value">' + formatCount(s.visitsToday || 0) + '</span></div>'
-            +     '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('累计访问')) + '</span><span class="stats-row-value">' + formatCount(s.visitsTotal || 0) + '</span></div>'
-            +     '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('已运行')) + '</span><span class="stats-row-value stats-uptime-value" id="stats-uptime">—</span></div>'
-            +   '</div>'
-            +   (linksHtml ? '<div class="stats-links-footer"><div class="profile-expand-links">' + linksHtml + '</div></div>' : '')
+            + '<div class="stats-panel-inner side-panel-scroll">'
+            + avatarHtml
+            + '<div class="stats-name">' + escapeHtml(name) + '</div>'
+            + '<div class="stats-counts">'
+            +   '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.posts || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('文章')) + '</span></div>'
+            +   '<span class="stats-count-sep"></span>'
+            +   '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.tags || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('标签')) + '</span></div>'
+            +   '<span class="stats-count-sep"></span>'
+            +   '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.regions || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('地块')) + '</span></div>'
+            + '</div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('图片张数')) + '</span><span class="stats-row-value">' + formatCount(s.photos || 0) + '</span></div>'
+            + '<div class="stats-pie-wrap" id="stats-pie-wrap"></div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('本日访问')) + '</span><span class="stats-row-value">' + formatCount(s.visitsToday || 0) + '</span></div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('累计访问')) + '</span><span class="stats-row-value">' + formatCount(s.visitsTotal || 0) + '</span></div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('已运行')) + '</span><span class="stats-row-value stats-uptime-value" id="stats-uptime">—</span></div>'
             + '</div>';
         panel.innerHTML = html;
 
