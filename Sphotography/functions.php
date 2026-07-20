@@ -24,6 +24,7 @@ require_once get_template_directory() . '/inc/i18n.php';
 require_once get_template_directory() . '/inc/geocode.php';       // v1.4.4: 逆地理编码代理（图片位置弹窗）
 require_once get_template_directory() . '/inc/announcement.php';  // v1.4.4: 公告页
 require_once get_template_directory() . '/inc/article-cover.php'; // v1.4.6: 文章头图（边栏模块模糊背景）
+require_once get_template_directory() . '/inc/site-stats.php';    // v1.4.8: 站点统计（访问人数、运行时间、汇总）
 
 // 1.（已移除）自定义文章类型
 // Sphotography now uses native WordPress posts exclusively. Articles are
@@ -1007,6 +1008,11 @@ function sphotography_theme_activation() {
     // a background download of the boundary data (never blocks activation).
     if ( function_exists( 'sphotography_geo_schedule_bg_download' ) ) {
         sphotography_geo_schedule_bg_download();
+    }
+
+    // v1.4.8: 记录站点运行起始时间（首次激活即固定，用于运行时长展示）。
+    if ( function_exists( 'sphotography_site_stats_capture_install_time' ) ) {
+        sphotography_site_stats_capture_install_time();
     }
 
     // Flush only after all types and the front page are in their final state.

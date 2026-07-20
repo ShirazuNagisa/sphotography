@@ -111,17 +111,18 @@ if ( ! $sphotography_sidebar_default_open ) {
         </div>
 
         <?php
-        // 侧边栏个人信息行（头像 + 昵称，无头像时显示首字）
-        if ( 'sidebar' === sphotography_get_mod( 'profile_display' ) ) :
-            $sp_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
-            $sp_name   = get_theme_mod( 'sphotography_author_nickname', '' );
-            if ( '' === $sp_name ) {
-                $sp_name = __( 'Shirazu Nagisa', 'sphotography' );
-            }
-            $sp_initial = function_exists( 'mb_substr' ) ? mb_substr( $sp_name, 0, 1 ) : substr( $sp_name, 0, 1 );
+        // 侧边栏个人信息行（头像 + 昵称，无头像时显示首字）。
+        // v1.4.8：个人信息展示方式选项已移除，边栏一行为唯一且强制的展示方式。
+        $sp_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
+        $sp_name   = get_theme_mod( 'sphotography_author_nickname', '' );
+        if ( '' === $sp_name ) {
+            $sp_name = __( 'Shirazu Nagisa', 'sphotography' );
+        }
+        $sp_initial = function_exists( 'mb_substr' ) ? mb_substr( $sp_name, 0, 1 ) : substr( $sp_name, 0, 1 );
+        $sp_bio = get_theme_mod( 'sphotography_bio', '' );
         ?>
-        <?php $sp_bio = get_theme_mod( 'sphotography_bio', '' ); ?>
         <div class="sidebar-profile" id="sidebar-profile">
+            <!-- 简单个人信息面板（点击个人信息行展开，v1.4.8 之前的行为保留） -->
             <div class="sidebar-profile-panel" id="sidebar-profile-panel" aria-hidden="true">
                 <?php
                 sphotography_render_profile_expand( array(
@@ -132,16 +133,23 @@ if ( ! $sphotography_sidebar_default_open ) {
                 ) );
                 ?>
             </div>
-            <button type="button" class="sidebar-profile-row" id="sidebar-profile-toggle" aria-expanded="false" aria-controls="sidebar-profile-panel" aria-label="<?php esc_attr_e( '展开个人信息', 'sphotography' ); ?>">
-                <?php if ( $sp_avatar ) : ?>
-                    <img src="<?php echo esc_url( $sp_avatar ); ?>" alt="" class="sidebar-profile-avatar">
-                <?php else : ?>
-                    <span class="sidebar-profile-avatar sidebar-profile-avatar--placeholder"><?php echo esc_html( $sp_initial ); ?></span>
-                <?php endif; ?>
-                <span class="sidebar-profile-name"><?php echo esc_html( $sp_name ); ?></span>
-            </button>
+            <!-- 丰富统计面板（v1.4.8：点击展开页按钮时向上展开，JS 通过 /stats 填充） -->
+            <div class="sidebar-stats-panel" id="sidebar-stats-panel" aria-hidden="true"></div>
+            <div class="sidebar-profile-bar">
+                <button type="button" class="sidebar-profile-row" id="sidebar-profile-toggle" aria-expanded="false" aria-controls="sidebar-profile-panel" aria-label="<?php esc_attr_e( '展开个人信息', 'sphotography' ); ?>">
+                    <?php if ( $sp_avatar ) : ?>
+                        <img src="<?php echo esc_url( $sp_avatar ); ?>" alt="" class="sidebar-profile-avatar">
+                    <?php else : ?>
+                        <span class="sidebar-profile-avatar sidebar-profile-avatar--placeholder"><?php echo esc_html( $sp_initial ); ?></span>
+                    <?php endif; ?>
+                    <span class="sidebar-profile-name"><?php echo esc_html( $sp_name ); ?></span>
+                </button>
+                <!-- v1.4.8：常驻圆形按钮，打开边栏展开页 + 向上展开丰富统计面板 -->
+                <button type="button" class="sidebar-expandpage-btn" id="sidebar-expandpage-btn" aria-expanded="false" aria-controls="sidebar-expand-page" aria-label="<?php esc_attr_e( '打开文章列表', 'sphotography' ); ?>">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                </button>
+            </div>
         </div>
-        <?php endif; ?>
 
         <!-- 底部：折叠按钮 + 品牌 -->
         <div class="sidebar-footer">
@@ -160,19 +168,35 @@ if ( ! $sphotography_sidebar_default_open ) {
     <!-- 侧边栏展开按钮（折叠时可见） -->
     <?php
     // v1.4.6 (item 8): 边栏折叠时，在展开按钮上方显示博主头像（圆形、尺寸同展开按钮、
-    // 暂不可点击）。仅当使用「边栏一行」个人信息模式且已设置头像时显示。
-    if ( 'sidebar' === sphotography_get_mod( 'profile_display' ) ) :
-        $sp_collapsed_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
-        if ( $sp_collapsed_avatar ) : ?>
+    // 暂不可点击）。v1.4.8：不再受个人信息展示方式限制，已设置头像时即显示。
+    $sp_collapsed_avatar = get_theme_mod( 'sphotography_avatar_url', '' );
+    if ( $sp_collapsed_avatar ) : ?>
         <img src="<?php echo esc_url( $sp_collapsed_avatar ); ?>" alt="" class="sidebar-expand-avatar" aria-hidden="true">
-        <?php endif;
-    endif;
-    ?>
+    <?php endif; ?>
     <button id="sidebar-expand" class="sidebar-expand-btn glass-panel" aria-label="<?php esc_attr_e( 'Expand sidebar', 'sphotography' ); ?>">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
     </button>
+
+    <!-- v1.4.8：边栏展开页（文章列表大屏，瀑布流）。与文章面板同一尺寸/位置，置于最上层。
+         点击列表卡片时直接打开真实的 #article-panel（复用完整渲染管线）叠于其上。 -->
+    <div id="sidebar-expand-page" class="expand-page glass-panel" role="dialog" aria-modal="false" aria-label="<?php esc_attr_e( '文章列表', 'sphotography' ); ?>" aria-hidden="true">
+        <div class="expand-page-header">
+            <h3 class="expand-page-title"><?php esc_html_e( '文章列表', 'sphotography' ); ?></h3>
+            <div class="expand-page-search-field">
+                <span class="expand-page-search-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </span>
+                <input type="text" id="expand-page-search" class="expand-page-search-input" placeholder="<?php esc_attr_e( '搜索文章...', 'sphotography' ); ?>" aria-label="<?php esc_attr_e( 'Search articles', 'sphotography' ); ?>">
+            </div>
+            <button type="button" id="expand-page-close" class="panel-close-btn expand-page-close" aria-label="<?php esc_attr_e( '退出', 'sphotography' ); ?>">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div id="expand-page-grid" class="expand-page-grid" aria-live="polite"><!-- JS：瀑布流卡片 --></div>
+        <div id="expand-page-empty" class="expand-page-empty" hidden><?php esc_html_e( '没有找到匹配的文章', 'sphotography' ); ?></div>
+    </div>
 
     <!-- 文章面板 -->
     <div id="article-panel" class="article-panel glass-panel" role="dialog" aria-modal="true" aria-label="<?php esc_attr_e( 'Article content', 'sphotography' ); ?>">
@@ -221,53 +245,7 @@ if ( ! $sphotography_sidebar_default_open ) {
         </div>
     </div>
 
-    <!-- 右下角个人信息卡片 -->
-    <?php if ( 'card' === sphotography_get_mod( 'profile_display' ) ) : ?>
-    <?php
-    $avatar_url = get_theme_mod( 'sphotography_avatar_url', '' );
-    $author_name = get_theme_mod( 'sphotography_author_nickname', '' );
-    $bio = get_theme_mod( 'sphotography_bio', '' );
-    $hitokoto_enabled = get_theme_mod( 'sphotography_enable_hitokoto', false );
-
-    if ( empty( $author_name ) ) {
-        $author_name = __( 'Shirazu Nagisa', 'sphotography' );
-    }
-    // bio 留空时隐藏介绍行
-    $about_stats = sphotography_profile_stats();
-    $about_links = sphotography_parse_profile_links();
-    ?>
-    <div id="about-card" class="about-card glass-panel" role="button" tabindex="0" aria-expanded="false" aria-label="<?php esc_attr_e( '展开个人信息', 'sphotography' ); ?>">
-        <?php if ( $avatar_url ) : ?>
-            <img src="<?php echo esc_url( $avatar_url ); ?>" alt="" class="about-avatar">
-        <?php endif; ?>
-        <h4><?php echo esc_html( $author_name ); ?></h4>
-        <?php if ( ! empty( $bio ) ) : ?>
-            <p><?php echo esc_html( $bio ); ?></p>
-        <?php endif; ?>
-        <?php if ( $hitokoto_enabled ) : ?>
-            <div id="hitokoto" class="about-hitokoto">
-                <span id="hitokoto-text">Loading...</span>
-            </div>
-        <?php endif; ?>
-        <!-- 展开后的统计与链接 -->
-        <div class="about-card-expand" aria-hidden="true">
-            <div class="profile-expand-stats">
-                <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['posts']; ?></span><span class="profile-stat-label"><?php esc_html_e( '文章', 'sphotography' ); ?></span></div>
-                <span class="profile-stat-sep" aria-hidden="true"></span>
-                <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['categories']; ?></span><span class="profile-stat-label"><?php esc_html_e( '分类', 'sphotography' ); ?></span></div>
-                <span class="profile-stat-sep" aria-hidden="true"></span>
-                <div class="profile-stat"><span class="profile-stat-num"><?php echo (int) $about_stats['regions']; ?></span><span class="profile-stat-label"><?php esc_html_e( '地块', 'sphotography' ); ?></span></div>
-            </div>
-            <?php if ( ! empty( $about_links ) ) : ?>
-                <div class="profile-expand-links">
-                    <?php foreach ( $about_links as $about_link ) : ?>
-                        <a class="profile-expand-link" href="<?php echo esc_url( $about_link['url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $about_link['name'] ); ?></a>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php endif; ?>
+    <!-- v1.4.8：右下角个人信息卡片已移除，边栏一行为唯一展示方式 -->
 
     <!-- 页脚 -->
     <?php $footer_content = get_theme_mod( 'sphotography_footer_content', '' ); ?>

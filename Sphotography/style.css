@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.7
+Version: 1.4.8
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -255,8 +255,8 @@ body.sidebar-collapsed .sidebar {
 
 .sidebar-search input {
     width: 100%;
-    padding: 10px 52px 10px 34px;
-    border-radius: 10px;
+    padding: 10px 52px 10px 36px;
+    border-radius: 999px; /* v1.4.8 (item 3)：圆角条形（全圆角胶囊） */
     border: 1px solid var(--color-border);
     background: var(--color-surface);
     color: var(--text-primary);
@@ -311,7 +311,7 @@ body.sidebar-collapsed .sidebar {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
+    border-radius: 50%; /* v1.4.8 (item 3)：永久圆形 */
     border: 1px solid var(--color-border);
     background: var(--color-surface);
     color: var(--text-secondary);
@@ -1065,6 +1065,299 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 }
 
 /* ============================================
+   v1.4.8 (item 2)：边栏展开页 + 圆形展开按钮 + 丰富统计面板
+   ============================================ */
+/* 个人信息行容器：左侧个人信息按钮收窄，右侧留出常驻圆形展开按钮 */
+.sidebar-profile-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.sidebar-profile-bar .sidebar-profile-row {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.sidebar-expandpage-btn {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition:
+        color var(--duration-fast) ease,
+        background var(--duration-fast) var(--ease-out-expo),
+        border-color var(--duration-fast) var(--ease-out-expo),
+        transform var(--duration-fast) var(--ease-out-expo);
+}
+.sidebar-expandpage-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--color-border-hover);
+    background: var(--color-surface-hover);
+    transform: translateY(-1px);
+}
+.sidebar-expandpage-btn[aria-expanded="true"] {
+    color: #fff;
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+/* 丰富统计面板：与简单个人信息面板一样自个人信息行向上展开，铺满其上方边栏区域 */
+.sidebar-stats-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 7;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+    background: var(--glass-sidebar-bg);
+    backdrop-filter: var(--glass-sidebar-blur);
+    -webkit-backdrop-filter: var(--glass-sidebar-blur);
+    border-radius: calc(var(--panel-radius) * 0.7);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
+    transition:
+        max-height var(--duration-normal) var(--ease-out-expo),
+        opacity var(--duration-normal) var(--ease-out-expo),
+        transform var(--duration-normal) var(--ease-out-expo);
+}
+.sidebar-profile.stats-open .sidebar-stats-panel {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.sidebar-profile.stats-open .sidebar-profile-bar,
+.sidebar-profile.is-expanded .sidebar-profile-bar {
+    opacity: 0;
+    pointer-events: none;
+}
+.stats-panel-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 16px 12px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    max-height: 100%;
+    box-sizing: border-box;
+}
+.stats-panel-inner::-webkit-scrollbar { width: 0; height: 0; }
+.stats-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    object-fit: cover; align-self: center; background: var(--color-surface);
+}
+.stats-avatar--placeholder {
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-family: var(--font-display); font-size: 1.5rem; font-weight: 600;
+    background: var(--primary);
+}
+.stats-name {
+    text-align: center; font-family: var(--font-display);
+    font-size: 1rem; font-weight: 600; color: var(--text-primary);
+}
+.stats-counts {
+    display: flex; align-items: stretch; justify-content: center; gap: 0;
+}
+.stats-count-cell {
+    flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 4px 2px;
+}
+.stats-count-num { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: var(--text-primary); }
+.stats-count-label { font-size: 0.7rem; color: var(--text-muted); }
+.stats-count-sep { width: 1px; background: var(--color-border); margin: 4px 0; align-self: stretch; }
+.stats-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.8rem; color: var(--text-secondary);
+    padding: 4px 2px; border-top: 1px solid var(--color-border);
+}
+.stats-row-label { color: var(--text-muted); }
+.stats-row-value { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); }
+.stats-uptime-value { font-variant-numeric: tabular-nums; }
+/* 地区分布饼状图 */
+.stats-pie-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 4px 0; }
+.stats-pie {
+    width: 120px; height: 120px;
+    transform-origin: 50% 50%;
+}
+.sidebar-profile.stats-open .stats-pie.is-revealing {
+    animation: statsPieCCW 900ms var(--ease-out-expo) both;
+}
+@keyframes statsPieCCW {
+    from { transform: rotate(-360deg); opacity: 0; }
+    to   { transform: rotate(0deg); opacity: 1; }
+}
+.stats-pie circle { transition: stroke-dasharray 200ms ease; }
+.stats-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; }
+.stats-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-secondary); }
+.stats-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.stats-pie-empty { font-size: 0.78rem; color: var(--text-muted); padding: 12px 0; }
+
+/* 边栏展开页大卡片：与文章面板同一位置/尺寸，置于最上层 */
+.expand-page {
+    position: fixed;
+    left: 340px;
+    top: 16px;
+    bottom: 16px;
+    width: min(600px, calc(100vw - 380px));
+    z-index: 200; /* 高于页面链接栏(118)/公告(117)/文章面板(110) */
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: var(--glass-elevated-bg);
+    backdrop-filter: var(--glass-elevated-blur);
+    -webkit-backdrop-filter: var(--glass-elevated-blur);
+    border: var(--panel-border);
+    border-radius: var(--panel-radius);
+    box-shadow: var(--shadow-elevated);
+    transform: translateX(16px) scale(0.98);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        transform var(--duration-slow) var(--ease-out-expo),
+        opacity var(--duration-slow) var(--ease-out-expo);
+}
+.expand-page.is-open {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+}
+.expand-page-header {
+    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px 14px;
+    /* 上边框模糊过渡 */
+}
+.expand-page-title {
+    flex: 0 0 auto;
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.expand-page-search-field {
+    flex: 1 1 auto;
+    position: relative;
+    min-width: 0;
+    max-width: 320px;
+    margin: 0 auto 0 8px;
+}
+.expand-page-search-input {
+    width: 100%;
+    padding: 8px 14px 8px 34px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    outline: none;
+    transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+.expand-page-search-input:focus { border-color: var(--primary); background: var(--color-surface-hover); }
+.expand-page-search-icon {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text-muted); pointer-events: none;
+}
+.expand-page-close { position: static; flex: 0 0 auto; }
+.expand-page-grid {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    column-count: 2;
+    column-gap: 14px;
+    padding: 8px 20px 20px;
+    /* 上下边框模糊过渡，与其他面板一致 */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+.expand-page-grid::-webkit-scrollbar { width: 0; height: 0; }
+.expand-page-grid.cols-3 { column-count: 3; }
+.expand-page-empty { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+
+.expand-card {
+    display: block;
+    width: 100%;
+    break-inside: avoid;
+    margin: 0 0 14px;
+    padding: 0;
+    position: relative;
+    min-height: 120px;
+    border: 1px solid var(--color-border);
+    border-radius: calc(var(--panel-radius) * 0.7);
+    overflow: hidden;
+    background: var(--color-surface);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+.expand-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-floating); border-color: var(--color-border-hover); }
+.expand-card-cover {
+    position: absolute; inset: -24px;
+    background-size: cover; background-position: center;
+    filter: blur(18px) saturate(1.15) brightness(0.92);
+    transform: scale(1.12);
+    transition: transform var(--duration-normal) var(--ease-out-expo);
+}
+.expand-card:hover .expand-card-cover { transform: scale(1.18); }
+.expand-card-scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,8,10,0.82), rgba(8,8,10,0.42) 60%, rgba(8,8,10,0.28)); }
+.expand-card-body { position: relative; z-index: 1; padding: 16px 16px 14px; min-height: 120px; display: flex; flex-direction: column; justify-content: flex-end; }
+.expand-card.has-cover .expand-card-title { color: #fff; }
+.expand-card.has-cover .expand-card-meta { color: rgba(255,255,255,0.78); }
+/* 无封面：无色模块（不加主题色调） */
+.expand-card--plain .expand-card-body { min-height: 92px; }
+.expand-card--plain .expand-card-title { color: var(--text-primary); }
+.expand-card--plain .expand-card-meta { color: var(--text-muted); }
+.expand-card-title { font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; line-height: 1.35; }
+.expand-card-excerpt { margin-top: 6px; font-size: 0.78rem; line-height: 1.5; opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.expand-card-meta { margin-top: 8px; font-size: 0.72rem; display: flex; gap: 10px; }
+
+/* 展开页内打开文章：复用真实文章面板，叠于展开页之上，从右到左滑入、从左到右滑出 */
+.article-panel.article-panel--in-expand {
+    z-index: 210;
+    transform: translateX(105%);
+    transition: transform 440ms var(--ease-out-expo), opacity 200ms ease;
+    opacity: 1;
+    pointer-events: none;
+}
+.article-panel.article-panel--in-expand.active {
+    transform: translateX(0);
+    pointer-events: auto;
+}
+/* Lift the body-mounted nav overlay (close / scroll buttons) above the in-expand
+   article (z 210) and the expand-page (z 200). */
+body.expand-article-open .article-nav-overlay { z-index: 216; }
+
+@media (max-width: 767px) {
+    /* 移动端：展开页近全屏，瀑布流单列 */
+    .expand-page {
+        left: 8px; right: 8px; top: 8px; bottom: 8px;
+        width: auto;
+    }
+    .expand-page-grid, .expand-page-grid.cols-3 { column-count: 1; }
+    .expand-page-header { flex-wrap: wrap; }
+    .expand-page-search-field { order: 3; max-width: none; width: 100%; margin: 8px 0 0; }
+    .article-panel.article-panel--in-expand { transform: translateX(0); }
+    .article-panel.article-panel--in-expand:not(.active) { opacity: 0; transform: translateY(16px); }
+}
+
+/* ============================================
    Article scroll controls (v1.3.6)
    Body-mounted overlay whose box is JS-synced to the panel's on-screen rect.
    The overlay is NOT a scroll container and carries no transform, so the
@@ -1137,7 +1430,7 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 .article-toc-bar {
     position: fixed;
     z-index: 205; /* above map controls; below the region */
-    width: 18px;
+    width: 28px; /* v1.4.8 (item 4A)：索引条再加宽，读作更实的胶囊 */
     padding: 0;
     border: var(--panel-border);
     background: var(--glass-elevated-bg);
@@ -1160,7 +1453,7 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 }
 .article-toc-bar.is-active:not(.is-hidden) { opacity: 1; pointer-events: auto; transform: translateX(0); }
 .article-toc-bar.is-hidden { display: none; }
-.article-toc-bar:hover { background: var(--color-surface-hover); width: 20px; }
+.article-toc-bar:hover { background: var(--color-surface-hover); width: 30px; }
 /* While the region is open the bar disappears (the region takes its place). */
 .article-toc-bar.is-open { opacity: 0 !important; pointer-events: none; }
 .article-toc-bar-grip {
@@ -1216,9 +1509,10 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     color: var(--text-muted);
     padding: 0 8px 8px;
 }
-.article-toc-list { flex: 1 1 auto; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
-.article-toc-list::-webkit-scrollbar { width: 6px; }
-.article-toc-list::-webkit-scrollbar-thumb { background: var(--color-border-hover); border-radius: 3px; }
+/* v1.4.8 (item 4B)：永久去掉索引页面的上下/左右进度挪动条——内容仍可滚动，仅隐藏轨道；
+   横向不溢出（标题过长直接换行）。 */
+.article-toc-list { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; -ms-overflow-style: none; padding-right: 2px; }
+.article-toc-list::-webkit-scrollbar { width: 0; height: 0; }
 .article-toc-row { display: flex; align-items: flex-start; gap: 2px; }
 .article-toc-item {
     flex: 1 1 auto;
@@ -2853,113 +3147,8 @@ button.article-nav-btn:active { transform: scale(0.94); }
 
 /* 9. 页面链接栏（右上角） */
 
-/* 统一 Icon Button 样式 — About Trigger (btn-m) */
-/* Persistent author card, pinned bottom-right. Its bottom offset clears the
-   map's built-in attribution control (which lives in the bottom-right corner)
-   so the card never covers it. */
-.about-card {
-    position: fixed;
-    right: 20px;
-    bottom: 34px;
-    z-index: 35;
-    max-width: 280px;
-    padding: 18px 20px;
-    background: var(--glass-floating-bg);
-    backdrop-filter: var(--glass-floating-blur);
-    -webkit-backdrop-filter: var(--glass-floating-blur);
-    border: var(--panel-border);
-    border-radius: var(--panel-radius);
-    box-shadow: var(--shadow-floating);
-    transform-origin: bottom right;
-    animation: aboutCardPop var(--duration-normal) var(--ease-spring);
-}
-
-@keyframes aboutCardPop {
-    0% { transform: scale(0.5) translateY(8px); opacity: 0; }
-    70% { transform: scale(1.03) translateY(-2px); }
-    100% { transform: scale(1) translateY(0); opacity: 1; }
-}
-
-.about-avatar {
-    width: 56px; height: 56px; border-radius: 50%;
-    object-fit: cover; margin-bottom: 10px;
-    /* 头像旋转进入 */
-    animation: avatarSpinIn var(--duration-slow) var(--ease-out-expo) both;
-}
-
-@keyframes avatarSpinIn {
-    from { transform: rotate(-10deg) scale(0.9); opacity: 0; }
-    to { transform: rotate(0) scale(1); opacity: 1; }
-}
-
-.about-card h4 {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    margin-bottom: 6px;
-}
-
-.about-card p {
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-    line-height: var(--leading-normal);
-}
-
-.about-hitokoto {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--color-border);
-    font-size: 0.78125rem;
-    color: var(--text-muted);
-    font-style: italic;
-    overflow: hidden;
-    max-height: 160px;
-    transition:
-        max-height var(--duration-normal) var(--ease-out-expo),
-        opacity var(--duration-fast) ease,
-        margin-top var(--duration-normal) var(--ease-out-expo),
-        padding-top var(--duration-normal) var(--ease-out-expo);
-}
-
-/* Expandable card (v1.3.2): the whole card is a click target. On expand the
-   hitokoto collapses and the stats + custom links reveal, so the card grows
-   upward (transform-origin is already bottom-right) to fit its content. */
-.about-card { cursor: pointer; }
-
-.about-card.is-expanded .about-hitokoto {
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0;
-    padding-top: 0;
-    border-top-color: transparent;
-}
-
-.about-card-expand {
-    overflow: hidden;
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0;
-    transition:
-        max-height var(--duration-normal) var(--ease-out-expo),
-        opacity var(--duration-normal) var(--ease-out-expo),
-        margin-top var(--duration-normal) var(--ease-out-expo);
-}
-
-.about-card.is-expanded .about-card-expand {
-    opacity: 1;
-    margin-top: 14px;
-}
-
-/* Hairline divider as content (counted in scrollHeight, so the max-height
-   animation lands exactly on the content height). */
-.about-card-expand::before {
-    content: "";
-    display: block;
-    height: 1px;
-    background: var(--color-border);
-    margin-bottom: 14px;
-}
-
-.about-card .profile-expand-stats { margin-top: 0; }
+/* v1.4.8：右下角个人信息卡片（.about-card / .about-hitokoto / .about-card-expand）
+   已随「个人信息展示方式」选项一并移除，个人信息统一由边栏一行展示。 */
 
 /* ============================================
    9b. Cursor Style — 点+圆环光标 (v1.2.8, cursor_style = dot)
@@ -3496,8 +3685,10 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
 /* v1.4.7 (item 1): 标题「公告」独占一行、正文「欢迎」另起一行，二者拉开明显间距；
    全部左对齐，放宽行高/字间距，避免文字上下堆叠拥挤。标题右侧留足关闭按钮空间。 */
 .announcement-header {
-    margin: 0 0 14px;
-    padding: 0 48px 12px 0;
+    /* v1.4.8 (item 5)：标题独占一行，与正文拉开更明确的间距。分隔线 + 充足下外边距，
+       避免正文首行（尤其当正文以标题/加粗大标题开头时）紧贴「公告」标题。 */
+    margin: 0 0 18px;
+    padding: 0 48px 14px 0;
     text-align: left;
     /* 一条淡分隔线把「公告」标题与下方正文清晰分成两块 */
     border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.16));
@@ -3523,7 +3714,9 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     padding-bottom: 2px;
 }
 .announcement-content::-webkit-scrollbar { width: 0; height: 0; }
-.announcement-content > :first-child { margin-top: 0; }
+/* v1.4.8 (item 5)：不再把正文首个元素的上外边距清零——当正文以标题/加粗大标题开头时，
+   保留其自然上间距，使其与「公告」标题之间留有呼吸空间，不再挤在一起。仅保证一个最小上间距。 */
+.announcement-content > :first-child { margin-top: 6px; }
 .announcement-content > :last-child { margin-bottom: 0; }
 .announcement-content h3, .announcement-content h4, .announcement-content h5 {
     color: var(--text-primary);
@@ -4005,13 +4198,6 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
         max-height: 50vh;
         transform: none;
         border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-    }
-
-    .about-card {
-        right: 12px;
-        bottom: 104px; /* clear the bottom-center footer + attribution */
-        left: 12px;
-        max-width: none;
     }
 
     .detail-sheet {

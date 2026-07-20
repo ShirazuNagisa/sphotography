@@ -347,6 +347,7 @@ function sphotography_localize_data() {
             ? sphotography_get_mod( 'sidebar_default_open_mobile' )
             : sphotography_get_mod( 'sidebar_default_open_desktop' ) ),
         'articleCardSize'  => sphotography_get_mod( 'article_card_size' ),
+        'expandColumns'    => sphotography_get_mod( 'expand_columns' ), // v1.4.8 边栏展开页列数
         'readingInfo'      => (bool) sphotography_get_mod( 'reading_info' ),
         'readingSpeedCjk'  => (int) sphotography_get_mod( 'reading_speed_cjk' ),
         'readingSpeedLatin' => (int) sphotography_get_mod( 'reading_speed_latin' ),
