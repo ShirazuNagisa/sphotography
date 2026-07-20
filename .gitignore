@@ -28,6 +28,13 @@ yarn.lock
 # Logs
 *.log
 
+# Docker — local development environment (not part of theme)
+docker-compose.yml
+
+# Local setup scripts (not part of theme)
+enable-wsl.ps1
+wsl_update_x64.msi
+
 # Documentation
 /organization.md
 
