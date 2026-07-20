@@ -384,6 +384,9 @@
         regionPanels: new Map(),
         regionUnmatched: null,
         pulseDot: null,
+        // v1.4.8 (item 2): expand-page article mode + cached site stats.
+        expandArticleMode: false,
+        siteStats: null,
     };
 
     // ---------------------------------------------------------------
@@ -423,10 +426,12 @@
         dom.detailDesc = document.getElementById('detail-desc');
         dom.detailTags = document.getElementById('detail-tags');
         dom.detailViewArticle = document.getElementById('detail-view-article');
-        dom.aboutCard = document.getElementById('about-card');
         dom.sidebarProfile = document.getElementById('sidebar-profile');
         dom.sidebarProfileToggle = document.getElementById('sidebar-profile-toggle');
         dom.sidebarProfilePanel = document.getElementById('sidebar-profile-panel');
+        dom.sidebarStatsPanel = document.getElementById('sidebar-stats-panel');
+        dom.sidebarExpandPageBtn = document.getElementById('sidebar-expandpage-btn');
+        dom.expandPage = document.getElementById('sidebar-expand-page');
     }
 
     // ---------------------------------------------------------------
@@ -821,7 +826,12 @@
             '申请已提交，等待站长审核。': 'Submitted — awaiting the admin’s review.',
             '查看照片位置': 'View photo location', '查看对应文章': 'View the article', '查看照片详情': 'Photo details', '上一张': 'Previous', '下一张': 'Next', '退出': 'Close',
             '点击照片即可查看其位置': 'Tap the photo to see where it was taken',
-            '文章目录': 'Contents', '本文暂无目录': 'No headings in this article'
+            '文章目录': 'Contents', '本文暂无目录': 'No headings in this article',
+            // v1.4.8 (item 2): expand-page + stats panel
+            '文章列表': 'Articles', '搜索文章...': 'Search articles...', '没有找到匹配的文章': 'No matching articles',
+            '打开文章列表': 'Open article list', '文章': 'Posts', '标签': 'Tags', '地块': 'Regions',
+            '图片张数': 'Photos', '本日访问': 'Today', '累计访问': 'Total visits', '已运行': 'Uptime',
+            '天': 'd', '其他': 'Others', '暂无地区数据': 'No region data', '图片地区分布': 'Photos by region'
         },
         ja: {
             '浅色': 'ライト', '深色': 'ダーク', '跟随系统': 'システム', '明暗模式': '外観',
@@ -852,7 +862,12 @@
             '申请已提交，等待站长审核。': '申請を送信しました。管理者の承認をお待ちください。',
             '查看照片位置': '写真の位置を表示', '查看对应文章': '記事を表示', '查看照片详情': '写真の詳細', '上一张': '前へ', '下一张': '次へ', '退出': '閉じる',
             '点击照片即可查看其位置': 'タップして撮影場所を表示',
-            '文章目录': '目次', '本文暂无目录': 'この記事に見出しはありません'
+            '文章目录': '目次', '本文暂无目录': 'この記事に見出しはありません',
+            // v1.4.8 (item 2): expand-page + stats panel
+            '文章列表': '記事一覧', '搜索文章...': '記事を検索...', '没有找到匹配的文章': '一致する記事がありません',
+            '打开文章列表': '記事一覧を開く', '文章': '記事', '标签': 'タグ', '地块': '地域',
+            '图片张数': '写真枚数', '本日访问': '本日', '累计访问': '累計訪問', '已运行': '稼働時間',
+            '天': '日', '其他': 'その他', '暂无地区数据': '地域データなし', '图片地区分布': '地域別写真分布'
         }
     };
 
@@ -2344,6 +2359,12 @@
 
     function animateWindowsOpen(postId) {
         clearMotion();
+        // v1.4.8 (item 2): opened from the expand-page — no FLIP-from-card; the
+        // panel simply slides in from the right (CSS on .article-panel--in-expand).
+        if (state.expandArticleMode) {
+            dom.articlePanel.classList.add('active');
+            return;
+        }
         var geom = getPostCardGeometry(postId);
         if (!geom || state.isMobile || prefersReducedMotion()) {
             dom.articlePanel.classList.add('active');
@@ -2376,6 +2397,22 @@
 
     function animateWindowsClose(postId, onDone) {
         clearMotion();
+        // v1.4.8 (item 2): in-expand article slides out to the right, then the mode
+        // + class are cleared so the panel reverts to its normal behaviour.
+        if (state.expandArticleMode) {
+            dom.articlePanel.classList.remove('active');
+            var panel = dom.articlePanel;
+            setTimeout(function () {
+                if (!state.expandArticleMode) return; // re-opened meanwhile
+                if (!state.articleOpen) {
+                    panel.classList.remove('article-panel--in-expand');
+                    document.body.classList.remove('expand-article-open');
+                    state.expandArticleMode = false;
+                }
+            }, 460);
+            if (onDone) onDone();
+            return;
+        }
         var geom = getPostCardGeometry(postId);
         if (!geom || state.isMobile || prefersReducedMotion()) {
             dom.articlePanel.classList.remove('active');
@@ -2547,6 +2584,12 @@
         hideArticleNav();
         // v1.4.4 (item 2): stop watching content height once the panel closes.
         if (state.readingTailRO) { try { state.readingTailRO.disconnect(); } catch (e) {} state.readingTailRO = null; }
+        // v1.4.8 (item 2): in-expand articles always slide out via animateWindowsClose
+        // (which also clears the mode + class), regardless of source-card geometry.
+        if (state.expandArticleMode) {
+            animateWindowsClose(targetPostId);
+            return;
+        }
         // Photograph articles have no source card — fall back to a plain fade.
         if (targetPostId == null || !getPostCardGeometry(targetPostId)) {
             clearMotion();
@@ -4430,11 +4473,11 @@
 
     // v1.4.7 (item 2) layout constants — the collapsed pill and the expanded
     // region share the same top-left anchor at the panel's top-right corner.
-    var TOC_TOP_GAP = 8;        // bar/region start this far below the panel top
+    var TOC_TOP_GAP = 0;        // v1.4.8 (item 4D)：与文章面板顶部齐平（不再下移）
     var TOC_SIDE_GAP = 8;       // gap from the panel's right edge
-    var TOC_BAR_W = 18;         // collapsed pill width (matches CSS)
-    var TOC_REGION_MIN_W = 180;
-    var TOC_REGION_MAX_W = 280;
+    var TOC_BAR_W = 28;         // collapsed pill width (matches CSS, v1.4.8 item 4A)
+    var TOC_REGION_MIN_W = 170; // v1.4.8 (item 4D)：略收窄索引页面宽度
+    var TOC_REGION_MAX_W = 248;
 
     // Parse headings out of the freshly-written article body, (re)build the index
     // region, and show/hide the bar (hidden when the article has no headings).
@@ -4465,18 +4508,26 @@
         var list = dom.articleTocList;
         list.innerHTML = '';
 
-        // Build a nested tree honouring heading levels.
+        // Build a nested tree honouring heading levels, with parent pointers so the
+        // scroll-driven accordion (v1.4.8 item 4C) can walk ancestor chains.
         var roots = [];
-        var stack = [{ level: 0, children: roots }];
+        var stack = [{ level: 0, children: roots, node: null }];
         headings.forEach(function (h) {
-            var node = { h: h, children: [] };
+            var node = { h: h, children: [], parent: null, groupEl: null };
             while (stack.length > 1 && stack[stack.length - 1].level >= h.level) stack.pop();
-            stack[stack.length - 1].children.push(node);
-            stack.push({ level: h.level, children: node.children });
+            var top = stack[stack.length - 1];
+            node.parent = top.node;
+            top.children.push(node);
+            h.node = node;
+            stack.push({ level: h.level, children: node.children, node: node });
         });
 
         var minLevel = headings.reduce(function (m, h) { return Math.min(m, h.level); }, 6);
-        roots.forEach(function (node) { list.appendChild(renderTocTopGroup(node, minLevel)); });
+        state.tocTree = roots;
+        state.tocMinLevel = minLevel;
+        // v1.4.8 (item 4C): fully NESTED accordion — every heading with children is
+        // its own collapsible group, so only ONE level expands at a time.
+        roots.forEach(function (node) { list.appendChild(renderTocNode(node, minLevel, true)); });
     }
 
     function makeTocItem(h, minLevel, isTop) {
@@ -4492,17 +4543,18 @@
         return item;
     }
 
-    function renderTocTopGroup(node, minLevel) {
+    // Render one tree node as a collapsible group (recursively). Leaves render as a
+    // group with just a row (no chevron / children container). All groups start
+    // collapsed; the scroll-spy accordion opens the current branch one level deep.
+    function renderTocNode(node, minLevel, isRoot) {
         var group = document.createElement('div');
-        // v1.4.7 (item 2B/2C): groups start COLLAPSED so the initial index (and the
-        // bar sized to it) shows only top-level entries; expanding a group grows the
-        // region downward in real time.
         group.className = 'article-toc-group is-collapsed';
+        node.groupEl = group;
         var hasKids = node.children.length > 0;
 
         var row = document.createElement('div');
         row.className = 'article-toc-row';
-        row.appendChild(makeTocItem(node.h, minLevel, true));
+        row.appendChild(makeTocItem(node.h, minLevel, isRoot));
 
         if (hasKids) {
             var chev = document.createElement('button');
@@ -4512,9 +4564,9 @@
             chev.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
             chev.addEventListener('click', function (e) {
                 e.stopPropagation();
+                // Manual toggle still works; the next scroll re-asserts the accordion.
                 var collapsed = group.classList.toggle('is-collapsed');
                 chev.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                // Regrow/shrink the region to fit the new set of visible entries.
                 fitTocRegionHeight();
             });
             row.appendChild(chev);
@@ -4524,34 +4576,58 @@
         if (hasKids) {
             var kids = document.createElement('div');
             kids.className = 'article-toc-children';
-            (function walk(nodes) {
-                nodes.forEach(function (n) {
-                    kids.appendChild(makeTocItem(n.h, minLevel, false));
-                    if (n.children.length) walk(n.children);
-                });
-            })(node.children);
+            node.children.forEach(function (c) { kids.appendChild(renderTocNode(c, minLevel, false)); });
             group.appendChild(kids);
         }
         return group;
     }
 
+    // Strict accordion driven by scroll position (v1.4.8 item 4C): expand only the
+    // current heading's branch — its ancestors (to reveal it) plus itself (to show
+    // its DIRECT children). Every other group collapses. Grandchildren stay hidden
+    // until you scroll into a child. Returns true if any group's state changed.
+    function applyTocAccordion(node) {
+        if (!state.tocTree || !node) return false;
+        var expand = [];
+        for (var n = node; n; n = n.parent) expand.push(n);
+        var changed = false;
+        (function walk(nodes) {
+            nodes.forEach(function (nd) {
+                if (nd.children.length && nd.groupEl) {
+                    var shouldCollapse = expand.indexOf(nd) === -1;
+                    if (shouldCollapse !== nd.groupEl.classList.contains('is-collapsed')) {
+                        nd.groupEl.classList.toggle('is-collapsed', shouldCollapse);
+                        var chev = nd.groupEl.querySelector('.article-toc-row > .article-toc-chevron');
+                        if (chev) chev.setAttribute('aria-expanded', shouldCollapse ? 'false' : 'true');
+                        changed = true;
+                    }
+                    walk(nd.children);
+                }
+            });
+        })(state.tocTree);
+        return changed;
+    }
+
     // Precise FINAL content height of the region regardless of any in-flight
-    // child-reveal transitions: title + each group's row (+ its children's natural
-    // scrollHeight when expanded) + inner padding + borders.
+    // child-reveal transitions. Sums (recursively) each node's row height plus its
+    // expanded children — honouring the nested collapse state — so it never
+    // double-counts, plus title + inner padding + borders.
+    function tocNodeHeight(node) {
+        if (!node.groupEl) return 0;
+        var row = node.groupEl.querySelector('.article-toc-row');
+        var h = row ? row.offsetHeight : 0;
+        if (node.children.length && !node.groupEl.classList.contains('is-collapsed')) {
+            node.children.forEach(function (c) { h += tocNodeHeight(c); });
+        }
+        return h;
+    }
     function tocContentHeight() {
-        var region = dom.articleTocRegion, list = dom.articleTocList;
-        if (!region || !list) return 0;
+        var region = dom.articleTocRegion;
+        if (!region || !state.tocTree) return 0;
         var h = 24 + 2; // inner vertical padding (14 + 10) + 1px top/bottom border
         var titleEl = region.querySelector('.article-toc-title');
         if (titleEl) h += titleEl.offsetHeight + 8; // + title padding-bottom
-        var groups = list.querySelectorAll('.article-toc-group');
-        for (var i = 0; i < groups.length; i++) {
-            var g = groups[i];
-            var rowEl = g.querySelector('.article-toc-row');
-            if (rowEl) h += rowEl.offsetHeight;
-            var kids = g.querySelector('.article-toc-children');
-            if (kids && !g.classList.contains('is-collapsed')) h += kids.scrollHeight;
-        }
+        state.tocTree.forEach(function (n) { h += tocNodeHeight(n); });
         return h;
     }
 
@@ -4606,6 +4682,10 @@
         // v1.4.7 (item 2D): do NOT close — keep the index open while jumping.
         animateScroll(panel, panel.scrollTop, target, SP_NAV_SCROLL_MS);
         setTocActive(h);
+        // v1.4.8 (item 4C): reflect the clicked section in the accordion immediately.
+        if (state.tocOpen && !state.isMobile && h.node) {
+            if (applyTocAccordion(h.node)) fitTocRegionHeight();
+        }
     }
 
     function toggleTocRegion() { if (state.tocOpen) closeTocRegion(); else openTocRegion(); }
@@ -4696,6 +4776,11 @@
             else break;
         }
         setTocActive(current);
+        // v1.4.8 (item 4C): while open, the accordion follows the scroll position —
+        // expand the current section's direct children, collapse other branches.
+        if (state.tocOpen && !state.isMobile && current.node) {
+            if (applyTocAccordion(current.node)) fitTocRegionHeight();
+        }
     }
 
     // Observe the article body + comments for height changes and re-fit the tail
@@ -6354,44 +6439,8 @@
     // reversible animation. Closes on outside click, re-click, or Esc.
     // ---------------------------------------------------------------
     function initProfileExpand() {
-        // --- Mode A: bottom-right card ---
-        var card = dom.aboutCard;
-        if (card) {
-            var cardExpand = card.querySelector('.about-card-expand');
-            var setCard = function (open) {
-                card.classList.toggle('is-expanded', open);
-                card.setAttribute('aria-expanded', open ? 'true' : 'false');
-                if (cardExpand) {
-                    cardExpand.setAttribute('aria-hidden', open ? 'false' : 'true');
-                    cardExpand.style.maxHeight = open ? (cardExpand.scrollHeight + 'px') : '';
-                }
-            };
-            card.addEventListener('click', function (e) {
-                e.stopPropagation();
-                if (e.target.closest('a')) return; // let links work
-                setCard(!card.classList.contains('is-expanded'));
-            });
-            card.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    if (e.target.closest('a')) return;
-                    e.preventDefault();
-                    setCard(!card.classList.contains('is-expanded'));
-                }
-            });
-            document.addEventListener('click', function () {
-                if (card.classList.contains('is-expanded')) setCard(false);
-            });
-            window.addEventListener('resize', debounce(function () {
-                if (card.classList.contains('is-expanded') && cardExpand) {
-                    cardExpand.style.maxHeight = cardExpand.scrollHeight + 'px';
-                }
-            }, 150));
-            state._closeAboutCard = function () {
-                if (card.classList.contains('is-expanded')) setCard(false);
-            };
-        }
-
-        // --- Mode B: sidebar bottom panel ---
+        // v1.4.8：右下角卡片模式已移除。仅保留边栏一行个人信息面板（点击个人信息行展开）。
+        // --- 侧边栏简单个人信息面板 ---
         var wrap = dom.sidebarProfile;
         var toggle = dom.sidebarProfileToggle;
         var panel = dom.sidebarProfilePanel;
@@ -6404,6 +6453,8 @@
             };
             toggle.addEventListener('click', function (e) {
                 e.stopPropagation();
+                // v1.4.8: mutually exclusive with the rich stats / expand-page.
+                if (!wrap.classList.contains('is-expanded') && typeof EXPAND !== 'undefined' && EXPAND.open) closeExpandPage();
                 setSidebar(!wrap.classList.contains('is-expanded'));
             });
             // The expanded panel covers the trigger row, so a click on it
@@ -6512,8 +6563,6 @@
         });
         dom.articleClose.addEventListener('click', function(e) { e.stopPropagation(); closeArticlePanel(); });
         dom.closeDetail.addEventListener('click', function(e) { e.stopPropagation(); closeDetailPanel(); });
-        // The about-card's own click handling (toggle expand) lives in
-        // initProfileExpand(); no plain stop-propagation binding here.
 
         // Show the platform-correct modifier in the search hint (⌘ on Mac).
         var isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
@@ -6544,7 +6593,6 @@
                 closeFilterPanel();
                 closeAllPhotoPanels();
                 closeArticlePanel();
-                if (state._closeAboutCard) state._closeAboutCard();
                 if (state._closeSidebarProfile) state._closeSidebarProfile();
                 dom.detailSheet.classList.remove('active');
                 state.detailOpen = false;
@@ -6798,6 +6846,338 @@
     }
 
     // ---------------------------------------------------------------
+    // 20b. Site visit beacon (v1.4.8) — one count per browser per day, no IP.
+    // ---------------------------------------------------------------
+    function recordSiteVisit() {
+        var today = new Date();
+        var key = 'sp_visited_' + today.getFullYear() + ('0' + (today.getMonth() + 1)).slice(-2) + ('0' + today.getDate()).slice(-2);
+        try { if (window.localStorage.getItem(key)) return; } catch (e) {}
+        try { window.localStorage.setItem(key, '1'); } catch (e) {}
+        fetch(CONFIG.restBase + '/sphotography/v1/visit', {
+            method: 'POST',
+            headers: { 'X-WP-Nonce': (APP.restNonce || '') },
+            credentials: 'same-origin'
+        }).then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (data && state.siteStats) {
+                if (typeof data.today === 'number') state.siteStats.visitsToday = data.today;
+                if (typeof data.total === 'number') state.siteStats.visitsTotal = data.total;
+            }
+        }).catch(function () {});
+    }
+
+    // ---------------------------------------------------------------
+    // 20c. Sidebar expand-page (v1.4.8 item 2) — a large article-list card at the
+    // article-panel footprint, top layer, with a rich stats panel that unfurls the
+    // profile row upward. Masonry list ↔ single article via the real #article-panel
+    // (reused render pipeline) sliding in from the right.
+    // ---------------------------------------------------------------
+    var EXPAND = { built: false, open: false, items: [], rendered: 0, chunk: 12, query: '', uptimeTimer: null };
+
+    function initExpandPage() {
+        var btn = dom.sidebarExpandPageBtn, page = dom.expandPage;
+        if (!btn || !page) return;
+        btn.addEventListener('click', function (e) { e.stopPropagation(); toggleExpandPage(); });
+        var closeBtn = document.getElementById('expand-page-close');
+        if (closeBtn) closeBtn.addEventListener('click', function (e) { e.stopPropagation(); closeExpandPage(); });
+        // Clicks inside the page must not bubble to the outside-close handler.
+        page.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        var search = document.getElementById('expand-page-search');
+        if (search) {
+            search.addEventListener('input', debounce(function () {
+                EXPAND.query = (search.value || '').trim().toLowerCase();
+                resetExpandGrid();
+            }, 160));
+        }
+        var grid = document.getElementById('expand-page-grid');
+        if (grid) {
+            grid.addEventListener('scroll', function () {
+                if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 240) renderExpandChunk();
+            });
+        }
+        EXPAND.built = true;
+    }
+
+    function toggleExpandPage() { if (EXPAND.open) closeExpandPage(); else openExpandPage(); }
+
+    function openExpandPage() {
+        if (EXPAND.open) return;
+        // Mutually exclusive with the simple profile panel.
+        if (state._closeSidebarProfile) state._closeSidebarProfile();
+        if (!state.sidebarOpen) openSidebar();
+        EXPAND.open = true;
+        var page = dom.expandPage, btn = dom.sidebarExpandPageBtn;
+        page.setAttribute('aria-hidden', 'false');
+        // rAF so the transition plays from the hidden state.
+        requestAnimationFrame(function () { page.classList.add('is-open'); });
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+        openStatsPanel();
+        // Column count from the backend setting; forced to 1 on mobile via CSS.
+        var grid = document.getElementById('expand-page-grid');
+        if (grid) grid.classList.toggle('cols-3', String(SETTINGS.expandColumns) === '3');
+        resetExpandGrid();
+        bindExpandDismiss();
+    }
+
+    function closeExpandPage() {
+        if (!EXPAND.open) return;
+        EXPAND.open = false;
+        // Close an in-expand article too, if one is open.
+        if (state.expandArticleMode && state.articleOpen) closeArticlePanel();
+        var page = dom.expandPage, btn = dom.sidebarExpandPageBtn;
+        page.classList.remove('is-open');
+        page.setAttribute('aria-hidden', 'true');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+        closeStatsPanel();
+        unbindExpandDismiss();
+    }
+
+    function expandOutsideHandler(e) {
+        if (dom.expandPage && dom.expandPage.contains(e.target)) return;
+        if (dom.sidebarExpandPageBtn && dom.sidebarExpandPageBtn.contains(e.target)) return;
+        // Ignore clicks inside an in-expand article (it lives on top of the page).
+        if (state.expandArticleMode && dom.articlePanel && dom.articlePanel.contains(e.target)) return;
+        closeExpandPage();
+    }
+    // Capture-phase + stopPropagation so the global Esc handler doesn't ALSO fire
+    // (which would close the whole page on the same keypress that closes an article).
+    function expandEscHandler(e) {
+        if (e.key !== 'Escape' && e.key !== 'Esc') return;
+        e.stopPropagation();
+        if (state.expandArticleMode && state.articleOpen) { closeArticlePanel(); }
+        else { closeExpandPage(); }
+    }
+    function bindExpandDismiss() {
+        setTimeout(function () {
+            document.addEventListener('pointerdown', expandOutsideHandler, true);
+            document.addEventListener('keydown', expandEscHandler, true);
+        }, 0);
+    }
+    function unbindExpandDismiss() {
+        document.removeEventListener('pointerdown', expandOutsideHandler, true);
+        document.removeEventListener('keydown', expandEscHandler, true);
+    }
+
+    // ---- Masonry article list ----
+    function expandPostMatches(post, q) {
+        if (!q) return true;
+        var hay = (post.title && post.title.rendered ? post.title.rendered : '') + ' ';
+        hay += stripHtml((post.excerpt && post.excerpt.rendered) || '') + ' ';
+        var emb = post._embedded && post._embedded['wp:term'];
+        if (Array.isArray(emb)) emb.forEach(function (grp) { if (Array.isArray(grp)) grp.forEach(function (t2) { if (t2 && t2.name) hay += t2.name + ' '; }); });
+        return hay.toLowerCase().indexOf(q) !== -1;
+    }
+
+    function resetExpandGrid() {
+        var grid = document.getElementById('expand-page-grid');
+        var empty = document.getElementById('expand-page-empty');
+        if (!grid) return;
+        grid.innerHTML = '';
+        EXPAND.rendered = 0;
+        EXPAND.items = (state.allPosts || []).filter(function (p) { return expandPostMatches(p, EXPAND.query); });
+        if (empty) empty.hidden = EXPAND.items.length > 0;
+        grid.scrollTop = 0;
+        renderExpandChunk();
+    }
+
+    function renderExpandChunk() {
+        var grid = document.getElementById('expand-page-grid');
+        if (!grid || EXPAND.rendered >= EXPAND.items.length) return;
+        var end = Math.min(EXPAND.rendered + EXPAND.chunk, EXPAND.items.length);
+        for (var i = EXPAND.rendered; i < end; i++) grid.appendChild(buildExpandCard(EXPAND.items[i]));
+        EXPAND.rendered = end;
+        // Keep filling while the grid isn't tall enough to scroll (so the rest of a
+        // short-but-many list still appears without a scroll event to trigger it).
+        if (EXPAND.rendered < EXPAND.items.length && grid.scrollHeight <= grid.clientHeight + 8) {
+            requestAnimationFrame(renderExpandChunk);
+        }
+    }
+
+    function buildExpandCard(post) {
+        var coverUrl = post.sp_cover || '';
+        var card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'expand-card' + (coverUrl ? ' has-cover' : ' expand-card--plain');
+        card.dataset.postId = post.id;
+        var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
+        var wc = getPostWordCount(post);
+        var metaExtra = (wc != null) ? '<span>' + formatCount(wc) + ' 字</span>' : '';
+        var excerptText = stripHtml((post.excerpt && post.excerpt.rendered) || '').trim();
+        var excerptHtml = excerptText ? '<div class="expand-card-excerpt">' + escapeHtml(excerptText) + '</div>' : '';
+        card.innerHTML = ''
+            + (coverUrl ? '<div class="expand-card-cover"></div><div class="expand-card-scrim"></div>' : '')
+            + '<div class="expand-card-body">'
+            + '<div class="expand-card-title">' + escapeHtml((post.title && post.title.rendered) || '') + '</div>'
+            + excerptHtml
+            + '<div class="expand-card-meta"><span>' + escapeHtml(dateStr) + '</span>' + metaExtra + '</div>'
+            + '</div>';
+        if (coverUrl) {
+            var coverEl = card.querySelector('.expand-card-cover');
+            if (coverEl) coverEl.style.backgroundImage = 'url("' + String(coverUrl).replace(/"/g, '%22') + '")';
+        }
+        card.addEventListener('click', function (e) { e.stopPropagation(); openArticleInExpandPage(post.id); });
+        return card;
+    }
+
+    // ---- In-expand article view (reuse #article-panel + slide) ----
+    function openArticleInExpandPage(postId) {
+        state.expandArticleMode = true;
+        dom.articlePanel.classList.add('article-panel--in-expand');
+        document.body.classList.add('expand-article-open'); // lift nav overlay above the page
+        // Start off-screen (right); openArticle() will add .active → slides in.
+        openArticle(postId);
+    }
+
+    // ---- Rich stats panel ----
+    function openStatsPanel() {
+        var wrap = dom.sidebarProfile, panel = dom.sidebarStatsPanel;
+        if (!wrap || !panel) return;
+        renderStatsPanel();
+        wrap.classList.add('stats-open');
+        panel.setAttribute('aria-hidden', 'false');
+        // Fill the sidebar above the profile row, but never overflow its top: cap to
+        // the space between the profile bar and the sidebar's inner top (inner list
+        // scrolls if the content is taller).
+        var sidebar = document.getElementById('sidebar');
+        var bar = wrap.querySelector('.sidebar-profile-bar');
+        var avail = panel.scrollHeight;
+        if (sidebar && bar) {
+            avail = Math.max(160, bar.getBoundingClientRect().bottom - (sidebar.getBoundingClientRect().top + 12));
+        }
+        panel.style.maxHeight = Math.min(panel.scrollHeight, avail) + 'px';
+    }
+    function closeStatsPanel() {
+        var wrap = dom.sidebarProfile, panel = dom.sidebarStatsPanel;
+        if (!wrap || !panel) return;
+        wrap.classList.remove('stats-open');
+        panel.setAttribute('aria-hidden', 'true');
+        panel.style.maxHeight = '';
+        if (EXPAND.uptimeTimer) { clearInterval(EXPAND.uptimeTimer); EXPAND.uptimeTimer = null; }
+    }
+
+    function renderStatsPanel() {
+        var panel = dom.sidebarStatsPanel;
+        if (!panel) return;
+        var s = state.siteStats || {};
+        // Avatar + name cloned from the server-rendered profile row.
+        var avatarSrc = '', initial = '';
+        var srcAvatar = dom.sidebarProfile.querySelector('.sidebar-profile-avatar');
+        var srcName = dom.sidebarProfile.querySelector('.sidebar-profile-name');
+        var name = srcName ? srcName.textContent : '';
+        if (srcAvatar && srcAvatar.tagName === 'IMG') avatarSrc = srcAvatar.getAttribute('src') || '';
+        else if (srcAvatar) initial = srcAvatar.textContent || '';
+
+        var avatarHtml = avatarSrc
+            ? '<img class="stats-avatar" src="' + escapeHtml(avatarSrc) + '" alt="">'
+            : '<span class="stats-avatar stats-avatar--placeholder">' + escapeHtml(initial || (name.charAt(0) || '?')) + '</span>';
+
+        var html = ''
+            + '<div class="stats-panel-inner side-panel-scroll">'
+            + avatarHtml
+            + '<div class="stats-name">' + escapeHtml(name) + '</div>'
+            + '<div class="stats-counts">'
+            +   '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.posts || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('文章')) + '</span></div>'
+            +   '<span class="stats-count-sep"></span>'
+            +   '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.tags || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('标签')) + '</span></div>'
+            +   '<span class="stats-count-sep"></span>'
+            +   '<div class="stats-count-cell"><span class="stats-count-num">' + formatCount(s.regions || 0) + '</span><span class="stats-count-label">' + escapeHtml(t('地块')) + '</span></div>'
+            + '</div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('图片张数')) + '</span><span class="stats-row-value">' + formatCount(s.photos || 0) + '</span></div>'
+            + '<div class="stats-pie-wrap" id="stats-pie-wrap"></div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('本日访问')) + '</span><span class="stats-row-value">' + formatCount(s.visitsToday || 0) + '</span></div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('累计访问')) + '</span><span class="stats-row-value">' + formatCount(s.visitsTotal || 0) + '</span></div>'
+            + '<div class="stats-row"><span class="stats-row-label">' + escapeHtml(t('已运行')) + '</span><span class="stats-row-value stats-uptime-value" id="stats-uptime">—</span></div>'
+            + '</div>';
+        panel.innerHTML = html;
+
+        buildRegionPie(document.getElementById('stats-pie-wrap'));
+        startUptimeTicker(s.installTime, s.serverTime);
+    }
+
+    function startUptimeTicker(installTime, serverTime) {
+        if (EXPAND.uptimeTimer) { clearInterval(EXPAND.uptimeTimer); EXPAND.uptimeTimer = null; }
+        var el = document.getElementById('stats-uptime');
+        if (!el || !installTime) return;
+        // Base elapsed seconds at fetch time, advanced by the local clock so it ticks live.
+        var baseElapsed = Math.max(0, (serverTime || (Date.now() / 1000)) - installTime);
+        var t0 = Date.now();
+        function paint() {
+            var secs = Math.floor(baseElapsed + (Date.now() - t0) / 1000);
+            var d = Math.floor(secs / 86400);
+            var h = Math.floor((secs % 86400) / 3600);
+            var m = Math.floor((secs % 3600) / 60);
+            var sec = secs % 60;
+            el.textContent = d + ' ' + t('天') + ' ' + ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2) + ':' + ('0' + sec).slice(-2);
+        }
+        paint();
+        EXPAND.uptimeTimer = setInterval(paint, 1000);
+    }
+
+    // Photo-by-region distribution (province or city per granularity), computed
+    // client-side from the loaded photos + boundary names. SVG donut, top-8 + 其他,
+    // revealed with a full counter-clockwise rotation.
+    function buildRegionPie(wrap) {
+        if (!wrap) return;
+        var feats = (state.allPhotos && state.allPhotos.features) ? state.allPhotos.features : [];
+        var counts = {};
+        feats.forEach(function (f) {
+            var id = regionIdForPhoto(f.properties);
+            if (id) counts[id] = (counts[id] || 0) + 1;
+        });
+        // adcode → display name from the boundary features.
+        var nameById = {};
+        (REGION.geo.features || []).forEach(function (f) {
+            if (f.properties && f.properties.id != null) nameById[String(f.properties.id)] = f.properties.name || String(f.properties.id);
+        });
+        var entries = Object.keys(counts).map(function (id) { return { id: id, name: nameById[id] || id, count: counts[id] }; });
+        if (!entries.length) { wrap.innerHTML = '<div class="stats-pie-empty">' + escapeHtml(t('暂无地区数据')) + '</div>'; return; }
+        entries.sort(function (a, b) { return b.count - a.count; });
+        var TOP = 8;
+        var shown = entries.slice(0, TOP);
+        if (entries.length > TOP) {
+            var rest = entries.slice(TOP).reduce(function (n, e) { return n + e.count; }, 0);
+            if (rest > 0) shown.push({ id: '__other__', name: t('其他'), count: rest, other: true });
+        }
+        var total = shown.reduce(function (n, e) { return n + e.count; }, 0) || 1;
+
+        // Donut via stroke-dasharray on stacked circles.
+        var R = 45, C = 2 * Math.PI * R, cx = 60, cy = 60, sw = 22;
+        var offset = 0, segs = '', legend = '';
+        shown.forEach(function (e, i) {
+            var color = e.other ? 'var(--text-muted)' : pieColor(i, shown.length);
+            var frac = e.count / total;
+            var len = frac * C;
+            segs += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="' + color + '" stroke-width="' + sw + '" '
+                 + 'stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '"></circle>';
+            offset += len;
+            legend += '<span class="stats-legend-item"><span class="stats-legend-dot" style="background:' + color + '"></span>' + escapeHtml(e.name) + ' ' + e.count + '</span>';
+        });
+        wrap.innerHTML = ''
+            + '<svg class="stats-pie is-revealing" viewBox="0 0 120 120" role="img" aria-label="' + escAttr(t('图片地区分布')) + '">'
+            + '<g transform="rotate(-90 60 60)">' + segs + '</g>'
+            + '</svg>'
+            + '<div class="stats-legend">' + legend + '</div>';
+    }
+
+    // Evenly-spread, cohesive palette for pie slices.
+    function pieColor(i, n) {
+        var hue = Math.round((i * 360 / Math.max(1, n) + 8) % 360);
+        return 'hsl(' + hue + ', 62%, 55%)';
+    }
+
+    function loadSiteStats() {
+        fetch(CONFIG.restBase + '/sphotography/v1/stats', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (data && typeof data === 'object') {
+                    state.siteStats = data;
+                    // If the stats panel is already open, refresh it with live numbers.
+                    if (EXPAND.open) renderStatsPanel();
+                }
+            }).catch(function () {});
+    }
+
+    // ---------------------------------------------------------------
     // 21. Main Init
     // ---------------------------------------------------------------
     async function init() {
@@ -6834,6 +7214,9 @@
             initEntryAnimation();
             bindUIEvents();
             initProfileExpand();
+            initExpandPage();     // v1.4.8 (item 2): 边栏展开页 + 圆形按钮 + 统计面板
+            loadSiteStats();      // v1.4.8: 拉取统计（访问人数/运行时间/汇总）
+            recordSiteVisit();    // v1.4.8: 记一次访问（每浏览器每日一次）
             initPageLinks();
             maybeAutoOpenAnnouncement(); // v1.4.4 (item 6): 默认展开公告（可后台关闭 / 用户关闭后记忆）
             // Sidebar defaults to collapsed unless the "default expand sidebar"

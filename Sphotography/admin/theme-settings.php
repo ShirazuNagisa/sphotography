@@ -31,11 +31,10 @@ function sphotography_get_default_settings() {
         'sidebar_default_open_desktop' => true,
         'sidebar_default_open_mobile'  => false,
         'article_card_size'   => 'small',
+        // v1.4.8: 边栏展开页瀑布流列数（'2' | '3'），窄屏强制单列。
+        'expand_columns'      => '2',
         'enable_hitokoto'     => false,
-        // Personal-info display mode (v1.2.9). Replaces the old about_card_enabled
-        // boolean: sidebar — one-line avatar+name in the sidebar (default);
-        // card — the classic bottom-right about card; off — hidden.
-        'profile_display'     => 'sidebar',
+        // v1.4.8：个人信息展示方式选项已移除，边栏一行为唯一且强制的方式。
         'author_nickname'     => '',
         'avatar_url'          => '',
         'bio'                 => '',
@@ -163,9 +162,9 @@ function sphotography_sanitize_settings( $input ) {
     $sanitized['sidebar_default_open_mobile']  = ! empty( $input['sidebar_default_open_mobile'] ) ? 1 : 0;
     $allowed_card_size = array( 'small', 'large' );
     $sanitized['article_card_size'] = in_array( $input['article_card_size'], $allowed_card_size, true ) ? $input['article_card_size'] : $defaults['article_card_size'];
+    $allowed_expand_cols = array( '2', '3' );
+    $sanitized['expand_columns'] = ( isset( $input['expand_columns'] ) && in_array( (string) $input['expand_columns'], $allowed_expand_cols, true ) ) ? (string) $input['expand_columns'] : $defaults['expand_columns'];
     $sanitized['enable_hitokoto'] = ! empty( $input['enable_hitokoto'] ) ? 1 : 0;
-    $allowed_profile = array( 'sidebar', 'card', 'off' );
-    $sanitized['profile_display'] = in_array( $input['profile_display'], $allowed_profile, true ) ? $input['profile_display'] : $defaults['profile_display'];
     $sanitized['author_nickname'] = sanitize_text_field( $input['author_nickname'] );
     $sanitized['avatar_url'] = esc_url_raw( $input['avatar_url'] );
     $sanitized['bio'] = sanitize_textarea_field( $input['bio'] );
@@ -356,21 +355,8 @@ function sphotography_migrate_marker_mode() {
 add_action( 'admin_init', 'sphotography_migrate_marker_mode' );
 
 // ============================================
-// One-time migration (v1.2.9): fold the old about_card_enabled boolean into the
-// new profile_display selector so upgrading sites keep their current look —
-// card enabled → 'card', disabled → 'off'. Fresh installs default to 'sidebar'.
+// v1.4.8：个人信息展示方式（profile_display）选项已移除，无需迁移。
 // ============================================
-function sphotography_migrate_profile_display() {
-    if ( null !== get_theme_mod( 'sphotography_profile_display', null ) ) {
-        return;
-    }
-    $old = get_theme_mod( 'sphotography_about_card_enabled', null );
-    if ( null === $old ) {
-        return; // truly fresh install → default 'sidebar' applies.
-    }
-    set_theme_mod( 'sphotography_profile_display', $old ? 'card' : 'off' );
-}
-add_action( 'admin_init', 'sphotography_migrate_profile_display' );
 
 // 加载设置页 CSS/JS
 function sphotography_handle_reset_settings() {
@@ -740,6 +726,15 @@ function sphotography_render_settings_page() {
                         <p class="sphotography-desc"><?php _e( '选择左侧栏文章列表卡片的尺寸。小尺寸仅展示标题与日期；大尺寸额外展示文章简介，卡片纵向高度约为小尺寸的两倍。默认小尺寸。', 'sphotography' ); ?></p>
                     </div>
 
+                    <div class="sphotography-field">
+                        <label class="sphotography-label" for="sphotography-expand-columns"><?php _e( '边栏展开页列数', 'sphotography' ); ?></label>
+                        <select id="sphotography-expand-columns" name="sphotography[expand_columns]">
+                            <option value="2" <?php selected( $values['expand_columns'], '2' ); ?>><?php _e( '两列（默认）', 'sphotography' ); ?></option>
+                            <option value="3" <?php selected( $values['expand_columns'], '3' ); ?>><?php _e( '三列', 'sphotography' ); ?></option>
+                        </select>
+                        <p class="sphotography-desc"><?php _e( '边栏展开页（文章列表大屏）的瀑布流列数。窄屏（手机）下始终为单列。默认两列。', 'sphotography' ); ?></p>
+                    </div>
+
                     <div class="sphotography-field sphotography-field-checkbox">
                         <label class="sphotography-label">
                             <input type="checkbox"
@@ -762,15 +757,7 @@ function sphotography_render_settings_page() {
                 </div>
                 <div class="sphotography-module-body">
 
-                    <div class="sphotography-field">
-                        <label class="sphotography-label" for="sphotography-profile-display"><?php _e( '个人信息展示方式', 'sphotography' ); ?></label>
-                        <select id="sphotography-profile-display" name="sphotography[profile_display]">
-                            <option value="sidebar" <?php selected( $values['profile_display'], 'sidebar' ); ?>><?php _e( '边栏一行（默认，头像 + 昵称）', 'sphotography' ); ?></option>
-                            <option value="card" <?php selected( $values['profile_display'], 'card' ); ?>><?php _e( '右下角卡片（头像、昵称、简介、一言）', 'sphotography' ); ?></option>
-                            <option value="off" <?php selected( $values['profile_display'], 'off' ); ?>><?php _e( '不显示', 'sphotography' ); ?></option>
-                        </select>
-                        <p class="sphotography-desc"><?php _e( '选择个人信息的展示方式。「边栏一行」在左侧栏底部（收起按钮上方）以一行显示头像与昵称，不含简介与一言，观感更简洁，为默认方式；「右下角卡片」为经典右下角常驻卡片，含简介与一言；「不显示」完全隐藏。默认「边栏一行」。', 'sphotography' ); ?></p>
-                    </div>
+                    <?php // v1.4.8：个人信息展示方式选项已移除，边栏一行为唯一展示方式。 ?>
 
                     <div class="sphotography-field">
                         <label class="sphotography-label" for="sphotography-author-nickname"><?php _e( '作者昵称', 'sphotography' ); ?></label>
