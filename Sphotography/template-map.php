@@ -179,23 +179,27 @@ if ( ! $sphotography_sidebar_default_open ) {
         </svg>
     </button>
 
-    <!-- v1.4.8：边栏展开页（文章列表大屏，瀑布流）。与文章面板同一尺寸/位置，置于最上层。
-         点击列表卡片时直接打开真实的 #article-panel（复用完整渲染管线）叠于其上。 -->
+    <!-- v1.4.8/1.4.9：边栏展开页（文章列表大屏，瀑布流）。与文章面板同一尺寸/位置，置于最上层。
+         v1.4.9：两屏推进容器——列表屏(A) 与文章屏(B) 互斥；点开卡片时将真实 #article-panel
+         迁移进文章屏内部，列表左出 / 文章右入，关闭再迁回，从容器内部完成动画。 -->
     <div id="sidebar-expand-page" class="expand-page glass-panel" role="dialog" aria-modal="false" aria-label="<?php esc_attr_e( '文章列表', 'sphotography' ); ?>" aria-hidden="true">
-        <div class="expand-page-header">
-            <h3 class="expand-page-title"><?php esc_html_e( '文章列表', 'sphotography' ); ?></h3>
-            <div class="expand-page-search-field">
-                <span class="expand-page-search-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                </span>
-                <input type="text" id="expand-page-search" class="expand-page-search-input" placeholder="<?php esc_attr_e( '搜索文章...', 'sphotography' ); ?>" aria-label="<?php esc_attr_e( 'Search articles', 'sphotography' ); ?>">
+        <div class="expand-page-screen expand-page-screen--list">
+            <div class="expand-page-header">
+                <h3 class="expand-page-title"><?php esc_html_e( '文章列表', 'sphotography' ); ?></h3>
+                <div class="expand-page-search-field">
+                    <span class="expand-page-search-icon">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </span>
+                    <input type="text" id="expand-page-search" class="expand-page-search-input" placeholder="<?php esc_attr_e( '搜索文章...', 'sphotography' ); ?>" aria-label="<?php esc_attr_e( 'Search articles', 'sphotography' ); ?>">
+                </div>
+                <button type="button" id="expand-page-close" class="panel-close-btn expand-page-close" aria-label="<?php esc_attr_e( '退出', 'sphotography' ); ?>">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
             </div>
-            <button type="button" id="expand-page-close" class="panel-close-btn expand-page-close" aria-label="<?php esc_attr_e( '退出', 'sphotography' ); ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+            <div id="expand-page-grid" class="expand-page-grid" aria-live="polite"><!-- JS：瀑布流卡片 --></div>
+            <div id="expand-page-empty" class="expand-page-empty" hidden><?php esc_html_e( '没有找到匹配的文章', 'sphotography' ); ?></div>
         </div>
-        <div id="expand-page-grid" class="expand-page-grid" aria-live="polite"><!-- JS：瀑布流卡片 --></div>
-        <div id="expand-page-empty" class="expand-page-empty" hidden><?php esc_html_e( '没有找到匹配的文章', 'sphotography' ); ?></div>
+        <div id="expand-page-article-slot" class="expand-page-screen expand-page-screen--article"><!-- JS：迁入 #article-panel --></div>
     </div>
 
     <!-- 文章面板 -->

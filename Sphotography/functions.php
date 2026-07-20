@@ -25,6 +25,7 @@ require_once get_template_directory() . '/inc/geocode.php';       // v1.4.4: 逆
 require_once get_template_directory() . '/inc/announcement.php';  // v1.4.4: 公告页
 require_once get_template_directory() . '/inc/article-cover.php'; // v1.4.6: 文章头图（边栏模块模糊背景）
 require_once get_template_directory() . '/inc/site-stats.php';    // v1.4.8: 站点统计（访问人数、运行时间、汇总）
+require_once get_template_directory() . '/inc/config-io.php';     // v1.4.9: 配置导出/导入（JSON）
 
 // 1.（已移除）自定义文章类型
 // Sphotography now uses native WordPress posts exclusively. Articles are

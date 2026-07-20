@@ -2359,8 +2359,9 @@
 
     function animateWindowsOpen(postId) {
         clearMotion();
-        // v1.4.8 (item 2): opened from the expand-page — no FLIP-from-card; the
-        // panel simply slides in from the right (CSS on .article-panel--in-expand).
+        // v1.4.9 (item 6): opened inside the expand-page — no FLIP-from-card. The panel
+        // is reparented + filled via .article-panel--in-screen; the SCREEN push handles
+        // the motion, so we just mark it active (in-screen forces it visible).
         if (state.expandArticleMode) {
             dom.articlePanel.classList.add('active');
             return;
@@ -2397,22 +2398,8 @@
 
     function animateWindowsClose(postId, onDone) {
         clearMotion();
-        // v1.4.8 (item 2): in-expand article slides out to the right, then the mode
-        // + class are cleared so the panel reverts to its normal behaviour.
-        if (state.expandArticleMode) {
-            dom.articlePanel.classList.remove('active');
-            var panel = dom.articlePanel;
-            setTimeout(function () {
-                if (!state.expandArticleMode) return; // re-opened meanwhile
-                if (!state.articleOpen) {
-                    panel.classList.remove('article-panel--in-expand');
-                    document.body.classList.remove('expand-article-open');
-                    state.expandArticleMode = false;
-                }
-            }, 460);
-            if (onDone) onDone();
-            return;
-        }
+        // v1.4.9 (item 6): in-expand articles are closed via popExpandArticle() (routed
+        // from closeArticlePanel before we get here), so no special branch is needed.
         var geom = getPostCardGeometry(postId);
         if (!geom || state.isMobile || prefersReducedMotion()) {
             dom.articlePanel.classList.remove('active');
@@ -2584,10 +2571,10 @@
         hideArticleNav();
         // v1.4.4 (item 2): stop watching content height once the panel closes.
         if (state.readingTailRO) { try { state.readingTailRO.disconnect(); } catch (e) {} state.readingTailRO = null; }
-        // v1.4.8 (item 2): in-expand articles always slide out via animateWindowsClose
-        // (which also clears the mode + class), regardless of source-card geometry.
+        // v1.4.9 (item 6): an in-expand article pops back to the list screen inside the
+        // expand-page container (which stays open) — not the normal FLIP/slide close.
         if (state.expandArticleMode) {
-            animateWindowsClose(targetPostId);
+            popExpandArticle();
             return;
         }
         // Photograph articles have no source card — fall back to a plain fade.
@@ -6621,8 +6608,8 @@
     // ---------------------------------------------------------------
     var CURSOR_MAGNET_SEL = [
         '.panel-close-btn', '.announcement-close', '.side-panel-close', '.pw-detail-exit',
-        '#sidebar-toggle', '#sidebar-expand',
-        '.post-card',
+        '#sidebar-toggle', '#sidebar-expand', '.sidebar-expandpage-btn',
+        '.post-card', '.expand-card',
         '#sidebar-search-input', '#sidebar-filter-btn', '.filter-chip', '.filter-clear',
         '.comment-input', '.comment-author', '.comment-email', '.comment-textarea',
         '.comment-captcha-input',
@@ -6904,6 +6891,9 @@
         if (EXPAND.open) return;
         // Mutually exclusive with the simple profile panel.
         if (state._closeSidebarProfile) state._closeSidebarProfile();
+        // v1.4.9 (item 6): global exclusivity — a normal (sidebar-opened) article and the
+        // expand-page must never coexist. Close any open article first.
+        if (state.articleOpen && !state.expandArticleMode) closeArticlePanel();
         if (!state.sidebarOpen) openSidebar();
         EXPAND.open = true;
         var page = dom.expandPage, btn = dom.sidebarExpandPageBtn;
@@ -6995,23 +6985,38 @@
 
     function buildExpandCard(post) {
         var coverUrl = post.sp_cover || '';
+        var hasCover = !!coverUrl;
         var card = document.createElement('button');
         card.type = 'button';
-        card.className = 'expand-card' + (coverUrl ? ' has-cover' : ' expand-card--plain');
+        card.className = 'expand-card' + (hasCover ? ' has-cover' : ' expand-card--plain');
         card.dataset.postId = post.id;
         var dateStr = post.date ? formatDate(post.date.split('T')[0]) : '';
         var wc = getPostWordCount(post);
         var metaExtra = (wc != null) ? '<span>' + formatCount(wc) + ' 字</span>' : '';
+        var titleText = stripHtml((post.title && post.title.rendered) || '').trim();
         var excerptText = stripHtml((post.excerpt && post.excerpt.rendered) || '').trim();
-        var excerptHtml = excerptText ? '<div class="expand-card-excerpt">' + escapeHtml(excerptText) + '</div>' : '';
+
+        // v1.4.9 (item 3): 卡片大小不对等——由（摘要+标题文本长度）+ 有无封面连续线性决定
+        // 卡片高度，使瀑布流错落有致。CSS 列布局本身已错开左右列，高度变化放大这种错落。
+        var textLen = titleText.length + excerptText.length;
+        var f = Math.max(0, Math.min(1, textLen / 520)); // 0..1 连续
+        var minH = hasCover ? Math.round(168 + f * 188)   // 有封面：168..356
+                            : Math.round(104 + f * 168);  // 无封面（无色模块）：104..272
+        // 摘要行数也随尺寸线性增长，长文展示更多。
+        var lines = hasCover ? (2 + Math.round(f * 3)) : (3 + Math.round(f * 4));
+        var excerptHtml = excerptText
+            ? '<div class="expand-card-excerpt" style="-webkit-line-clamp:' + lines + '">' + escapeHtml(excerptText) + '</div>'
+            : '';
+
+        card.style.minHeight = minH + 'px';
         card.innerHTML = ''
-            + (coverUrl ? '<div class="expand-card-cover"></div><div class="expand-card-scrim"></div>' : '')
+            + (hasCover ? '<div class="expand-card-cover"></div><div class="expand-card-scrim"></div>' : '')
             + '<div class="expand-card-body">'
-            + '<div class="expand-card-title">' + escapeHtml((post.title && post.title.rendered) || '') + '</div>'
+            + '<div class="expand-card-title">' + escapeHtml(titleText) + '</div>'
             + excerptHtml
             + '<div class="expand-card-meta"><span>' + escapeHtml(dateStr) + '</span>' + metaExtra + '</div>'
             + '</div>';
-        if (coverUrl) {
+        if (hasCover) {
             var coverEl = card.querySelector('.expand-card-cover');
             if (coverEl) coverEl.style.backgroundImage = 'url("' + String(coverUrl).replace(/"/g, '%22') + '")';
         }
@@ -7019,13 +7024,35 @@
         return card;
     }
 
-    // ---- In-expand article view (reuse #article-panel + slide) ----
+    // ---- In-expand article view (v1.4.9 item 6): reparent the real #article-panel
+    // into the expand-page's article screen and push-slide to it. Mutually exclusive
+    // with the list screen; the animation happens INSIDE the expand-page container. ----
     function openArticleInExpandPage(postId) {
+        var slot = document.getElementById('expand-page-article-slot');
+        if (!slot) return;
         state.expandArticleMode = true;
-        dom.articlePanel.classList.add('article-panel--in-expand');
+        dom.articlePanel.classList.add('article-panel--in-screen');
+        slot.appendChild(dom.articlePanel);              // reparent into screen B
         document.body.classList.add('expand-article-open'); // lift nav overlay above the page
-        // Start off-screen (right); openArticle() will add .active → slides in.
-        openArticle(postId);
+        dom.expandPage.classList.add('showing-article');  // list slides left / article slides in
+        openArticle(postId);                              // full render pipeline
+        // Re-sync the body-mounted nav overlay + TOC to the panel rect after the slide.
+        setTimeout(function () {
+            if (typeof syncArticleNavGeom === 'function') syncArticleNavGeom();
+            if (dom.articleTocBar && typeof layoutToc === 'function') layoutToc(true);
+        }, 460);
+    }
+
+    // Pop back to the list screen: slide screens back, then move the panel home.
+    function popExpandArticle() {
+        var page = dom.expandPage, panel = dom.articlePanel;
+        page.classList.remove('showing-article');
+        setTimeout(function () {
+            panel.classList.remove('article-panel--in-screen', 'active');
+            document.body.appendChild(panel);            // move #article-panel back to body
+            document.body.classList.remove('expand-article-open');
+            state.expandArticleMode = false;
+        }, 460);
     }
 
     // ---- Rich stats panel ----
@@ -7035,16 +7062,21 @@
         renderStatsPanel();
         wrap.classList.add('stats-open');
         panel.setAttribute('aria-hidden', 'false');
-        // Fill the sidebar above the profile row, but never overflow its top: cap to
-        // the space between the profile bar and the sidebar's inner top (inner list
-        // scrolls if the content is taller).
+        // v1.4.9 (item 4): measure the inner's NATURAL height (it no longer carries a
+        // max-height:100% that used to clamp to the collapsed panel and read ~0). Fill
+        // the sidebar above the profile row, capped to the space between the profile bar
+        // and the sidebar's inner top; the inner scrolls if taller than the cap.
+        var inner = panel.querySelector('.stats-panel-inner');
+        var contentH = inner ? inner.scrollHeight : panel.scrollHeight;
         var sidebar = document.getElementById('sidebar');
         var bar = wrap.querySelector('.sidebar-profile-bar');
-        var avail = panel.scrollHeight;
+        var avail = contentH;
         if (sidebar && bar) {
             avail = Math.max(160, bar.getBoundingClientRect().bottom - (sidebar.getBoundingClientRect().top + 12));
         }
-        panel.style.maxHeight = Math.min(panel.scrollHeight, avail) + 'px';
+        var target = Math.min(contentH, avail);
+        panel.style.maxHeight = target + 'px';
+        if (inner) inner.style.maxHeight = target + 'px';
     }
     function closeStatsPanel() {
         var wrap = dom.sidebarProfile, panel = dom.sidebarStatsPanel;
@@ -7052,6 +7084,8 @@
         wrap.classList.remove('stats-open');
         panel.setAttribute('aria-hidden', 'true');
         panel.style.maxHeight = '';
+        var inner = panel.querySelector('.stats-panel-inner');
+        if (inner) inner.style.maxHeight = '';
         if (EXPAND.uptimeTimer) { clearInterval(EXPAND.uptimeTimer); EXPAND.uptimeTimer = null; }
     }
 
