@@ -467,10 +467,18 @@ function sphotography_geo_features_for_ids( $ids ) {
 }
 
 /**
- * Number of distinct "lit" administrative regions across all indexed photos:
- * distinct province/state adcodes plus distinct China city adcodes. A China
- * photo lights up both its province and its city, so both are counted.
- * Cached per request.
+ * Number of distinct "lit" administrative regions across all indexed photos —
+ * counted AT THE ACTIVE COLOURING GRANULARITY so it matches exactly what the map
+ * colours (and the sidebar stats pie), using the same rule as the frontend's
+ * regionIdForPhoto():
+ *   • province granularity: each photo counts its province/state → distinct provs.
+ *   • city granularity:     China photos (which store BOTH prov + city) count
+ *                           their CITY; photos WITHOUT a city (foreign province/
+ *                           state) count their PROV — never both.
+ *
+ * v1.4.9 fix: the old implementation summed distinct(prov) + distinct(city),
+ * which double-counted every China photo (it stores a province AND a city), so
+ * e.g. 7 photos across 4 regions read as 6. Cached per request.
  *
  * @return int
  */
@@ -480,15 +488,34 @@ function sphotography_lit_region_count() {
         return $cached;
     }
     global $wpdb;
-    $prov = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(DISTINCT meta_value) FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> ''",
-        SPHOTOGRAPHY_META_PROV
-    ) );
-    $city = (int) $wpdb->get_var( $wpdb->prepare(
+
+    $granularity = function_exists( 'sphotography_get_mod' ) ? sphotography_get_mod( 'region_granularity' ) : 'province';
+
+    if ( 'city' !== $granularity ) {
+        // Province granularity: every photo lights its province/state.
+        $cached = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(DISTINCT meta_value) FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> ''",
+            SPHOTOGRAPHY_META_PROV
+        ) );
+        return $cached;
+    }
+
+    // City granularity: distinct China cities, plus distinct provinces of photos
+    // that have NO city (foreign province/state). Disjoint sets → safe to add.
+    $cities = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(DISTINCT meta_value) FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> ''",
         SPHOTOGRAPHY_META_CITY
     ) );
-    $cached = $prov + $city;
+    $foreign_provs = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(DISTINCT p.meta_value)
+         FROM {$wpdb->postmeta} p
+         LEFT JOIN {$wpdb->postmeta} c
+                ON c.post_id = p.post_id AND c.meta_key = %s AND c.meta_value <> ''
+         WHERE p.meta_key = %s AND p.meta_value <> '' AND c.post_id IS NULL",
+        SPHOTOGRAPHY_META_CITY,
+        SPHOTOGRAPHY_META_PROV
+    ) );
+    $cached = $cities + $foreign_provs;
     return $cached;
 }
 

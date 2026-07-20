@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.8
+Version: 1.4.9
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -1072,6 +1072,9 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     display: flex;
     align-items: center;
     gap: 6px;
+    /* v1.4.9 (item 5)：右内边距 6px，使右端展开按钮与页脚 GitHub 图标（页脚右内边距 10px、
+       个人信息区 margin 4px → 4+6=10）在同一竖直中线上下对齐。 */
+    padding-right: 6px;
 }
 .sidebar-profile-bar .sidebar-profile-row {
     flex: 1 1 auto;
@@ -1079,8 +1082,8 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 }
 .sidebar-expandpage-btn {
     flex: 0 0 auto;
-    width: 34px;
-    height: 34px;
+    width: var(--btn-m); /* v1.4.9 (item 5)：尺寸与 GitHub 按钮一致，右端对齐后中线重合 */
+    height: var(--btn-m);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1148,7 +1151,9 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    max-height: 100%;
+    /* v1.4.9 (item 4): NO max-height here. When the panel is collapsed (max-height:0),
+       a max-height:100% inner clamped to 0, so panel.scrollHeight read ~0 and the panel
+       never expanded. JS now sets the inner's max-height inline to the capped height. */
     box-sizing: border-box;
 }
 .stats-panel-inner::-webkit-scrollbar { width: 0; height: 0; }
@@ -1250,11 +1255,11 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     color: var(--text-primary);
 }
 .expand-page-search-field {
+    /* v1.4.9 (item 8)：搜索栏加长，填满标题与关闭按钮之间的空间，两侧留均衡间距。 */
     flex: 1 1 auto;
     position: relative;
     min-width: 0;
-    max-width: 320px;
-    margin: 0 auto 0 8px;
+    margin: 0 14px;
 }
 .expand-page-search-input {
     width: 100%;
@@ -1280,26 +1285,28 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     scrollbar-width: none;
     -ms-overflow-style: none;
     column-count: 2;
-    column-gap: 14px;
-    padding: 8px 20px 20px;
+    column-gap: 18px;
+    padding: 10px 22px 22px;
     /* 上下边框模糊过渡，与其他面板一致 */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
             mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
 }
 .expand-page-grid::-webkit-scrollbar { width: 0; height: 0; }
-.expand-page-grid.cols-3 { column-count: 3; }
+.expand-page-grid.cols-3 { column-count: 3; column-gap: 18px; }
 .expand-page-empty { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
 
+/* v1.4.9 (item 3)：卡片整体加大、留白更足；高度由 JS 按文本长度+有无封面连续设定（inline
+   min-height），body 以 flex 填满卡片高度，文本沉底，封面铺满——形成错落有致的瀑布流。 */
 .expand-card {
-    display: block;
+    display: flex;
     width: 100%;
     break-inside: avoid;
-    margin: 0 0 14px;
+    margin: 0 0 18px;
     padding: 0;
     position: relative;
-    min-height: 120px;
+    min-height: 150px;
     border: 1px solid var(--color-border);
-    border-radius: calc(var(--panel-radius) * 0.7);
+    border-radius: calc(var(--panel-radius) * 0.75);
     overflow: hidden;
     background: var(--color-surface);
     color: inherit;
@@ -1317,31 +1324,53 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 }
 .expand-card:hover .expand-card-cover { transform: scale(1.18); }
 .expand-card-scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,8,10,0.82), rgba(8,8,10,0.42) 60%, rgba(8,8,10,0.28)); }
-.expand-card-body { position: relative; z-index: 1; padding: 16px 16px 14px; min-height: 120px; display: flex; flex-direction: column; justify-content: flex-end; }
+.expand-card-body { position: relative; z-index: 1; flex: 1 1 auto; width: 100%; box-sizing: border-box; padding: 18px 18px 16px; display: flex; flex-direction: column; justify-content: flex-end; }
 .expand-card.has-cover .expand-card-title { color: #fff; }
 .expand-card.has-cover .expand-card-meta { color: rgba(255,255,255,0.78); }
 /* 无封面：无色模块（不加主题色调） */
-.expand-card--plain .expand-card-body { min-height: 92px; }
 .expand-card--plain .expand-card-title { color: var(--text-primary); }
 .expand-card--plain .expand-card-meta { color: var(--text-muted); }
-.expand-card-title { font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; line-height: 1.35; }
-.expand-card-excerpt { margin-top: 6px; font-size: 0.78rem; line-height: 1.5; opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.expand-card-meta { margin-top: 8px; font-size: 0.72rem; display: flex; gap: 10px; }
+.expand-card-title { font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; line-height: 1.35; }
+.expand-card-excerpt { margin-top: 8px; font-size: 0.8rem; line-height: 1.55; opacity: 0.92; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.expand-card-meta { margin-top: 10px; font-size: 0.72rem; display: flex; gap: 10px; }
 
-/* 展开页内打开文章：复用真实文章面板，叠于展开页之上，从右到左滑入、从左到右滑出 */
-.article-panel.article-panel--in-expand {
-    z-index: 210;
-    transform: translateX(105%);
-    transition: transform 440ms var(--ease-out-expo), opacity 200ms ease;
-    opacity: 1;
-    pointer-events: none;
+/* v1.4.9 (item 6)：两屏推进容器。列表屏与文章屏绝对定位铺满展开页，通过 translateX 推进切换；
+   二者互斥（同一时刻只见一屏）。文章从容器内部滑入/滑出，而非叠在展开页之上。 */
+.expand-page-screen {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    transition: transform 440ms var(--ease-out-expo);
 }
-.article-panel.article-panel--in-expand.active {
+.expand-page-screen--list {
+    display: flex;
+    flex-direction: column;
     transform: translateX(0);
-    pointer-events: auto;
 }
-/* Lift the body-mounted nav overlay (close / scroll buttons) above the in-expand
-   article (z 210) and the expand-page (z 200). */
+.expand-page-screen--article {
+    transform: translateX(100%);
+}
+.expand-page.showing-article .expand-page-screen--list { transform: translateX(-100%); }
+.expand-page.showing-article .expand-page-screen--article { transform: translateX(0); }
+
+/* 迁入文章屏的真实 #article-panel：撑满该屏（覆盖其 fixed 定位），随屏一起推进。 */
+.article-panel.article-panel--in-screen {
+    position: absolute;
+    inset: 0;
+    left: 0; top: 0; right: 0; bottom: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    z-index: auto;
+    transform: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+/* Lift the body-mounted nav overlay (close / scroll buttons / TOC) above the
+   expand-page (z 200) while an article is shown inside it. */
 body.expand-article-open .article-nav-overlay { z-index: 216; }
 
 @media (max-width: 767px) {
@@ -1353,8 +1382,6 @@ body.expand-article-open .article-nav-overlay { z-index: 216; }
     .expand-page-grid, .expand-page-grid.cols-3 { column-count: 1; }
     .expand-page-header { flex-wrap: wrap; }
     .expand-page-search-field { order: 3; max-width: none; width: 100%; margin: 8px 0 0; }
-    .article-panel.article-panel--in-expand { transform: translateX(0); }
-    .article-panel.article-panel--in-expand:not(.active) { opacity: 0; transform: translateY(16px); }
 }
 
 /* ============================================
@@ -3687,8 +3714,8 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
 .announcement-header {
     /* v1.4.8 (item 5)：标题独占一行，与正文拉开更明确的间距。分隔线 + 充足下外边距，
        避免正文首行（尤其当正文以标题/加粗大标题开头时）紧贴「公告」标题。 */
-    margin: 0 0 18px;
-    padding: 0 48px 14px 0;
+    margin: 0 0 28px;
+    padding: 0 48px 16px 0;
     text-align: left;
     /* 一条淡分隔线把「公告」标题与下方正文清晰分成两块 */
     border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.16));
@@ -3716,7 +3743,7 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
 .announcement-content::-webkit-scrollbar { width: 0; height: 0; }
 /* v1.4.8 (item 5)：不再把正文首个元素的上外边距清零——当正文以标题/加粗大标题开头时，
    保留其自然上间距，使其与「公告」标题之间留有呼吸空间，不再挤在一起。仅保证一个最小上间距。 */
-.announcement-content > :first-child { margin-top: 6px; }
+.announcement-content > :first-child { margin-top: 14px; }
 .announcement-content > :last-child { margin-bottom: 0; }
 .announcement-content h3, .announcement-content h4, .announcement-content h5 {
     color: var(--text-primary);

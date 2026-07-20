@@ -1697,6 +1697,46 @@ function sphotography_render_settings_page() {
                 <?php echo sphotography_render_guestbook_board(); ?>
             <?php endif; ?>
         </section><!-- /.sp-cat-card 社交 -->
+
+        <?php // v1.4.9 (item 1)：配置导出/导入。独立于设置表单，直接 POST 到 admin-post.php。 ?>
+        <section class="sp-cat-card" id="sp-cat-config-io">
+            <h2 class="sp-cat-card-title"><span class="sp-cat-card-icon dashicons dashicons-database-export"></span><?php _e( '配置备份', 'sphotography' ); ?></h2>
+            <div class="sphotography-module-body">
+                <p class="sphotography-desc" style="margin-bottom:14px;">
+                    <?php _e( '将全部主题设置、API 密钥、友链、留言板设置与地区标签颜色导出为 JSON 文件；在新的 WordPress 上安装本主题后导入该文件，即可一键恢复配置。', 'sphotography' ); ?>
+                </p>
+
+                <!-- 导出 -->
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-bottom:18px;">
+                    <input type="hidden" name="action" value="sphotography_export_config">
+                    <?php wp_nonce_field( 'sphotography_config_io', 'sphotography_config_nonce' ); ?>
+                    <label class="sphotography-label" style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:10px;">
+                        <input type="checkbox" name="include_keys" value="1" checked>
+                        <?php _e( '包含 API 密钥（明文）', 'sphotography' ); ?>
+                    </label>
+                    <p class="sphotography-desc" style="margin:0 0 10px;color:#b26b00;">
+                        <span class="dashicons dashicons-warning" style="font-size:15px;width:15px;height:15px;"></span>
+                        <?php _e( '注意：勾选后导出的文件将以明文包含你的 API 密钥，请妥善保管、切勿公开分享。', 'sphotography' ); ?>
+                    </p>
+                    <button type="submit" class="button button-secondary button-large">
+                        <span class="dashicons dashicons-download"></span>
+                        <?php _e( '导出配置', 'sphotography' ); ?>
+                    </button>
+                </form>
+
+                <!-- 导入 -->
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" enctype="multipart/form-data"
+                      onsubmit="return confirm('<?php echo esc_js( __( '导入将覆盖当前主题配置（设置、API 密钥、友链、留言板、地区颜色），是否继续？', 'sphotography' ) ); ?>');">
+                    <input type="hidden" name="action" value="sphotography_import_config">
+                    <?php wp_nonce_field( 'sphotography_config_io', 'sphotography_config_nonce' ); ?>
+                    <input type="file" name="config_file" accept="application/json,.json" required style="margin-bottom:10px;display:block;">
+                    <button type="submit" class="button button-primary button-large">
+                        <span class="dashicons dashicons-upload"></span>
+                        <?php _e( '导入配置', 'sphotography' ); ?>
+                    </button>
+                </form>
+            </div>
+        </section><!-- /.sp-cat-card 配置备份 -->
         </div><!-- /.sphotography-settings-main -->
 
         <!-- ============================================ -->
@@ -1975,22 +2015,23 @@ function sphotography_admin_enqueue_settings( $hook ) {
         }
         .sphotography-toc-search-ico {
             position: absolute;
-            left: 9px;
+            left: 11px;
             top: 50%;
             transform: translateY(-50%);
             color: var(--sp-text-muted);
-            font-size: 16px;
-            width: 16px;
-            height: 16px;
-            line-height: 16px;
+            /* v1.4.9 (item 9): 固定图标尺寸（覆盖 dashicons 默认 20px），避免字形超出图标盒撞到文字 */
+            font-size: 16px !important;
+            width: 18px !important;
+            height: 18px !important;
+            line-height: 18px !important;
             text-align: center;
             pointer-events: none;
         }
-        /* v1.4.7 (item 9): 左内边距加大，让占位/输入文字避开放大镜图标，不再重叠 */
+        /* v1.4.9 (item 9): 左内边距再加大，让占位/输入文字彻底避开放大镜图标，不再重叠 */
         .sphotography-toc-search-input {
             width: 100%;
             box-sizing: border-box;
-            padding: 7px 10px 7px 34px;
+            padding: 7px 10px 7px 40px;
             border: 1px solid var(--sp-border);
             border-radius: 8px;
             background: var(--sp-surface-2);
