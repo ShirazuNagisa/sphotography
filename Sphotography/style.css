@@ -4,7 +4,7 @@ Theme URI: https://example.com/sphotography
 Author: Shirazu Nagisa
 Author URI: https://example.com
 Description: A fullscreen map-based photography theme with article sidebar and photo grid.
-Version: 1.4.6
+Version: 1.4.7
 License: GPL v2 or later
 Text Domain: sphotography
 */
@@ -90,6 +90,21 @@ Text Domain: sphotography
 body.sphotography-font-wordpress {
     --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
     --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+}
+
+/* v1.4.7 (item 6): 苹方 PingFang — Apple 系统原生无衬线。仅在 macOS/iOS/iPadOS
+   上真正渲染为苹方，其余平台优雅回退到系统无衬线（微软雅黑等）。苹方受版权保护，
+   不可内嵌为网页字体，故为系统字体栈。 */
+body.sphotography-font-pingfang {
+    --font-display: "PingFang SC", "PingFang TC", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "Hiragino Sans GB", "Segoe UI", sans-serif;
+    --font-body: "PingFang SC", "PingFang TC", -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "Hiragino Sans GB", "Segoe UI", sans-serif;
+}
+
+/* v1.4.7 (item 6): 宋体 Songti — 跨平台系统宋体（Mac 的 Songti SC、Windows 的
+   SimSun/NSimSun），以 Noto Serif SC 作为通用回退，任意平台皆可显示衬线宋体风格。 */
+body.sphotography-font-songti {
+    --font-display: "Songti SC", "STSong", "SimSun", "NSimSun", "Noto Serif SC", Georgia, serif;
+    --font-body: "Songti SC", "STSong", "SimSun", "NSimSun", "Noto Serif SC", Georgia, "Times New Roman", serif;
 }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -1115,13 +1130,14 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 /* ============================================
    v1.4.6 (item 10): In-article TOC bar + index region
    ============================================ */
-/* Thin rounded vertical bar hugging the article panel's right edge. left/top/
-   height are set by JS (syncArticleNavGeom) to the live panel rect. Glass +
-   theme match the article panel. */
+/* v1.4.7 (item 2): the collapsed index bar is a fuller rounded pill, TOP-ANCHORED
+   near the panel's top-right and only as tall as the collapsed index (JS sets
+   top/left/height). Widened so it reads as solid. It fades out while the region
+   is open, so the region visually IS the bar extended to the right. */
 .article-toc-bar {
     position: fixed;
     z-index: 205; /* above map controls; below the region */
-    width: 14px;
+    width: 18px;
     padding: 0;
     border: var(--panel-border);
     background: var(--glass-elevated-bg);
@@ -1137,27 +1153,31 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     pointer-events: none;
     transform: translateX(6px);
     transition:
-        opacity 220ms var(--ease-out-expo),
-        transform 220ms var(--ease-out-expo),
-        width 200ms var(--ease-out-expo),
+        opacity 200ms var(--ease-out-expo),
+        transform 200ms var(--ease-out-expo),
+        width 160ms var(--ease-out-expo),
         background 160ms ease;
 }
 .article-toc-bar.is-active:not(.is-hidden) { opacity: 1; pointer-events: auto; transform: translateX(0); }
 .article-toc-bar.is-hidden { display: none; }
-.article-toc-bar:hover,
-.article-toc-bar.is-active.is-open { background: var(--color-surface-hover); width: 16px; }
+.article-toc-bar:hover { background: var(--color-surface-hover); width: 20px; }
+/* While the region is open the bar disappears (the region takes its place). */
+.article-toc-bar.is-open { opacity: 0 !important; pointer-events: none; }
 .article-toc-bar-grip {
     display: block;
-    width: 3px;
-    height: 28px;
+    width: 4px;
+    height: 30px;
+    max-height: 60%;
     border-radius: 999px;
     background: var(--primary);
     opacity: 0.72;
 }
 
-/* The expanded index region sits on the top layer above every page. Desktop
-   geometry (top/left/height/width) is set by JS beside the bar; mobile is a
-   side sheet handled by the media query below. */
+/* v1.4.7 (item 2/2E): the expanded index. It shares the bar's exact top-left and
+   animates its WIDTH from the bar's width out to full (extends rightward) and its
+   HEIGHT from the collapsed size to the content size (unfurls downward). Closing
+   reverses both, narrowing back into the bar. JS sets top/left/width/height; the
+   width/height transitions produce the morph. Sits above the page. */
 .article-toc-region {
     position: fixed;
     z-index: 9998;
@@ -1170,15 +1190,24 @@ body.sidebar-collapsed .sidebar-expand-avatar {
     box-shadow: var(--shadow-elevated);
     overflow: hidden;
     opacity: 0;
-    transform: translateX(-8px) scale(0.98);
-    transform-origin: left center;
+    transform-origin: left top;
     pointer-events: none;
     transition:
-        opacity 240ms var(--ease-out-expo),
-        transform 240ms var(--ease-out-expo);
+        width 280ms var(--ease-out-expo),
+        height 280ms var(--ease-out-expo),
+        opacity 180ms ease;
 }
-.article-toc-region.is-open { opacity: 1; transform: translateX(0) scale(1); pointer-events: auto; }
-.article-toc-region-inner { display: flex; flex-direction: column; height: 100%; padding: 14px 8px 10px 12px; }
+.article-toc-region.is-open { opacity: 1; pointer-events: auto; }
+/* Inner content fades/slides in slightly after the box starts widening, so the
+   morph reads as the bar growing rather than text popping. */
+.article-toc-region-inner {
+    display: flex; flex-direction: column; height: 100%;
+    min-width: 180px;              /* keep text from reflowing during the width morph */
+    padding: 14px 8px 10px 12px;
+    opacity: 0;
+    transition: opacity 160ms ease 90ms;
+}
+.article-toc-region.is-open .article-toc-region-inner { opacity: 1; }
 .article-toc-title {
     flex: 0 0 auto;
     font-size: 0.72rem;
@@ -1239,22 +1268,23 @@ body.sidebar-collapsed .sidebar-expand-avatar {
 }
 .article-toc-group.is-collapsed > .article-toc-children { max-height: 0; opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
-    .article-toc-bar, .article-toc-region, .article-toc-children, .article-toc-chevron { transition: none; }
+    .article-toc-bar, .article-toc-region, .article-toc-region-inner,
+    .article-toc-children, .article-toc-chevron { transition: none; }
 }
-/* Mobile: the full-height side bar becomes a compact floating toggle and the
-   region becomes a right-side sheet. JS skips inline geometry when isMobile. */
+/* Mobile: the bar is a compact floating toggle and the region a right-side sheet.
+   JS skips the desktop morph geometry when isMobile, so fixed geometry here wins. */
 @media (max-width: 767px) {
     .article-toc-bar {
         left: auto !important;
         right: 12px;
         top: 50% !important;
         height: 46px !important;
-        width: 40px;
+        width: 40px !important;
         border-radius: 14px;
         transform: translate(6px, -50%);
     }
     .article-toc-bar.is-active:not(.is-hidden) { transform: translate(0, -50%); }
-    .article-toc-bar:hover, .article-toc-bar.is-active.is-open { width: 40px; }
+    .article-toc-bar:hover { width: 40px !important; }
     .article-toc-bar-grip { width: 16px; height: 3px; }
     .article-toc-region {
         left: auto !important;
@@ -1263,7 +1293,9 @@ body.sidebar-collapsed .sidebar-expand-avatar {
         height: auto !important;
         max-height: calc(100vh - 128px) !important;
         width: min(320px, 84vw) !important;
+        transition: opacity 200ms ease !important;
     }
+    .article-toc-region-inner { min-width: 0; }
 }
 
 .article-nav-btn {
@@ -2971,13 +3003,17 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     pointer-events: none;
     will-change: transform;
 }
-/* Idle arrow — grey translucent fill + theme ring, soft shadow reads as frosted. */
+/* v1.4.7 (item 7): idle cursor is an iPadOS-style soft round dot — theme-tinted
+   translucent fill + subtle theme ring, soft shadow reads as frosted. Centred on
+   the pointer hotspot (margin = -half its size). No sharp corners. */
 .sp-cursor-arrow {
-    width: 26px; height: 26px;
-    margin: -4px 0 0 -5px; /* align the SVG tip (path starts at 5,4) to the hotspot */
-    color: var(--primary); /* drives the SVG stroke (currentColor) */
+    width: 24px; height: 24px;
+    margin: -12px 0 0 -12px; /* centre the dot on the pointer hotspot */
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+    border: 1.5px solid color-mix(in srgb, var(--primary) 60%, transparent);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
     opacity: 0;
-    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.28));
     transition: opacity 180ms ease;
 }
 .sp-cursor-arrow svg { display: block; }
@@ -3437,7 +3473,7 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     display: flex;
     flex-direction: column;
     max-height: min(60vh, calc(100vh - 120px));
-    padding: 18px 22px 18px; /* v1.4.6 (item 2): 加大内边距，四周留白更通透，避免文字贴边被圆角/边框裁切 */
+    padding: 20px 24px 20px; /* v1.4.7 (item 1): 内边距再放宽，四周留白更通透 */
     border-radius: var(--panel-radius);
     background: var(--glass-elevated-bg);
     backdrop-filter: var(--glass-elevated-blur);
@@ -3457,13 +3493,22 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     opacity: 1;
     pointer-events: auto;
 }
-/* v1.4.6 (item 2): 标题右侧留足关闭按钮空间(36px)，标题与正文间距放宽，防止关闭键压住标题文字 */
-.announcement-header { margin: 0 0 12px; padding-right: 48px; }
+/* v1.4.7 (item 1): 标题「公告」独占一行、正文「欢迎」另起一行，二者拉开明显间距；
+   全部左对齐，放宽行高/字间距，避免文字上下堆叠拥挤。标题右侧留足关闭按钮空间。 */
+.announcement-header {
+    margin: 0 0 14px;
+    padding: 0 48px 12px 0;
+    text-align: left;
+    /* 一条淡分隔线把「公告」标题与下方正文清晰分成两块 */
+    border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.16));
+}
 .announcement-header h3 {
     margin: 0;
     font-family: var(--font-display);
-    font-size: 1rem;
-    line-height: 1.4;
+    font-size: 1.05rem;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    text-align: left;
     color: var(--text-primary);
 }
 .announcement-content {
@@ -3472,7 +3517,9 @@ body.sp-rounded-cursor-on [contenteditable]:focus { cursor: text !important; }
     -ms-overflow-style: none;
     color: var(--text-secondary);
     font-size: 0.9rem;
-    line-height: 1.8; /* v1.4.6: 行距由 1.7→1.8，阅读更舒展 */
+    line-height: 1.9;          /* v1.4.7: 行距再放宽，阅读更舒展 */
+    letter-spacing: 0.01em;    /* v1.4.7: 轻微字间距，避免密排 */
+    text-align: left;          /* v1.4.7: 明确左对齐 */
     padding-bottom: 2px;
 }
 .announcement-content::-webkit-scrollbar { width: 0; height: 0; }

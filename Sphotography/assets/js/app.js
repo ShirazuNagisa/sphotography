@@ -1815,8 +1815,13 @@
             if (coverUrl) {
                 card.classList.add('has-cover');
                 var coverEl = card.querySelector('.post-card-cover');
-                // Set via style (not innerHTML) so the URL can't break out of the attribute.
-                if (coverEl) coverEl.style.backgroundImage = 'url("' + String(coverUrl).replace(/"/g, '%22') + '")';
+                // v1.4.7 (item 8): lazy-load the cover — stash the URL and only set
+                // the background-image when the card scrolls into view, so a long
+                // article list doesn't fetch dozens of cover images up front.
+                if (coverEl) {
+                    coverEl.dataset.bg = String(coverUrl);
+                    observeSidebarCover(coverEl);
+                }
             }
 
             card.addEventListener('click', function(e) {
@@ -1830,6 +1835,31 @@
 
             dom.sidebarPosts.appendChild(card);
         });
+    }
+
+    // v1.4.7 (item 8): shared lazy-loader for sidebar cover backgrounds. The
+    // cover element carries its URL in data-bg; the observer paints it the moment
+    // the card nears the viewport (200px rootMargin so it's ready just before
+    // shown), then stops watching it. Falls back to eager paint where
+    // IntersectionObserver is unavailable.
+    function applySidebarCover(el) {
+        if (!el || !el.dataset || !el.dataset.bg) return;
+        el.style.backgroundImage = 'url("' + el.dataset.bg.replace(/"/g, '%22') + '")';
+        delete el.dataset.bg;
+    }
+    function observeSidebarCover(el) {
+        if (typeof IntersectionObserver === 'undefined') { applySidebarCover(el); return; }
+        if (!state.sidebarCoverObserver) {
+            state.sidebarCoverObserver = new IntersectionObserver(function (entries, obs) {
+                entries.forEach(function (entry) {
+                    if (entry.isIntersecting) {
+                        applySidebarCover(entry.target);
+                        obs.unobserve(entry.target);
+                    }
+                });
+            }, { root: dom.sidebarPosts || null, rootMargin: '200px 0px' });
+        }
+        state.sidebarCoverObserver.observe(el);
     }
 
     // Categories (WordPress 分类) attached to a post, from either the REST
@@ -3881,8 +3911,17 @@
     // click flies the background map to that photo's location.
     function wireArticleImages() {
         var root = dom.articleContent;
-        if (!root || state.isMobile) return;
+        if (!root) return;
         var imgs = root.querySelectorAll('img');
+        // v1.4.7 (item 8): defer in-article images — the browser only fetches each
+        // one as it nears the viewport instead of loading the whole article's
+        // media the instant it's opened. Applies on every device (runs before the
+        // desktop-only geo wiring below).
+        for (var k = 0; k < imgs.length; k++) {
+            if (!imgs[k].hasAttribute('loading')) imgs[k].setAttribute('loading', 'lazy');
+            if (!imgs[k].hasAttribute('decoding')) imgs[k].setAttribute('decoding', 'async');
+        }
+        if (state.isMobile) return;
         for (var i = 0; i < imgs.length; i++) {
             (function (img) {
                 var geo = photoGeoForImage(img);
@@ -4180,9 +4219,10 @@
             requestAnimationFrame(function () {
                 scheduled = false;
                 updateArticleNav();
-                // v1.4.6 (item 10): scrolling collapses the TOC region and keeps
-                // the current-section highlight fresh.
-                if (state.tocOpen) closeTocRegion();
+                // v1.4.7 (item 2D): the index now STAYS OPEN while scrolling (both
+                // manual scroll and the smooth jump from clicking an entry) — it
+                // only closes on bar re-click / outside click / Esc. We just keep
+                // the current-section highlight fresh here.
                 updateTocActive();
             });
         });
@@ -4204,14 +4244,10 @@
         overlay.style.top = r.top + 'px';
         overlay.style.width = r.width + 'px';
         overlay.style.height = r.height + 'px';
-        // v1.4.6 (item 10): glue the TOC bar just outside the panel's right edge,
-        // full panel height (desktop). Mobile placement is handled purely in CSS.
-        var bar = dom.articleTocBar;
-        if (bar && !state.isMobile) {
-            bar.style.left = (r.right + 6) + 'px';
-            bar.style.top = r.top + 'px';
-            bar.style.height = r.height + 'px';
-        }
+        // v1.4.7 (item 2): the TOC bar is no longer full panel height — it is a
+        // content-sized pill top-anchored at the panel's top-right. layoutToc()
+        // reads the live panel rect and (re)positions the bar + any open region.
+        if (dom.articleTocBar && !state.isMobile) layoutToc(false);
     }
 
     function hideArticleNav() {
@@ -4392,6 +4428,14 @@
         return region;
     }
 
+    // v1.4.7 (item 2) layout constants — the collapsed pill and the expanded
+    // region share the same top-left anchor at the panel's top-right corner.
+    var TOC_TOP_GAP = 8;        // bar/region start this far below the panel top
+    var TOC_SIDE_GAP = 8;       // gap from the panel's right edge
+    var TOC_BAR_W = 18;         // collapsed pill width (matches CSS)
+    var TOC_REGION_MIN_W = 180;
+    var TOC_REGION_MAX_W = 280;
+
     // Parse headings out of the freshly-written article body, (re)build the index
     // region, and show/hide the bar (hidden when the article has no headings).
     function refreshArticleToc() {
@@ -4412,6 +4456,8 @@
         if (headings.length === 0) { bar.classList.add('is-hidden'); return; }
         bar.classList.remove('is-hidden');
         renderTocRegion(headings);
+        // Measure the collapsed index height and size the bar to it (2C).
+        layoutToc(true);
     }
 
     function renderTocRegion(headings) {
@@ -4439,6 +4485,8 @@
         item.className = 'article-toc-item' + (isTop ? ' article-toc-item--top' : ' article-toc-item--child');
         item.style.paddingLeft = (14 + (h.level - minLevel) * 14) + 'px';
         item.textContent = h.text;
+        // Jump to the heading; the index STAYS OPEN (v1.4.7 item 2D) so you can
+        // keep navigating between sections.
         item.addEventListener('click', function (e) { e.stopPropagation(); gotoTocHeading(h); });
         h.itemEl = item;
         return item;
@@ -4446,7 +4494,10 @@
 
     function renderTocTopGroup(node, minLevel) {
         var group = document.createElement('div');
-        group.className = 'article-toc-group';
+        // v1.4.7 (item 2B/2C): groups start COLLAPSED so the initial index (and the
+        // bar sized to it) shows only top-level entries; expanding a group grows the
+        // region downward in real time.
+        group.className = 'article-toc-group is-collapsed';
         var hasKids = node.children.length > 0;
 
         var row = document.createElement('div');
@@ -4457,12 +4508,14 @@
             var chev = document.createElement('button');
             chev.type = 'button';
             chev.className = 'article-toc-chevron';
-            chev.setAttribute('aria-expanded', 'true');
+            chev.setAttribute('aria-expanded', 'false');
             chev.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
             chev.addEventListener('click', function (e) {
                 e.stopPropagation();
                 var collapsed = group.classList.toggle('is-collapsed');
                 chev.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                // Regrow/shrink the region to fit the new set of visible entries.
+                fitTocRegionHeight();
             });
             row.appendChild(chev);
         }
@@ -4482,6 +4535,66 @@
         return group;
     }
 
+    // Precise FINAL content height of the region regardless of any in-flight
+    // child-reveal transitions: title + each group's row (+ its children's natural
+    // scrollHeight when expanded) + inner padding + borders.
+    function tocContentHeight() {
+        var region = dom.articleTocRegion, list = dom.articleTocList;
+        if (!region || !list) return 0;
+        var h = 24 + 2; // inner vertical padding (14 + 10) + 1px top/bottom border
+        var titleEl = region.querySelector('.article-toc-title');
+        if (titleEl) h += titleEl.offsetHeight + 8; // + title padding-bottom
+        var groups = list.querySelectorAll('.article-toc-group');
+        for (var i = 0; i < groups.length; i++) {
+            var g = groups[i];
+            var rowEl = g.querySelector('.article-toc-row');
+            if (rowEl) h += rowEl.offsetHeight;
+            var kids = g.querySelector('.article-toc-children');
+            if (kids && !g.classList.contains('is-collapsed')) h += kids.scrollHeight;
+        }
+        return h;
+    }
+
+    // Size + position the bar (and, when open, the region) from the live panel
+    // rect. remeasure=true recomputes the collapsed index height (on (re)build /
+    // width change); scroll repositioning passes false and reuses the cached one.
+    function layoutToc(remeasure) {
+        var panel = dom.articlePanel, bar = dom.articleTocBar, region = dom.articleTocRegion;
+        if (!panel || !bar || state.isMobile) return;
+        var r = panel.getBoundingClientRect();
+        var top = r.top + TOC_TOP_GAP;
+        var left = r.right + TOC_SIDE_GAP;
+        var avail = Math.max(80, r.bottom - top - TOC_TOP_GAP);
+        var regionW = Math.max(TOC_REGION_MIN_W, Math.min(TOC_REGION_MAX_W, window.innerWidth - left - 12));
+        var cached = state.tocGeom ? state.tocGeom.collapsedH : avail;
+        state.tocGeom = { left: left, top: top, avail: avail, regionW: regionW, barW: TOC_BAR_W, collapsedH: cached };
+
+        if (remeasure && region) {
+            region.style.width = regionW + 'px'; // measure row wrapping at the open width
+            state.tocGeom.collapsedH = Math.min(tocContentHeight(), avail);
+        }
+        var collapsedH = Math.min(state.tocGeom.collapsedH || 120, avail);
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+        bar.style.height = collapsedH + 'px';
+
+        if (state.tocOpen && region) {
+            region.style.left = left + 'px';
+            region.style.top = top + 'px';
+            region.style.width = regionW + 'px';
+            fitTocRegionHeight();
+        }
+    }
+
+    // Animate the open region's height to fit its current entries, capped at the
+    // panel height (then the list scrolls internally). Leaves width alone so the
+    // rightward extend animation is never interrupted.
+    function fitTocRegionHeight() {
+        var region = dom.articleTocRegion, geom = state.tocGeom;
+        if (!region || !geom || state.isMobile || !state.tocOpen) return;
+        region.style.height = Math.min(tocContentHeight(), geom.avail) + 'px';
+    }
+
     function gotoTocHeading(h) {
         var panel = dom.articlePanel;
         if (!panel || !h || !h.el) return;
@@ -4490,7 +4603,7 @@
         var target = panel.scrollTop + (rect.top - panelRect.top) - 16;
         var max = panel.scrollHeight - panel.clientHeight;
         target = Math.max(0, Math.min(target, max));
-        closeTocRegion();
+        // v1.4.7 (item 2D): do NOT close — keep the index open while jumping.
         animateScroll(panel, panel.scrollTop, target, SP_NAV_SCROLL_MS);
         setTocActive(h);
     }
@@ -4500,12 +4613,41 @@
     function openTocRegion() {
         if (!state.tocHeadings || !state.tocHeadings.length) return;
         ensureTocRegion();
-        positionTocRegion();
+        var region = dom.articleTocRegion, bar = dom.articleTocBar;
+
+        if (state.isMobile) {
+            // Mobile: CSS pins the side sheet; just clear inline geometry + show.
+            region.style.left = region.style.top = region.style.width = region.style.height = '';
+            state.tocOpen = true;
+            region.classList.add('is-open');
+            updateTocActive();
+            bindTocDismiss();
+            return;
+        }
+
+        layoutToc(false);
+        var geom = state.tocGeom;
+        // Start collapsed at the bar (no transition), then animate outward — the
+        // region visually grows RIGHTWARD out of the bar (2E) and downward (2B).
+        region.style.transition = 'none';
+        region.style.left = geom.left + 'px';
+        region.style.top = geom.top + 'px';
+        region.style.width = geom.barW + 'px';
+        region.style.height = geom.collapsedH + 'px';
+        void region.offsetHeight; // commit the collapsed start
+        region.style.transition = '';
         state.tocOpen = true;
-        dom.articleTocRegion.classList.add('is-open');
-        if (dom.articleTocBar) dom.articleTocBar.classList.add('is-active');
+        region.classList.add('is-open');
+        if (bar) bar.classList.add('is-open'); // fade the bar out; region replaces it
+        region.style.width = geom.regionW + 'px';
+        fitTocRegionHeight();
         updateTocActive();
-        // Defer binding so the opening click itself doesn't immediately close it.
+        bindTocDismiss();
+    }
+
+    // Defer binding the dismiss listeners so the opening click doesn't instantly
+    // close it (the click's own pointer events would otherwise reach the handler).
+    function bindTocDismiss() {
         setTimeout(function () {
             document.addEventListener('pointerdown', tocOutsideHandler, true);
             document.addEventListener('keydown', tocEscHandler);
@@ -4516,9 +4658,19 @@
         state.tocOpen = false;
         document.removeEventListener('pointerdown', tocOutsideHandler, true);
         document.removeEventListener('keydown', tocEscHandler);
-        if (!dom.articleTocRegion) return;
-        dom.articleTocRegion.classList.remove('is-open');
-        if (dom.articleTocBar) dom.articleTocBar.classList.remove('is-active');
+        var region = dom.articleTocRegion, bar = dom.articleTocBar, geom = state.tocGeom;
+        if (!region) return;
+        if (!state.isMobile && geom && !immediate) {
+            // Reverse morph: narrow the region back into the bar (2E).
+            region.style.width = geom.barW + 'px';
+            region.style.height = geom.collapsedH + 'px';
+        }
+        region.classList.remove('is-open');
+        // v1.4.7 (item 2A/2D): the bar fades back in. Crucially we do NOT remove the
+        // bar's `is-active` here — that class is owned by the article-nav show/hide
+        // and is what keeps the bar visible + clickable. Removing it on close was
+        // why the index vanished and couldn't be re-opened.
+        if (bar) bar.classList.remove('is-open');
     }
 
     function tocOutsideHandler(e) {
@@ -4527,26 +4679,6 @@
         closeTocRegion();
     }
     function tocEscHandler(e) { if (e.key === 'Escape') closeTocRegion(); }
-
-    // Anchor the region beside the bar (desktop). On mobile CSS pins it as a side
-    // sheet, so we only clear inline geometry there.
-    function positionTocRegion() {
-        var region = dom.articleTocRegion, bar = dom.articleTocBar;
-        if (!region || !bar) return;
-        if (state.isMobile) {
-            region.style.top = ''; region.style.left = ''; region.style.height = '';
-            region.style.maxHeight = ''; region.style.width = '';
-            return;
-        }
-        var br = bar.getBoundingClientRect();
-        region.style.top = br.top + 'px';
-        region.style.height = br.height + 'px';
-        region.style.maxHeight = br.height + 'px';
-        var leftBase = br.right + 8;
-        region.style.left = leftBase + 'px';
-        var avail = window.innerWidth - leftBase - 12;
-        region.style.width = Math.max(180, Math.min(280, avail)) + 'px';
-    }
 
     function setTocActive(h) {
         var hs = state.tocHeadings;
@@ -5823,8 +5955,21 @@
     // ---------------------------------------------------------------
     function openDetailPanel(props) {
         if (!props) return;
+        // v1.4.7 (item 8): the inline payload no longer carries the full-res URL.
+        // Show the thumbnail instantly, then fetch the full image on demand by
+        // attachment id and swap it in when ready (only for this opened photo).
         dom.detailImg.src = props.fullImage || props.thumbnail || '';
         dom.detailImg.alt = props.title || '';
+        if (!props.fullImage && props.id) {
+            var wantId = props.id;
+            fetchFromRest('sphotography/v1/photo-full/' + encodeURIComponent(props.id)).then(function (data) {
+                if (!data || !data.full) return;
+                props.fullImage = data.full; // cache on the feature props
+                // Only swap if the detail view is still showing this same photo.
+                if (state.currentDetailId === wantId) dom.detailImg.src = data.full;
+            }).catch(function () {});
+        }
+        state.currentDetailId = props.id || null;
         dom.detailTitle.textContent = props.title || '';
 
         var metaHtml = '';
@@ -6492,11 +6637,10 @@
         var arrow = document.createElement('div');
         arrow.className = 'sp-cursor-arrow';
         arrow.setAttribute('aria-hidden', 'true');
-        // Rounded V-arrow: filled path (grey translucent) with a theme-colour
-        // rounded stroke. Hotspot ≈ the tip at (4,3).
-        arrow.innerHTML = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none">'
-            + '<path d="M5 4 L5 19 L9.4 15 L12.4 21 L15.3 19.6 L12.3 13.9 L18.3 13.9 Z" '
-            + 'fill="rgba(140,140,145,0.42)" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+        // v1.4.7 (item 7): iPadOS-style soft round dot — the element itself is a
+        // theme-tinted translucent circle (styled in CSS), no sharp SVG arrow.
+        // Its hotspot is the centre; on hover the dot fades and the adsorb ring
+        // morphs over the target (unchanged).
 
         var ring = document.createElement('div');
         ring.className = 'sp-cursor-ring';

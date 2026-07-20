@@ -635,6 +635,33 @@ function sphotography_register_marker_route() {
 }
 add_action( 'rest_api_init', 'sphotography_register_marker_route' );
 
+// v1.4.7 (item 8): on-demand full-resolution image URL for one attachment.
+// The inline marker payload no longer ships full_image (only the thumbnail);
+// the detail view fetches the full URL here by attachment id when a photo is
+// actually opened, keeping the initial page payload small.
+function sphotography_register_photo_full_route() {
+    register_rest_route( 'sphotography/v1', '/photo-full/(?P<id>\d+)', array(
+        'methods'             => WP_REST_Server::READABLE,
+        'callback'            => 'sphotography_get_photo_full',
+        'permission_callback' => '__return_true',
+        'args'                => array(
+            'id' => array(
+                'validate_callback' => function ( $param ) { return is_numeric( $param ); },
+            ),
+        ),
+    ) );
+}
+add_action( 'rest_api_init', 'sphotography_register_photo_full_route' );
+
+function sphotography_get_photo_full( $request ) {
+    $id = (int) $request['id'];
+    if ( $id <= 0 || 'attachment' !== get_post_type( $id ) ) {
+        return new WP_REST_Response( array( 'full' => '' ), 404 );
+    }
+    $src = wp_get_attachment_image_src( $id, 'full' );
+    return new WP_REST_Response( array( 'full' => $src ? $src[0] : '' ), 200 );
+}
+
 /**
  * Collect the unique image attachment IDs used by a post.
  *
@@ -800,8 +827,37 @@ function sphotography_get_cdn_urls() {
     return $urls;
 }
 
+/**
+ * v1.4.7 (item 4): is the current request the fullscreen map view?
+ *
+ * True for any page explicitly using the map template AND for the site front
+ * page / blog home — because the homepage IS the map, forced regardless of the
+ * reading settings so a fresh install needs zero manual setup. Both the map
+ * template filter and the script/asset enqueue key off this single predicate,
+ * so forcing the template also loads MapLibre + the app bundle + inline data.
+ */
+function sphotography_is_map_view() {
+    return is_page_template( 'template-map.php' ) || is_front_page() || is_home();
+}
+
+/**
+ * Force the fullscreen map template on the front page / blog home, whatever the
+ * reading settings say. Other URLs (single posts, real pages, archives) are
+ * untouched and render normally.
+ */
+function sphotography_force_map_template( $template ) {
+    if ( ( is_front_page() || is_home() ) && ! is_page_template( 'template-map.php' ) ) {
+        $map = locate_template( 'template-map.php' );
+        if ( $map ) {
+            return $map;
+        }
+    }
+    return $template;
+}
+add_filter( 'template_include', 'sphotography_force_map_template', 99 );
+
 function sphotography_enqueue_scripts() {
-    if ( ! is_page_template( 'template-map.php' ) ) {
+    if ( ! sphotography_is_map_view() ) {
         return;
     }
 
@@ -945,6 +1001,12 @@ function sphotography_theme_activation() {
             update_option( 'show_on_front', 'page' );
             update_option( 'page_on_front', $map_page->ID );
         }
+    }
+
+    // v1.4.7 (item 3): region coloring is now the default marker mode, so kick off
+    // a background download of the boundary data (never blocks activation).
+    if ( function_exists( 'sphotography_geo_schedule_bg_download' ) ) {
+        sphotography_geo_schedule_bg_download();
     }
 
     // Flush only after all types and the front page are in their final state.
